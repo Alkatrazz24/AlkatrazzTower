@@ -63,6 +63,20 @@ function wakeWaiters() {
 
 state.onChange(() => { scheduleSave(); pushAll(); wakeWaiters(); });
 
+// Victoire : on note le commit Git du projet, comme un point de sauvegarde.
+state.onVictory = (c) => {
+  const agent = Object.values(state.agents).find(a => a.project && a.project.name.toLowerCase() === c.project.toLowerCase());
+  if (!agent) return;
+  const root = agent.project.root;
+  execFile('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { windowsHide: true, timeout: 5000 }, (err, sha) => {
+    if (err) return;
+    execFile('git', ['-C', root, 'status', '--porcelain'], { windowsHide: true, timeout: 10000 }, (err2, dirty) => {
+      c.commit = { sha: String(sha).trim(), dirty: err2 ? null : String(dirty).split(/\r?\n/).filter(Boolean).length };
+      state.changed();
+    });
+  });
+};
+
 // ---- sondes : editeur ouvert, verrous de domaine ------------------------------------------------
 
 function probeEditor() {
@@ -135,12 +149,21 @@ const routes = {
 
   'POST /api/lock/acquire': (b) => state.acquire({
     sessionId: b.sessionId, kind: b.kind, command: b.command, cwd: b.cwd, pid: b.pid,
+    target: b.target, testFilter: b.testFilter,
   }),
   'POST /api/lock/heartbeat': (b) => ({ ok: state.touch(b.ticket) }),
   'POST /api/lock/release': (b) => ({ ok: state.release(b.ticket, b.result || {}) }),
   'POST /api/lock/force-release': () => ({ ok: state.forceRelease() }),
   'POST /api/report': (b) => { state.report(b.entry || {}, b.result || {}); return { ok: true }; },
   'POST /api/agents/forget': (b) => ({ ok: state.forget(b.sessionId) }),
+
+  'POST /api/campaigns': (b) => {
+    try { return { ok: true, campaign: state.createCampaign(b) }; }
+    catch (e) { return { ok: false, error: e.message }; }
+  },
+  'POST /api/campaigns/manual': (b) => ({ ok: state.manualProof(b.id, b.featureId, b.ok !== false) }),
+  'POST /api/campaigns/archive': (b) => ({ ok: state.archiveCampaign(b.id) }),
+  'POST /api/campaigns/delete': (b) => ({ ok: state.deleteCampaign(b.id) }),
 };
 
 const server = http.createServer(async (req, res) => {
