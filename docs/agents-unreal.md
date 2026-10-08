@@ -48,7 +48,7 @@ Recherche faite le 9 octobre 2026 pour UE 5.8. Chaque point renvoie à sa source
 | Nom | Ce qu'il apporte | État chez toi |
 | --- | --- | --- |
 | [Unreal Engine Skills for Claude Code](https://github.com/EpicGames/unreal-engine-skills-for-claude-code-plugin) (Epic) | skills `unreal-mcp`, `create-toolset`, `unreal-skill`, conventions UE au démarrage | activé dans le projet CTB |
-| [quodsoler/unreal-engine-skills](https://github.com/quodsoler/unreal-engine-skills) | une trentaine de skills (C++, Build.cs, GAS, Enhanced Input, tests, réseau, StateTree, Mass) annoncés vérifiés sur les en-têtes 5.8 | pas installé, à relire avant |
+| [quodsoler/unreal-engine-skills](https://github.com/quodsoler/unreal-engine-skills) | 31 skills `ue-*` (C++, Build.cs, GAS, Enhanced Input, tests, réseau, StateTree, Mass) annoncés vérifiés sur les en-têtes 5.8 | installé pour tous les agents dans `~/.claude/skills` le 9 octobre 2026 (commit f3742d7, licence MIT, uniquement du Markdown) |
 | [dstn2000/claude-unreal-engine-skill](https://github.com/dstn2000/claude-unreal-engine-skill) | découverte du projet, Enhanced Input, GAS, Blueprint/C++ | pas installé |
 
 Les skills tiers s'exécutent avec les droits de tes agents : à relire avant de les installer.
