@@ -16,6 +16,24 @@ Spécification complète : [Alkatrazz Tower — Spécification](https://claude.a
   de domaine `Saved/chantiers/*.txt` des projets vus.
 - **Jamais bloquant** : tour éteinte, les agents travaillent et buildent exactement comme avant.
 
+## La carte du projet
+
+En haut de la page, le projet est une petite ville. La maison au centre, c'est le jeu, avec son nom,
+sa version d'Unreal et le drapeau de la version en cours. Autour, une extension par domaine :
+Blueprints, Animations, Personnages, Décors, Matériaux, Textures, Sons, Effets, Niveaux, Interface,
+Données, IA, Cinématiques, Code C++ et Tests.
+
+- **Sa taille** suit le nombre d'éléments, et son panneau l'affiche.
+- **Des échafaudages** montrent ce qui a été modifié ces 3 derniers jours (« +146 » sur le panneau).
+- **Les personnages** se tiennent devant l'extension du fichier que leur agent touche, et devant la
+  forge quand il compile.
+- **Un clic** sur une extension montre ses dossiers et ses derniers éléments modifiés ; un clic sur la
+  maison, le résumé du projet (assets, lignes de C++, classes, tests).
+
+La tour compte le projet en lisant `Content` et `Source` (lecture seule) : le type d'un asset vient de
+son préfixe (`BP_`, `AM_`, `T_`…), sinon de son dossier, sinon de l'en-tête du `.uasset`. Le comptage
+tourne dans un thread à part, se refait toutes les 10 minutes et à la demande (« Actualiser »).
+
 ## Version à sortir : finir le jeu comme une partie
 
 Le haut de la page, c'est la version que tu veux sortir (par exemple « CTB 0.3 »). Clique sur
@@ -125,5 +143,6 @@ npm test
 | `scripts/setup.js`, `setup.cmd`, `uninstall.cmd` | installation et retrait sur un PC |
 | `lib/characters.js`, `web/avatar.js` | personnages : allure, validation, dessin en pixels |
 | `lib/projects.js` | recherche et connexion des projets Unreal |
+| `lib/inventory.js`, `web/map.js` | carte du projet : comptage des assets et dessin de la ville |
 | `skills/alkatrazz-tower-personnages` | skill qui apprend aux agents à modifier un personnage |
 | `vendor/unreal-engine-skills` | 31 skills Unreal de quodsoler (MIT, commit f3742d7) |

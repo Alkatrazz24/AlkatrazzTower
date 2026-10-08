@@ -6,6 +6,7 @@ const { findProject } = require('../lib/detect');
 const campaign = require('../lib/campaign');
 const { docRead } = require('../lib/unreal');
 const chars = require('../lib/characters');
+const { roomForPath } = require('../lib/inventory');
 
 const LEASE_MS = 30_000;      // sans signe de vie, le verrou ou la place en file est rendu
 const MAX_BUILDS = 50;
@@ -47,6 +48,7 @@ class TowerState {
     this.testGroups = {};  // projet -> { 'CTB.Munitions': nombre de tests vus }
     this.characters = {};  // id -> { id, name, role, look, createdAt }
     this.projects = [];    // projets Unreal connectes : [{ name, root, uproject, engine }]
+    this.inventories = {}; // nom du projet -> inventaire (lib/inventory.js), recalcule par le serveur
     this.onVictory = null; // (campagne) => void, branche par le serveur
     this.seq = 0;
     this.listeners = new Set();
@@ -126,6 +128,10 @@ class TowerState {
       case 'PostToolUse':
         a.status = 'working';
         a.tool = { name: ev.tool_name || '?', summary: toolSummary(ev.tool_name, ev.tool_input), at: t, sub: !!sub };
+        // Sur la carte, le personnage se tient devant l'extension du fichier qu'il touche.
+        const touched = ev.tool_input && (ev.tool_input.file_path || ev.tool_input.path);
+        const room = touched ? roomForPath(touched) : null;
+        if (room) { a.room = room; a.roomAt = t; }
         if (ev.hook_event_name === 'PostToolUse') {
           const d = docRead(ev.tool_name, ev.tool_input);
           if (d) {
@@ -496,6 +502,7 @@ class TowerState {
       testGroups: this.testGroups,
       characters: this.characters,
       projects: this.projects,
+      inventories: this.inventories,
     };
   }
 
