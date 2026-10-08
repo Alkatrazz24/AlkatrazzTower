@@ -13,6 +13,7 @@
     --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
   header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 2; flex-wrap: wrap; }
   h1 { font-size: 17px; margin: 0; letter-spacing: .3px; }
@@ -68,6 +69,31 @@
   .chantier b { color: var(--amber); }
   .empty { color: var(--faint); padding: 8px 0; }
   .wrap-table { overflow-x: auto; }
+  .camp-head { display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap; }
+  .camp-name { font-size: 20px; font-weight: 700; }
+  .bar { height: 10px; background: var(--panel2); border-radius: 999px; overflow: hidden; margin: 10px 0 14px; border: 1px solid var(--line); }
+  .bar > div { height: 100%; background: linear-gradient(90deg, var(--blue), var(--green)); transition: width .4s; }
+  .levels { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .level { background: var(--panel2); border-radius: 8px; padding: 10px 12px; border-left: 3px solid var(--faint); display: grid; gap: 6px; align-content: start; }
+  .level.proven { border-left-color: var(--green); }
+  .level.progress { border-left-color: var(--blue); }
+  .level.failing, .level.broken { border-left-color: var(--red); }
+  .level.boss { border-left-color: var(--violet); background: rgba(180,140,255,.07); }
+  .level.locked { opacity: .55; }
+  .level .lt { font-weight: 600; }
+  .proof { font-size: 12px; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+  .proof code { font-family: var(--mono); color: var(--quiet); }
+  .st-proven { color: var(--green); } .st-failing, .st-broken { color: var(--red); } .st-progress { color: var(--blue); } .st-todo { color: var(--faint); }
+  .victory { text-align: center; padding: 22px 16px; border: 2px solid var(--green); border-radius: 12px; background: rgba(79,209,139,.08); margin-bottom: 14px; }
+  .victory .big-v { font-size: 26px; font-weight: 800; letter-spacing: 2px; color: var(--green); }
+  .stats { display: flex; gap: 22px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+  .stats div b { display: block; font-size: 18px; }
+  .journal { margin: 12px 0 0; padding: 0; list-style: none; font-size: 12.5px; }
+  .journal li { padding: 2px 0; color: var(--quiet); }
+  form.newcamp { display: grid; gap: 8px; margin-top: 12px; max-width: 760px; }
+  form.newcamp input, form.newcamp textarea { background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font: inherit; }
+  form.newcamp textarea { font-family: var(--mono); font-size: 12.5px; min-height: 130px; }
+  .err { color: var(--red); font-size: 12.5px; }
   label.toggle { font-size: 12px; color: var(--quiet); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
 </style>
 </head>
@@ -80,6 +106,28 @@
   <span id="counts" class="faint"></span>
 </header>
 <main>
+  <section>
+    <div class="row" style="margin-bottom:10px">
+      <h2 style="margin:0">Campagne</h2><span class="grow"></span>
+      <button id="newCampBtn" type="button">Nouvelle campagne</button>
+    </div>
+    <div class="panel">
+      <div id="campaign"></div>
+      <form class="newcamp" id="newCamp" hidden>
+        <input id="campName" placeholder="Nom de la version, par exemple CTB 0.3" required>
+        <input id="campProject" placeholder="Projet Unreal (nom du .uproject), par exemple ConquerTheBackrooms" list="projects" required>
+        <datalist id="projects"></datalist>
+        <textarea id="campText" spellcheck="false" placeholder="Une feature par ligne : Titre | preuves
+Munitions | tests:CTB.Munitions
+Lampe torche | tests:CTB.Lampe, build:ConquerTheBackrooms
+Menu de raid | manuel
+Boss | paquet, tests:CTB"></textarea>
+        <div class="faint">Preuves : <code>tests:Filtre</code> (suite verte), <code>build</code> ou <code>build:Cible</code> (compilation verte), <code>paquet</code> (BuildCookRun vert), <code>manuel</code> (tu valides toi-même). La ligne <code>Boss</code> est l'épreuve finale ; sans elle, le boss est un paquet vert.</div>
+        <div class="row"><button type="submit">Lancer la campagne</button><button type="button" id="cancelCamp">Annuler</button><span id="campErr" class="err"></span></div>
+      </form>
+    </div>
+  </section>
+
   <section>
     <h2>Verrou de build</h2>
     <div class="panel lock">
@@ -256,6 +304,74 @@ function renderBuilds() {
   }
 }
 
+const PST = { proven: '✓', failing: '✗', broken: '✗', progress: '…', todo: '·' };
+const FST = { proven: 'gagné', progress: 'en cours', failing: 'en échec', broken: 'régression', todo: 'à faire' };
+function proofLabel(p) { return p.type === 'manual' ? 'validation à la main' : p.type === 'package' ? 'paquet' : p.arg ? p.type + ':' + p.arg : p.type; }
+function proofState(p) { return !p.last ? 'todo' : p.last.ok ? 'proven' : (p.everOk ? 'broken' : 'failing'); }
+
+function proofRow(c, ownerId, p, locked) {
+  const st = proofState(p);
+  return h('div', { class: 'proof' },
+    h('span', { class: 'st-' + st }, PST[st]),
+    h('code', null, proofLabel(p)),
+    p.last ? h('span', { class: 'faint' }, (p.last.summary || '') + ' · il y a ' + ago(p.last.at)) : null,
+    p.type === 'manual' && !c.wonAt && !locked
+      ? h('button', { onclick: () => api('/api/campaigns/manual', { id: c.id, featureId: ownerId, ok: !(p.last && p.last.ok) }) }, p.last && p.last.ok ? 'Annuler' : 'Valider')
+      : null);
+}
+
+function renderCampaign() {
+  const box = $('campaign');
+  const list = S.campaigns || [];
+  const live = list.filter(c => !c.archived);
+  const past = list.filter(c => c.archived);
+  const projects = [...new Set(S.agents.filter(a => a.project).map(a => a.project.name))];
+  $('projects').replaceChildren(...projects.map(p => h('option', { value: p })));
+  box.replaceChildren();
+  if (!live.length) box.append(h('div', { class: 'empty' }, "Aucune campagne en cours. Une campagne, c'est une version à valider : chaque feature est un niveau prouvé par des builds ou des tests verts, et le boss final est le paquet."));
+  for (const c of live) {
+    const pct = c.progress.total ? Math.round(100 * c.progress.proven / c.progress.total) : 0;
+    if (c.wonAt) {
+      const agents = Object.keys(c.stats.agents || {}).length;
+      box.append(h('div', { class: 'victory' },
+        h('div', { class: 'big-v' }, 'VERSION VALIDÉE'),
+        h('div', { class: 'big' }, c.name + ' · ' + c.project),
+        h('div', { class: 'stats' },
+          h('div', null, h('b', null, dur(c.wonAt - c.createdAt)), 'de campagne'),
+          h('div', null, h('b', null, String(c.features.length)), 'niveaux'),
+          h('div', null, h('b', null, String(c.stats.builds)), 'builds et tests'),
+          h('div', null, h('b', null, String(c.stats.failures)), 'échecs en route'),
+          h('div', null, h('b', null, String(agents)), agents > 1 ? 'agents' : 'agent'),
+          c.commit ? h('div', null, h('b', null, c.commit.sha), c.commit.dirty ? 'commit, ' + c.commit.dirty + ' fichiers non commités' : 'commit sauvegardé') : null),
+        h('div', { style: 'margin-top:12px' }, h('button', { onclick: () => api('/api/campaigns/archive', { id: c.id }) }, 'Ranger la campagne'))));
+    }
+    box.append(h('div', { class: 'camp-head' },
+      h('span', { class: 'camp-name' }, c.name),
+      h('span', { class: 'muted' }, c.project),
+      h('span', { class: 'grow' }),
+      h('span', { class: 'big' }, 'Niveau ' + c.progress.proven + '/' + c.progress.total),
+      !c.wonAt ? h('button', { onclick: () => { if (confirm('Abandonner cette campagne ?')) api('/api/campaigns/archive', { id: c.id }); } }, 'Abandonner') : null));
+    box.append(h('div', { class: 'bar' }, h('div', { style: 'width:' + pct + '%' })));
+    const levels = h('div', { class: 'levels' });
+    for (const f of c.features) {
+      levels.append(h('div', { class: 'level ' + f.status },
+        h('div', { class: 'row' }, h('span', { class: 'lt grow' }, f.title), h('span', { class: 'faint st-' + f.status }, FST[f.status])),
+        f.proofs.map(p => proofRow(c, f.id, p, false))));
+    }
+    const locked = !c.bossUnlocked && !c.wonAt;
+    levels.append(h('div', { class: 'level boss' + (locked ? ' locked' : '') },
+      h('div', { class: 'row' }, h('span', { class: 'lt grow' }, c.boss.title), h('span', { class: 'faint' }, c.wonAt ? 'vaincu' : locked ? 'verrouillé' : 'à battre')),
+      locked ? h('div', { class: 'faint' }, "Gagne tous les niveaux pour l'affronter. Il doit être vert après le dernier niveau.") : null,
+      c.boss.proofs.map(p => proofRow(c, 'boss', p, locked))));
+    box.append(levels);
+    if (c.log && c.log.length) box.append(h('ul', { class: 'journal' }, c.log.slice(0, 8).map(e => h('li', null, clock(e.at) + ' · ' + e.text))));
+  }
+  if (past.length) {
+    box.append(h('div', { class: 'faint', style: 'margin-top:14px' }, 'Campagnes passées : ',
+      past.slice(0, 6).map((c, i) => [i ? ' · ' : '', c.wonAt ? c.name + ' (validée le ' + new Date(c.wonAt).toLocaleDateString('fr-FR') + ')' : c.name + ' (abandonnée)'])));
+  }
+}
+
 function renderHeader() {
   const e = S.editor || {};
   const ed = $('editor');
@@ -269,7 +385,7 @@ function renderHeader() {
 
 function render() {
   if (!S) return;
-  renderHeader(); renderLock(); renderAgents(); renderChantiers(); renderBuilds();
+  renderHeader(); renderCampaign(); renderLock(); renderAgents(); renderChantiers(); renderBuilds();
 }
 
 function setConn(ok) {
@@ -285,6 +401,19 @@ function connect() {
 }
 
 $('showEnded').addEventListener('change', render);
+$('newCampBtn').addEventListener('click', () => { $('newCamp').hidden = false; $('campName').focus(); });
+$('cancelCamp').addEventListener('click', () => { $('newCamp').hidden = true; $('campErr').textContent = ''; });
+$('newCamp').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  $('campErr').textContent = '';
+  try {
+    const r = await fetch('/api/campaigns', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: $('campName').value, project: $('campProject').value, text: $('campText').value }) }).then(x => x.json());
+    if (!r.ok) { $('campErr').textContent = r.error || 'refusé'; return; }
+    $('newCamp').hidden = true;
+    $('campText').value = '';
+  } catch { $('campErr').textContent = 'tour injoignable'; }
+});
 setInterval(render, 1000);
 connect();
 </script>

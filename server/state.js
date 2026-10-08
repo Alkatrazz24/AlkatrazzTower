@@ -3,6 +3,7 @@
 // Aucune E/S ici, pour pouvoir tout tester sans serveur.
 
 const { findProject } = require('../lib/detect');
+const campaign = require('../lib/campaign');
 
 const LEASE_MS = 30_000;      // sans signe de vie, le verrou ou la place en file est rendu
 const MAX_BUILDS = 50;
@@ -40,6 +41,8 @@ class TowerState {
     this.builds = [];      // les plus recents d'abord
     this.editor = { open: false, count: 0, checkedAt: 0 };
     this.chantiers = {};   // projet -> [{ file, text, mtime }]
+    this.campaigns = [];   // voir lib/campaign.js
+    this.onVictory = null; // (campagne) => void, branche par le serveur
     this.seq = 0;
     this.listeners = new Set();
   }
@@ -176,6 +179,8 @@ class TowerState {
       cwd: req.cwd || '',
       project: req.cwd ? (findProject(req.cwd) || {}).name || null : null,
       pid: req.pid || null,
+      target: req.target || null,
+      testFilter: req.testFilter || null,
       since: t,
       lastSeen: t,
     };
@@ -286,8 +291,17 @@ class TowerState {
       warnings: result.warnings || 0,
       errorLines: (result.errorLines || []).slice(0, 5).map(l => snip(l, 300)),
       tests: result.tests || null,
+      target: entry.target || null,
+      testFilter: entry.testFilter || null,
       how,
     };
+    // Un verrou perdu ou libere a la main ne dit rien de la qualite du code.
+    if (how !== 'expired' && how !== 'forced') this.feedCampaigns(b);
+    // Les chemins de tests ne servent qu'aux campagnes : on ne les garde pas dans l'historique.
+    if (b.tests) {
+      const { passedPaths, failedPaths, ...rest } = b.tests;
+      b.tests = rest;
+    }
     this.builds.unshift(b);
     if (this.builds.length > MAX_BUILDS) this.builds.length = MAX_BUILDS;
     const a = this.agents[entry.sessionId];
@@ -296,6 +310,51 @@ class TowerState {
       if (b.kind === 'test' || b.tests) a.lastTest = b; else a.lastBuild = b;
     }
     return b;
+  }
+
+  // ---- campagnes ----------------------------------------------------------------------------
+
+  feedCampaigns(b) {
+    for (const c of this.campaigns) {
+      if (!campaign.applyBuild(c, b)) continue;
+      if (campaign.checkVictory(c, this.now()) && this.onVictory) {
+        try { this.onVictory(c); } catch { /* le commit est un bonus */ }
+      }
+    }
+  }
+
+  createCampaign({ name, project, text }) {
+    const c = campaign.newCampaign({ id: `C${++this.seq}-${this.now().toString(36)}`, name, project, text, now: this.now() });
+    // Une seule campagne en cours par projet : la precedente est rangee.
+    for (const o of this.campaigns) if (!o.wonAt && !o.archived && o.project.toLowerCase() === c.project.toLowerCase()) o.archived = true;
+    this.campaigns.unshift(c);
+    this.changed();
+    return c;
+  }
+
+  manualProof(id, featureId, ok) {
+    const c = this.campaigns.find(x => x.id === id);
+    if (!c || !campaign.setManual(c, featureId, ok, this.now())) return false;
+    if (campaign.checkVictory(c, this.now()) && this.onVictory) {
+      try { this.onVictory(c); } catch { /* bonus */ }
+    }
+    this.changed();
+    return true;
+  }
+
+  archiveCampaign(id) {
+    const c = this.campaigns.find(x => x.id === id);
+    if (!c) return false;
+    c.archived = true;
+    this.changed();
+    return true;
+  }
+
+  deleteCampaign(id) {
+    const n = this.campaigns.length;
+    this.campaigns = this.campaigns.filter(x => x.id !== id);
+    if (n !== this.campaigns.length) this.changed();
+    return n !== this.campaigns.length;
   }
 
   // ---- instantane ---------------------------------------------------------------------------
@@ -309,11 +368,12 @@ class TowerState {
       builds: this.builds,
       editor: this.editor,
       chantiers: this.chantiers,
+      campaigns: this.campaigns.map(campaign.view),
     };
   }
 
   toJSON() {
-    return { agents: this.agents, builds: this.builds, seq: this.seq };
+    return { agents: this.agents, builds: this.builds, seq: this.seq, campaigns: this.campaigns };
   }
 
   load(saved) {
@@ -321,6 +381,7 @@ class TowerState {
     if (saved.agents) this.agents = saved.agents;
     if (Array.isArray(saved.builds)) this.builds = saved.builds.slice(0, MAX_BUILDS);
     if (saved.seq) this.seq = saved.seq;
+    if (Array.isArray(saved.campaigns)) this.campaigns = saved.campaigns;
     for (const a of Object.values(this.agents)) delete a.building; // aucun verrou ne survit a un redemarrage
   }
 }

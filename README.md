@@ -16,6 +16,33 @@ Spécification complète : [Alkatrazz Tower — Spécification](https://claude.a
   de domaine `Saved/chantiers/*.txt` des projets vus.
 - **Jamais bloquant** : tour éteinte, les agents travaillent et buildent exactement comme avant.
 
+## Campagnes : valider une version comme on finit un jeu
+
+Une campagne, c'est une version à valider (par exemple « CTB 0.3 »). Chaque feature est un niveau,
+gagné quand ses preuves sont vertes ; le boss final se débloque quand tous les niveaux sont gagnés
+et doit être battu après. La version est alors validée, avec ses statistiques et le commit Git du
+projet à ce moment-là.
+
+On la crée depuis la page, une feature par ligne :
+
+```text
+Munitions     | tests:CTB.Munitions
+Lampe torche  | tests:CTB.Lampe, build:ConquerTheBackrooms
+Menu de raid  | manuel
+Boss          | paquet, tests:CTB
+```
+
+| Preuve | Verte quand |
+| --- | --- |
+| `tests:Filtre` | le dernier run qui touche ces tests n'en rate aucun |
+| `build` / `build:Cible` | le dernier build (de cette cible) compile |
+| `paquet` | le dernier `RunUAT BuildCookRun` passe |
+| `manuel` | tu cliques sur Valider après avoir essayé en jeu |
+
+La tour suit les preuves toute seule à partir des builds et tests qui passent par le verrou. Un
+niveau gagné qui repasse au rouge redevient « régression » et rebloque le boss. Sans ligne `Boss`,
+le boss est un paquet vert.
+
 ## Démarrer
 
 Node 20 ou plus, aucune dépendance npm.
