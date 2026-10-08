@@ -119,6 +119,44 @@
   .chantier { background: var(--panel2); border-radius: 8px; padding: 8px 12px; font-size: 13px; }
   .chantier b { color: var(--amber); }
 
+  /* Personnages */
+  .av { display: block; overflow: visible; image-rendering: pixelated; }
+  .av-working .av-arm-l { transform-origin: 2px 9px; animation: av-swing .45s ease-in-out infinite alternate; }
+  .av-working .av-body { animation: av-bob .9s ease-in-out infinite; }
+  .av-waiting .av-bubble, .av-idle .av-bubble { animation: av-bob 1.2s ease-in-out infinite; }
+  .av-ended, .av-silent { filter: grayscale(1) brightness(.7); }
+  .av-ready .av-head { animation: av-look 4s steps(1) infinite; }
+  @keyframes av-swing { from { transform: rotate(-35deg); } to { transform: rotate(25deg); } }
+  @keyframes av-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+  @keyframes av-look { 0%, 70% { transform: none; } 80% { transform: translateX(-.5px); } 90% { transform: translateX(.5px); } }
+  .forge.lit .forge-fire { animation: fire .3s steps(2) infinite; }
+  @keyframes fire { from { opacity: 1; } to { opacity: .55; } }
+  .avatar-btn { background: radial-gradient(circle at 50% 70%, #232838, transparent 70%); border: 1px solid transparent; border-radius: 10px; padding: 4px 6px; cursor: pointer; }
+  .avatar-btn:hover { border-color: var(--line); }
+  .card-top { display: flex; gap: 12px; align-items: flex-end; }
+  .who { display: grid; gap: 2px; flex: 1; min-width: 0; }
+  .who .role { color: var(--faint); font-size: 12px; overflow-wrap: anywhere; }
+  .scene { display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap; padding: 6px 4px 0; border-bottom: 3px solid #3f3a33; margin-bottom: 10px; }
+  .scene .slot { display: grid; justify-items: center; gap: 2px; font-size: 11.5px; color: var(--quiet); }
+  .scene .queue-sep { align-self: center; color: var(--faint); font-size: 12px; }
+  dialog { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 18px; width: min(760px, 94vw); }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  .editor { display: grid; grid-template-columns: 180px 1fr; gap: 18px; }
+  @media (max-width: 640px) { .editor { grid-template-columns: 1fr; } }
+  .editor .preview { display: grid; justify-items: center; align-content: start; gap: 10px; background: radial-gradient(circle at 50% 60%, #232838, var(--panel2)); border-radius: 12px; padding: 14px 8px; }
+  .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+  .fields label { display: grid; gap: 3px; font-size: 12px; color: var(--quiet); }
+  .fields input[type=color] { width: 100%; height: 32px; padding: 2px; }
+  .colors { display: flex; gap: 6px; flex-wrap: wrap; }
+  .colors label { display: grid; gap: 2px; font-size: 11px; color: var(--faint); justify-items: center; }
+  .colors input { width: 38px; height: 28px; padding: 1px; }
+  .askbox { background: var(--panel2); border-radius: 10px; padding: 10px 12px; font-size: 13px; display: grid; gap: 6px; margin-top: 10px; }
+  .askbox code { font-family: var(--mono); font-size: 12px; color: var(--ink); background: var(--bg); padding: 6px 8px; border-radius: 6px; display: block; white-space: pre-wrap; }
+  .projbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+  .projchip { background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 6px 3px 12px; display: inline-flex; gap: 6px; align-items: center; }
+  .scanlist { display: grid; gap: 6px; max-height: 50vh; overflow: auto; margin: 10px 0; }
+  .scanitem { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; background: var(--panel2); border-radius: 8px; padding: 8px 12px; }
+
   /* Historique */
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; color: var(--faint); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -139,6 +177,7 @@
   <span id="summary" class="summary"></span>
 </header>
 <main>
+  <div class="projbar" id="projbar"></div>
 
   <!-- 1. La version a sortir -->
   <section>
@@ -191,6 +230,42 @@
   </section>
 </main>
 
+<dialog id="projDialog">
+  <div class="row"><h2 class="grow">Connecter un projet Unreal</h2><button type="button" class="quiet" onclick="document.getElementById('projDialog').close()">Fermer</button></div>
+  <p class="hint">La tour cherche les fichiers .uproject dans tes Documents, ton Bureau et à la racine de tes disques. Choisis ceux que tes agents vont faire avancer.</p>
+  <div id="scanList" class="scanlist"><div class="empty">Recherche…</div></div>
+  <div class="row"><input id="projPath" class="grow" placeholder="Ou colle le chemin d'un .uproject ou de son dossier"><button type="button" id="projPathBtn">Connecter</button></div>
+  <div id="projErr" class="err" style="margin-top:6px"></div>
+</dialog>
+
+<dialog id="charDialog">
+  <div class="row" style="margin-bottom:12px"><h2 class="grow">Personnage</h2><button type="button" class="quiet" onclick="document.getElementById('charDialog').close()">Fermer</button></div>
+  <div class="editor">
+    <div class="preview"><div id="cPreview"></div><button type="button" id="cRandom">Au hasard</button></div>
+    <div>
+      <div class="fields">
+        <label>Nom<input id="cName" maxlength="32"></label>
+        <label>Rôle (titre de session, facultatif)<input id="cRole" maxlength="32" placeholder="ex. ctb-armes"></label>
+        <label>Cheveux<select id="cHairStyle"></select></label>
+        <label>Haut<select id="cShirtStyle"></select></label>
+        <label>Chapeau<select id="cHat"></select></label>
+        <label>Accessoire<select id="cAccessory"></select></label>
+        <label>Outil<select id="cTool"></select></label>
+        <label>Utilisé par cet agent<select id="cAssign"></select></label>
+      </div>
+      <div class="colors" style="margin-top:10px" id="cColors"></div>
+      <div class="askbox">
+        <b>Ou demande à Claude</b>
+        <span class="muted">Dans n'importe quelle session Claude Code, dis par exemple :</span>
+        <code id="cAsk"></code>
+        <div class="row"><button type="button" id="cCopy">Copier</button><span class="faint">Le skill « alkatrazz-tower-personnages » lui apprend à modifier le personnage.</span></div>
+      </div>
+      <div class="row" style="margin-top:12px"><button type="button" class="primary" id="cSave">Enregistrer</button><span id="cErr" class="err"></span></div>
+    </div>
+  </div>
+</dialog>
+
+<script src="avatar.js"></script>
 <script>
 'use strict';
 const SILENT_MS = 15 * 60 * 1000;
@@ -240,6 +315,97 @@ async function api(path, body) {
   try { return await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).then(r => r.json()); }
   catch { return null; }
 }
+
+// ---------- personnages ----------
+const STY = {
+  hairStyle: [['court', 'Courts'], ['long', 'Longs'], ['chauve', 'Chauve'], ['crete', 'Crête'], ['queue', 'Queue de cheval']],
+  shirtStyle: [['uni', 'T-shirt'], ['rayures', 'Rayé'], ['veste', 'Veste'], ['salopette', 'Salopette']],
+  hat: [['aucun', 'Aucun'], ['casquette', 'Casquette'], ['casque', 'Casque de chantier'], ['couronne', 'Couronne'], ['bandana', 'Bandana'], ['chapeau', 'Chapeau'], ['capuche', 'Capuche']],
+  accessory: [['aucun', 'Aucun'], ['lunettes', 'Lunettes'], ['barbe', 'Barbe'], ['masque', 'Masque'], ['casque-audio', 'Casque audio'], ['cache-oeil', 'Cache-œil']],
+  tool: [['aucun', 'Rien'], ['pioche', 'Pioche'], ['marteau', 'Marteau'], ['cle', 'Clé'], ['epee', 'Épée'], ['clavier', 'Clavier'], ['pinceau', 'Pinceau']],
+};
+const COL = [['skin', 'Peau'], ['hair', 'Cheveux'], ['eyes', 'Yeux'], ['shirt', 'Haut'], ['pants', 'Pantalon'], ['shoes', 'Chaussures'], ['hatColor', 'Chapeau'], ['accessoryColor', 'Accessoire']];
+function charOf(a) { return (S.characters || {})[a.characterId] || null; }
+function avatarEl(look, state, size) { const d = document.createElement('span'); d.innerHTML = Avatar.render(look, { state, size }); return d.firstChild; }
+
+let editing = null; // { id, look, sessionId }
+function previewChar() {
+  const look = {};
+  for (const k of Object.keys(STY)) look[k] = $('c' + k[0].toUpperCase() + k.slice(1)).value;
+  for (const [k] of COL) look[k] = $('col-' + k).value;
+  editing.look = look;
+  $('cPreview').replaceChildren(avatarEl(look, 'working', 150));
+  const nm = $('cName').value.trim() || 'ce personnage';
+  $('cAsk').textContent = `Change le personnage « ${nm} » de la tour Alkatrazz : donne-lui ${['un casque de chantier jaune', 'une barbe rousse et une pioche', 'une tenue de pirate'][Math.floor(Math.random() * 3)]}.`;
+}
+function openChar(a) {
+  const c = charOf(a);
+  if (!c) return;
+  editing = { id: c.id, sessionId: a.sessionId };
+  $('cName').value = c.name;
+  $('cRole').value = c.role || '';
+  for (const [k, opts] of Object.entries(STY)) {
+    const el = $('c' + k[0].toUpperCase() + k.slice(1));
+    el.replaceChildren(...opts.map(([v, t]) => h('option', { value: v }, t)));
+    el.value = c.look[k] || opts[0][0];
+  }
+  $('cColors').replaceChildren(...COL.map(([k, t]) => h('label', null, h('input', { type: 'color', id: 'col-' + k, value: c.look[k] || '#888888' }), t)));
+  const others = Object.values(S.characters || {});
+  $('cAssign').replaceChildren(...others.map(o => h('option', { value: o.id }, o.id === c.id ? `${o.name} (celui-ci)` : o.name)), h('option', { value: '__new' }, '+ Nouveau personnage'));
+  $('cAssign').value = c.id;
+  $('cErr').textContent = '';
+  previewChar();
+  $('charDialog').showModal();
+}
+$('charDialog').addEventListener('input', (e) => { if (e.target.id !== 'cAssign' && editing) previewChar(); });
+$('cAssign').addEventListener('change', async () => {
+  const v = $('cAssign').value;
+  let id = v;
+  if (v === '__new') { const r = await api('/api/characters', {}); if (!r || !r.ok) return; id = r.character.id; }
+  await api('/api/agents/character', { sessionId: editing.sessionId, characterId: id });
+  setTimeout(() => { const a = S.agents.find(x => x.sessionId === editing.sessionId); if (a) openChar(a); }, 250);
+});
+$('cRandom').addEventListener('click', async () => {
+  const r = await api('/api/characters/update', { id: editing.id, randomize: true });
+  if (r && r.ok) { const a = S.agents.find(x => x.sessionId === editing.sessionId); setTimeout(() => a && openChar({ ...a, characterId: editing.id }), 200); }
+});
+$('cCopy').addEventListener('click', () => { try { navigator.clipboard.writeText($('cAsk').textContent); $('cCopy').textContent = 'Copié'; setTimeout(() => { $('cCopy').textContent = 'Copier'; }, 1500); } catch {} });
+$('cSave').addEventListener('click', async () => {
+  const r = await api('/api/characters/update', { id: editing.id, newName: $('cName').value, role: $('cRole').value, look: editing.look });
+  if (!r || !r.ok) { $('cErr').textContent = (r && r.error) || 'La tour ne répond pas.'; return; }
+  $('charDialog').close();
+});
+
+// ---------- projets ----------
+function renderProjects() {
+  const list = S.projects || [];
+  const bar = $('projbar');
+  bar.replaceChildren(h('span', { class: 'faint' }, list.length ? 'Projets connectés :' : 'Aucun projet Unreal connecté.'),
+    ...list.map(p => h('span', { class: 'projchip', title: p.uproject }, h('b', null, p.name), h('span', { class: 'faint' }, `UE ${p.engine || '?'} · ${folder(p.root)}`),
+      h('button', { class: 'quiet', title: 'Déconnecter', onclick: () => { if (confirm(`Déconnecter ${p.name} ?`)) api('/api/projects/disconnect', { uproject: p.uproject }); } }, '✕'))),
+    h('button', { class: list.length ? '' : 'primary', onclick: openProjects }, list.length ? '+ Connecter un projet' : 'Connecter un projet Unreal'));
+}
+async function openProjects() {
+  $('projErr').textContent = '';
+  $('scanList').replaceChildren(h('div', { class: 'empty' }, 'Recherche des projets Unreal…'));
+  $('projDialog').showModal();
+  let r = null;
+  try { r = await fetch('/api/projects/scan').then(x => x.json()); } catch {}
+  const connected = new Set((S.projects || []).map(p => p.uproject.toLowerCase()));
+  const found = (r && r.projects) || [];
+  $('scanList').replaceChildren(...(found.length ? found.map(p => h('div', { class: 'scanitem' },
+    h('div', null, h('b', null, p.name), ' ', h('span', { class: 'faint' }, `UE ${p.engine || '?'}`), h('div', { class: 'faint mono' }, p.root)),
+    connected.has(p.uproject.toLowerCase()) ? h('span', { class: 'ok' }, 'connecté')
+      : h('button', { class: 'primary', onclick: async (e) => { e.target.disabled = true; await api('/api/projects/connect', { uproject: p.uproject }); e.target.replaceWith(h('span', { class: 'ok' }, 'connecté')); } }, 'Connecter')))
+    : [h('div', { class: 'empty' }, 'Aucun .uproject trouvé automatiquement : colle son chemin ci-dessous.')]));
+}
+$('projPathBtn').addEventListener('click', async () => {
+  const r = await api('/api/projects/connect', { path: $('projPath').value });
+  if (!r) { $('projErr').textContent = 'La tour ne répond pas.'; return; }
+  if (!r.ok) { $('projErr').textContent = r.error; return; }
+  $('projPath').value = '';
+  $('projDialog').close();
+});
 
 // ---------- en-tete ----------
 function renderHeader() {
@@ -405,7 +571,7 @@ function addFeatureRow(title = '', type = 'tests', arg = '') {
   return name;
 }
 function openBuilder() {
-  const projects = [...new Set(S.agents.filter(a => a.project).map(a => a.project.name))];
+  const projects = [...new Set([...(S.projects || []).map(p => p.name), ...S.agents.filter(a => a.project).map(a => a.project.name)])];
   $('bProject').replaceChildren(...(projects.length ? projects : ['']).map(p => h('option', { value: p }, p || 'aucun projet Unreal vu pour l\'instant')));
   fillGroups();
   $('bRows').replaceChildren();
@@ -474,9 +640,15 @@ function renderAgents() {
     const subs = Object.keys(a.subagents || {}).length;
     const holds = S.lock && S.lock.sessionId === a.sessionId;
     const queued = S.queue.findIndex(e => e.sessionId === a.sessionId);
+    const ch = charOf(a);
     box.append(h('article', { class: `card ${st}` },
+      h('div', { class: 'card-top' },
+        ch ? h('button', { class: 'avatar-btn', title: 'Personnaliser ce personnage', onclick: () => openChar(a) }, avatarEl(ch.look, st, 96)) : null,
+        h('div', { class: 'who' },
+          h('span', { class: 'title' }, ch ? ch.name : agentName(a)),
+          h('span', { class: 'role' }, ch ? agentName(a) : ''))),
       h('div', { class: 'row' },
-        h('span', { class: 'title grow' }, agentName(a)),
+        h('span', { class: 'grow' }),
         holds ? h('span', { class: 'pill building' }, `${KIND[S.lock.kind] || 'build'} en cours`) : null,
         queued >= 0 ? h('span', { class: 'pill waiting' }, `attend son tour (${queued + 1})`) : null,
         h('span', { class: `pill ${st}` }, STATUS[st] || st)),
@@ -495,9 +667,19 @@ function renderAgents() {
 }
 
 // ---------- compilation ----------
+function sceneSlot(sessionId, state, caption) {
+  const a = S.agents.find(x => x.sessionId === sessionId);
+  const ch = a && charOf(a);
+  return h('div', { class: 'slot' }, ch ? avatarEl(ch.look, state, 72) : h('span', { class: 'faint' }, '?'), h('span', null, caption || (ch ? ch.name : 'agent')));
+}
 function renderLock() {
   const L = S.lock, box = $('lock');
   box.replaceChildren();
+  box.append(h('div', { class: 'scene' },
+    h('div', { class: 'slot' }, (() => { const d = document.createElement('span'); d.innerHTML = Avatar.forge(64, !!L); return d.firstChild; })(), h('span', null, 'la forge')),
+    L ? sceneSlot(L.sessionId, 'working') : null,
+    S.queue.length ? h('span', { class: 'queue-sep' }, 'file :') : null,
+    S.queue.map(e => sceneSlot(e.sessionId, 'ready'))));
   if (!L) box.append(h('div', { class: 'lockline' }, h('span', { class: 'big ok' }, 'Libre'), h('span', { class: 'muted' }, 'Aucun build Unreal en cours : le prochain agent qui compile passe tout de suite.')));
   else {
     box.append(h('div', { class: 'lockline' },
@@ -543,7 +725,7 @@ function renderBuilds() {
 
 function render() {
   if (!S) return;
-  renderHeader(); renderVersion(); renderAgents(); renderLock(); renderBuilds();
+  renderHeader(); renderProjects(); renderVersion(); renderAgents(); renderLock(); renderBuilds();
 }
 function setConn(ok) {
   $('conn').className = 'badge ' + (ok ? 'live' : 'off');
@@ -555,7 +737,16 @@ function connect() {
   es.onerror = () => setConn(false);
 }
 $('showEnded').addEventListener('change', render);
-setInterval(render, 1000);
+// Les personnages sont animes : on ne redessine les sections qui en contiennent qu'a chaque
+// nouvelle donnee (et toutes les 15 s pour les "il y a"), sinon leurs animations repartiraient
+// a zero chaque seconde.
+let tick = 0;
+setInterval(() => {
+  if (!S) return;
+  tick++;
+  renderHeader(); renderVersion(); renderBuilds();
+  if (tick % 15 === 0) { renderAgents(); renderLock(); }
+}, 1000);
 connect();
 </script>
 </body>

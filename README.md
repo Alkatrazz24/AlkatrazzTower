@@ -5,7 +5,7 @@ projet Unreal Engine 5, et un verrou qui garantit qu'un seul build Unreal tourne
 
 Spécification complète : [Alkatrazz Tower — Spécification](https://claude.ai/code/artifact/8990f63e-d9bb-4da9-855d-0908465aedaa).
 
-## Ce que fait la V1
+## Ce que fait la tour
 
 - **Agents en direct** : une fiche par session (projet, dossier, demande, dernier outil, état :
   travaille, attend une réponse, à toi, terminé), mise à jour en temps réel.
@@ -49,32 +49,42 @@ en-têtes, et prévient s'il modifie des fichiers sans l'avoir fait. `TOWER_NO_D
 
 Ce qui aide vraiment les agents sur UE5, avec les sources : [docs/agents-unreal.md](docs/agents-unreal.md).
 
-## Démarrer
+## Installer sur un PC
 
-Node 20 ou plus, aucune dépendance npm.
+Il faut [Node.js](https://nodejs.org) 20 ou plus et Claude Code. Récupère le dépôt, puis double-clique
+sur **`setup.cmd`** :
 
-```bat
-start-tower.cmd
-```
+1. il vérifie Node ;
+2. il branche la tour sur Claude Code (hooks dans `~/.claude/settings.json`, avec une copie de
+   sauvegarde ; les autres réglages et hooks ne sont pas touchés) ;
+3. il installe les 31 skills Unreal (`vendor/unreal-engine-skills`) et le skill des personnages dans
+   `~/.claude/skills` ;
+4. il propose de lancer la tour au démarrage de Windows ;
+5. il lance la tour et ouvre <http://127.0.0.1:4777>.
 
-ou `npm start`, puis ouvrir <http://127.0.0.1:4777>. Le serveur n'écoute que sur la machine.
+Sur la page, **Connecter un projet Unreal** cherche les `.uproject` du PC (Documents, Bureau, racine des
+disques) : clique sur ceux que tes agents vont faire avancer, ou colle un chemin.
 
-## Brancher les agents
+`setup.cmd --yes` répond oui à tout sans poser de question (sauf le démarrage automatique).
+**`uninstall.cmd`** retire les hooks, le démarrage automatique et le skill des personnages.
 
-Les hooks vont dans le `settings.json` de Claude Code. Le script ne touche qu'à ses propres hooks
-et fait une copie de sauvegarde avant d'écrire.
+Au quotidien : `start-tower.cmd` lance la tour si elle ne démarre pas toute seule. Les sessions déjà
+ouvertes prennent les hooks au vol ; `TOWER_OFF=1` coupe la tour sans rien désinstaller.
 
-```bat
-node scripts\install-hooks.js            :: montre ce qui serait ajouté
-node scripts\install-hooks.js --apply    :: ajoute les hooks à %USERPROFILE%\.claude\settings.json
-node scripts\install-hooks.js --remove   :: les retire
-```
+## Les agents sont des personnages
 
-`--settings <fichier>` vise un autre fichier, par exemple le `.claude\settings.local.json` d'un
-seul projet pour essayer.
+Chaque agent est dessiné en personnage façon Minecraft. Il tape avec son outil quand il travaille, une
+bulle « ? » apparaît quand il attend ta réponse, une bulle « ! » quand il a fini. Quand il compile, il
+se tient devant la forge, et ceux qui attendent leur tour font la queue derrière.
 
-Les sessions déjà ouvertes prennent les hooks au vol. Pour couper la tour sans rien désinstaller :
-variable d'environnement `TOWER_OFF=1`.
+Un personnage dure plus longtemps qu'une session : la tour le redonne à l'agent suivant. Clique sur un
+personnage pour changer son nom, ses cheveux, sa tenue, son chapeau, son accessoire, son outil et ses
+couleurs, ou pour l'attacher à un rôle (titre de session, par exemple `ctb-armes`).
+
+Tu peux aussi demander à n'importe quel agent : « donne un casque de chantier jaune à Brique ». Le
+skill `alkatrazz-tower-personnages` lui explique l'API (`POST /api/characters/update`).
+
+Brancher les hooks à la main : `node scripts\install-hooks.js` (aperçu), `--apply`, `--remove`, `--settings <fichier>`.
 
 ## Comment marche le verrou
 
@@ -112,3 +122,8 @@ npm test
 | `lib/unreal.js` | version du moteur, liens de la doc, consigne « doc d'abord » |
 | `web/index.html` | la page |
 | `scripts/install-hooks.js` | branchement des hooks |
+| `scripts/setup.js`, `setup.cmd`, `uninstall.cmd` | installation et retrait sur un PC |
+| `lib/characters.js`, `web/avatar.js` | personnages : allure, validation, dessin en pixels |
+| `lib/projects.js` | recherche et connexion des projets Unreal |
+| `skills/alkatrazz-tower-personnages` | skill qui apprend aux agents à modifier un personnage |
+| `vendor/unreal-engine-skills` | 31 skills Unreal de quodsoler (MIT, commit f3742d7) |
