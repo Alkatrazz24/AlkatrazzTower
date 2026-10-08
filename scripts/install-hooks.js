@@ -22,11 +22,12 @@ function towerHooks() {
   const sync = { type: 'command', command: cmd, timeout: 5 };
   const bg = { type: 'command', command: cmd, timeout: 5, async: true };
   return {
-    // Seul PreToolUse sur Bash/PowerShell est synchrone : c'est lui qui emballe les builds.
+    // Synchrones : PreToolUse sur Bash/PowerShell (il emballe les builds) et SessionStart (il donne
+    // a l'agent la consigne de lire la doc Unreal). Tout le reste part en arriere-plan.
     PreToolUse: [{ matcher: 'Bash|PowerShell', hooks: [sync] }],
     PostToolUse: [{ matcher: '*', hooks: [bg] }],
     PostToolUseFailure: [{ matcher: '*', hooks: [bg] }],
-    SessionStart: [{ hooks: [bg] }],
+    SessionStart: [{ hooks: [sync] }],
     UserPromptSubmit: [{ hooks: [bg] }],
     Notification: [{ hooks: [bg] }],
     Stop: [{ hooks: [bg] }],

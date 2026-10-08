@@ -16,32 +16,38 @@ Spécification complète : [Alkatrazz Tower — Spécification](https://claude.a
   de domaine `Saved/chantiers/*.txt` des projets vus.
 - **Jamais bloquant** : tour éteinte, les agents travaillent et buildent exactement comme avant.
 
-## Campagnes : valider une version comme on finit un jeu
+## Version à sortir : finir le jeu comme une partie
 
-Une campagne, c'est une version à valider (par exemple « CTB 0.3 »). Chaque feature est un niveau,
-gagné quand ses preuves sont vertes ; le boss final se débloque quand tous les niveaux sont gagnés
-et doit être battu après. La version est alors validée, avec ses statistiques et le commit Git du
-projet à ce moment-là.
+Le haut de la page, c'est la version que tu veux sortir (par exemple « CTB 0.3 »). Clique sur
+**Préparer une version**, donne un nom, puis liste les features et comment la tour sait que chacune
+est prête :
 
-On la crée depuis la page, une feature par ligne :
-
-```text
-Munitions     | tests:CTB.Munitions
-Lampe torche  | tests:CTB.Lampe, build:ConquerTheBackrooms
-Menu de raid  | manuel
-Boss          | paquet, tests:CTB
-```
-
-| Preuve | Verte quand |
+| Choix dans le formulaire | Prête quand |
 | --- | --- |
-| `tests:Filtre` | le dernier run qui touche ces tests n'en rate aucun |
-| `build` / `build:Cible` | le dernier build (de cette cible) compile |
-| `paquet` | le dernier `RunUAT BuildCookRun` passe |
-| `manuel` | tu cliques sur Valider après avoir essayé en jeu |
+| Ses tests d'automatisation passent | le dernier run qui touche ce groupe de tests (ex. `CTB.Lampe`) n'en rate aucun |
+| Le jeu compile | la dernière compilation (de la cible indiquée, sinon n'importe laquelle) réussit |
+| Je la teste en jeu moi-même | tu cliques sur « Je l'ai testée » |
 
-La tour suit les preuves toute seule à partir des builds et tests qui passent par le verrou. Un
-niveau gagné qui repasse au rouge redevient « régression » et rebloque le boss. Sans ligne `Boss`,
-le boss est un paquet vert.
+Les groupes de tests déjà vus par la tour sont proposés dans la liste. L'**épreuve finale** se
+débloque quand toutes les features sont prêtes et doit réussir après elles : par défaut, le jeu se
+package (`RunUAT BuildCookRun`) et toute la suite de tests passe. La version est alors validée, avec
+ses statistiques et le commit Git du projet.
+
+La tour suit tout seule les résultats des builds et tests de tes agents. Le bandeau **Prochaine
+étape** dit quoi faire maintenant, avec les tests en échec. Une feature prête qui repasse au rouge
+devient « Cassée » et rebloque l'épreuve finale.
+
+L'API accepte aussi un texte, une feature par ligne : `Lampe torche | tests:CTB.Lampe, build`,
+`Menu de raid | manuel`, `Boss | paquet, tests:CTB`.
+
+## Doc Unreal d'abord
+
+Au début de chaque session sur un projet Unreal, le hook donne à l'agent la règle « vérifier dans la
+doc officielle avant d'agir », les liens de la doc épinglés sur la version du projet et le chemin des
+en-têtes du moteur installé. La fiche de l'agent montre ensuite s'il a consulté la doc ou les
+en-têtes, et prévient s'il modifie des fichiers sans l'avoir fait. `TOWER_NO_DOCS=1` coupe ce rappel.
+
+Ce qui aide vraiment les agents sur UE5, avec les sources : [docs/agents-unreal.md](docs/agents-unreal.md).
 
 ## Démarrer
 
@@ -102,5 +108,7 @@ npm test
 | `bin/tower-run.js` | lanceur sous verrou |
 | `lib/detect.js` | reconnaissance des commandes Unreal et des projets |
 | `lib/results.js` | lecture des verdicts UBT et des tests |
+| `lib/campaign.js` | versions à sortir : features, épreuve finale, victoire |
+| `lib/unreal.js` | version du moteur, liens de la doc, consigne « doc d'abord » |
 | `web/index.html` | la page |
 | `scripts/install-hooks.js` | branchement des hooks |
