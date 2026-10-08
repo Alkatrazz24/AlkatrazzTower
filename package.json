@@ -1,0 +1,15 @@
+{
+  "name": "alkatrazz-tower",
+  "version": "0.1.0",
+  "description": "Tour de garde locale : agents Claude Code en direct sur les projets Unreal Engine 5, avec un verrou pour un seul build a la fois.",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node --test test/*.test.js",
+    "hooks:show": "node scripts/install-hooks.js",
+    "hooks:install": "node scripts/install-hooks.js --apply",
+    "hooks:remove": "node scripts/install-hooks.js --remove"
+  }
+}

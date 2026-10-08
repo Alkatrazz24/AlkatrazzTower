@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alkatrazz Tower</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='5' y='2' width='6' height='13' rx='1' fill='%2378a6ff'/%3E%3Crect x='3' y='1' width='10' height='3' rx='1' fill='%2378a6ff'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1d212a; --line: #2a2f3a;
+    --ink: #e6e9ef; --quiet: #9aa3b2; --faint: #6b7383;
+    --blue: #78a6ff; --green: #4fd18b; --amber: #f2b84b; --red: #ff6b6b; --violet: #b48cff;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 "Segoe UI", system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); z-index: 2; flex-wrap: wrap; }
+  h1 { font-size: 17px; margin: 0; letter-spacing: .3px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--quiet); margin: 0 0 10px; font-weight: 600; }
+  main { padding: 20px 24px 48px; display: grid; gap: 24px; max-width: 1500px; margin: 0 auto; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .grow { flex: 1; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; background: var(--panel2); color: var(--quiet); border: 1px solid var(--line); white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .live .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .off .dot { background: var(--red); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .lock { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .lock { grid-template-columns: 1fr; } }
+  .holder { border-left: 3px solid var(--amber); padding-left: 12px; }
+  .free { color: var(--green); font-weight: 600; }
+  .big { font-size: 16px; font-weight: 600; }
+  .cmd { font-family: var(--mono); font-size: 12px; color: var(--quiet); word-break: break-all; margin-top: 4px; }
+  .muted { color: var(--quiet); }
+  .faint { color: var(--faint); font-size: 12px; }
+  ol.queue { margin: 0; padding-left: 20px; }
+  ol.queue li { margin: 4px 0; }
+  button { background: var(--panel2); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  button:hover { border-color: var(--quiet); }
+  button.danger { color: var(--red); }
+  .agents { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 8px; align-content: start; border-top: 3px solid var(--faint); }
+  .card.working { border-top-color: var(--blue); }
+  .card.waiting { border-top-color: var(--amber); }
+  .card.idle { border-top-color: var(--green); }
+  .card.ended, .card.silent { opacity: .62; }
+  .card .title { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+  .pill { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+  .pill.working { background: rgba(120,166,255,.15); color: var(--blue); }
+  .pill.waiting { background: rgba(242,184,75,.16); color: var(--amber); }
+  .pill.idle { background: rgba(79,209,139,.14); color: var(--green); }
+  .pill.ready, .pill.ended, .pill.silent { background: var(--panel2); color: var(--quiet); }
+  .pill.building { background: rgba(180,140,255,.16); color: var(--violet); }
+  .kv { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 2px 10px; font-size: 13px; }
+  .kv dt { color: var(--faint); }
+  .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .result { display: inline-flex; gap: 6px; align-items: baseline; }
+  .ok { color: var(--green); font-weight: 600; }
+  .ko { color: var(--red); font-weight: 600; }
+  .errs { font-family: var(--mono); font-size: 11.5px; color: var(--red); margin: 4px 0 0; white-space: pre-wrap; word-break: break-all; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--faint); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: var(--panel2); }
+  .chantiers { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
+  .chantier { background: var(--panel2); border-radius: 8px; padding: 10px 12px; }
+  .chantier b { color: var(--amber); }
+  .empty { color: var(--faint); padding: 8px 0; }
+  .wrap-table { overflow-x: auto; }
+  label.toggle { font-size: 12px; color: var(--quiet); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Alkatrazz Tower</h1>
+  <span id="conn" class="badge off"><span class="dot"></span><span>connexion…</span></span>
+  <span id="editor" class="badge"><span class="dot"></span><span>éditeur ?</span></span>
+  <span class="grow"></span>
+  <span id="counts" class="faint"></span>
+</header>
+<main>
+  <section>
+    <h2>Verrou de build</h2>
+    <div class="panel lock">
+      <div id="lock"></div>
+      <div><div class="faint" style="margin-bottom:6px">File d'attente</div><div id="queue"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="row" style="margin-bottom:10px">
+      <h2 style="margin:0">Agents</h2><span class="grow"></span>
+      <label class="toggle"><input type="checkbox" id="showEnded"> afficher les sessions terminées</label>
+    </div>
+    <div id="agents" class="agents"></div>
+  </section>
+
+  <section id="chantiersSection" hidden>
+    <h2>Verrous de domaine (Saved/chantiers)</h2>
+    <div id="chantiers"></div>
+  </section>
+
+  <section>
+    <h2>Builds et tests récents</h2>
+    <div class="panel wrap-table"><table>
+      <thead><tr><th>Fin</th><th>Agent</th><th>Type</th><th>Verdict</th><th>Résumé</th><th>Attente</th><th>Durée</th></tr></thead>
+      <tbody id="builds"></tbody>
+    </table></div>
+  </section>
+</main>
+
+<script>
+'use strict';
+const SILENT_MS = 15 * 60 * 1000;
+const STATUS = { working: 'Travaille', waiting: 'Attend une réponse', idle: 'À toi', ready: 'Prêt', ended: 'Terminé', silent: 'Silencieux' };
+const KIND = { build: 'build', test: 'tests', package: 'paquet', commandlet: 'commandlet' };
+let S = null, skew = 0;
+const openRows = new Set();
+
+const $ = (id) => document.getElementById(id);
+function h(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k instanceof Node ? k : String(k));
+  return e;
+}
+const now = () => Date.now() - skew;
+function ago(t) {
+  if (!t) return '';
+  const s = Math.max(0, Math.round((now() - t) / 1000));
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  const hh = Math.floor(m / 60);
+  return hh < 24 ? `${hh} h ${String(m % 60).padStart(2, '0')}` : `${Math.floor(hh / 24)} j`;
+}
+function dur(ms) {
+  if (ms == null) return '';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s} s`;
+  const m = Math.floor(s / 60);
+  return m < 60 ? `${m} min ${String(s % 60).padStart(2, '0')}` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`;
+}
+function clock(t) { return t ? new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : ''; }
+function shortPath(p) { if (!p) return ''; const parts = p.split(/[\\/]/).filter(Boolean); return parts.length > 3 ? '…\\' + parts.slice(-3).join('\\') : p; }
+function statusOf(a) {
+  if (a.status === 'working' && now() - a.lastSeen > SILENT_MS) return 'silent';
+  return a.status;
+}
+function agentName(a) { return a.title || (a.project ? a.project.name : (a.cwd || '').split(/[\\/]/).filter(Boolean).pop() || 'agent'); }
+
+async function api(path, body) {
+  try { await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }); } catch {}
+}
+
+function resultChip(b, label) {
+  if (!b) return null;
+  return h('span', { class: 'result', title: b.command || '' },
+    h('span', { class: b.ok ? 'ok' : 'ko' }, b.ok ? 'OK' : 'ÉCHEC'),
+    h('span', null, `${label} · ${b.summary || ''}`),
+    h('span', { class: 'faint' }, `il y a ${ago(b.endedAt)}`));
+}
+
+function renderLock() {
+  const L = S.lock, box = $('lock');
+  box.replaceChildren();
+  if (!L) {
+    box.append(h('div', { class: 'big free' }, 'Libre'), h('div', { class: 'faint' }, 'Aucun build Unreal en cours.'));
+  } else {
+    box.append(h('div', { class: 'holder' },
+      h('div', { class: 'row' }, h('span', { class: 'pill building' }, KIND[L.kind] || L.kind), h('span', { class: 'big' }, L.label)),
+      h('div', { class: 'muted' }, `${L.project ? L.project + ' · ' : ''}depuis ${dur(now() - (L.grantedAt || L.since))}`),
+      h('div', { class: 'cmd' }, L.command),
+      h('div', { class: 'row', style: 'margin-top:8px' },
+        h('span', { class: 'faint' }, `signe de vie il y a ${ago(L.lastSeen)}`),
+        h('button', { class: 'danger', onclick: () => { if (confirm('Libérer le verrou ? Le build en cours continue, mais un autre pourra démarrer en même temps.')) api('/api/lock/force-release'); } }, 'Libérer'))));
+  }
+  const q = $('queue');
+  q.replaceChildren(S.queue.length
+    ? h('ol', { class: 'queue' }, S.queue.map(e => h('li', null,
+        h('b', null, e.label), ' ', h('span', { class: 'muted' }, `${KIND[e.kind] || e.kind}${e.project ? ' · ' + e.project : ''}, attend depuis ${dur(now() - e.since)}`))))
+    : h('div', { class: 'empty' }, 'Personne n\'attend.'));
+}
+
+function renderAgents() {
+  const showEnded = $('showEnded').checked;
+  const list = S.agents.filter(a => showEnded || a.status !== 'ended');
+  const box = $('agents');
+  box.replaceChildren();
+  if (!list.length) { box.append(h('div', { class: 'empty' }, 'Aucun agent pour l\'instant. Les fiches apparaissent dès qu\'une session Claude Code envoie un événement.')); return; }
+  for (const a of list) {
+    const st = statusOf(a);
+    const subs = Object.keys(a.subagents || {}).length;
+    const holds = S.lock && S.lock.sessionId === a.sessionId;
+    const queued = S.queue.findIndex(e => e.sessionId === a.sessionId);
+    box.append(h('article', { class: `card ${st}` },
+      h('div', { class: 'row' },
+        h('span', { class: 'title grow' }, agentName(a)),
+        holds ? h('span', { class: 'pill building' }, `${KIND[S.lock.kind] || 'build'} en cours`) : null,
+        queued >= 0 ? h('span', { class: 'pill waiting' }, `en file #${queued + 1}`) : null,
+        h('span', { class: `pill ${st}` }, STATUS[st] || st)),
+      h('dl', { class: 'kv' },
+        a.project ? [h('dt', null, 'Projet'), h('dd', null, a.project.name)] : null,
+        h('dt', null, 'Dossier'), h('dd', { title: a.cwd }, shortPath(a.cwd)),
+        a.prompt ? [h('dt', null, 'Demande'), h('dd', null, a.prompt)] : null,
+        a.tool ? [h('dt', null, 'Outil'), h('dd', null, h('b', null, a.tool.name), a.tool.sub ? ' (sous-agent)' : '', ' ', h('span', { class: 'muted' }, a.tool.summary), ' ', h('span', { class: 'faint' }, `il y a ${ago(a.tool.at)}`))] : null,
+        a.message ? [h('dt', null, st === 'waiting' ? 'Question' : 'Message'), h('dd', null, a.message)] : null,
+        a.lastError ? [h('dt', null, 'Erreur'), h('dd', { class: 'muted' }, a.lastError)] : null,
+        subs ? [h('dt', null, 'Sous-agents'), h('dd', null, String(subs))] : null,
+        a.lastBuild ? [h('dt', null, 'Build'), h('dd', null, resultChip(a.lastBuild, KIND[a.lastBuild.kind] || a.lastBuild.kind))] : null,
+        a.lastTest ? [h('dt', null, 'Tests'), h('dd', null, resultChip(a.lastTest, 'tests'))] : null),
+      h('div', { class: 'row faint' },
+        h('span', { class: 'grow' }, `vu il y a ${ago(a.lastSeen)} · ${a.sessionId.slice(0, 8)}${a.model ? ' · ' + a.model : ''}`),
+        st === 'ended' || st === 'silent' ? h('button', { onclick: () => api('/api/agents/forget', { sessionId: a.sessionId }) }, 'Retirer') : null)));
+  }
+}
+
+function renderChantiers() {
+  const entries = Object.entries(S.chantiers || {});
+  $('chantiersSection').hidden = !entries.length;
+  $('chantiers').replaceChildren(...entries.map(([proj, files]) => h('div', null,
+    h('div', { class: 'faint', style: 'margin:4px 0 8px' }, proj),
+    h('div', { class: 'chantiers' }, files.map(f => h('div', { class: 'chantier' },
+      h('b', null, f.file), ' ', h('span', { class: 'faint' }, `modifié il y a ${ago(f.mtime)}`),
+      h('div', { class: 'muted', style: 'margin-top:4px' }, f.text)))))));
+}
+
+function renderBuilds() {
+  const tb = $('builds');
+  tb.replaceChildren();
+  if (!S.builds.length) { tb.append(h('tr', null, h('td', { colspan: 7, class: 'empty' }, 'Aucun build passé par la tour pour l\'instant.'))); return; }
+  for (const b of S.builds) {
+    const open = openRows.has(b.id);
+    const has = (b.errorLines && b.errorLines.length) || (b.tests && b.tests.failedNames && b.tests.failedNames.length) || b.command;
+    tb.append(h('tr', { class: has ? 'clickable' : '', onclick: () => { open ? openRows.delete(b.id) : openRows.add(b.id); renderBuilds(); } },
+      h('td', { title: new Date(b.endedAt).toLocaleString('fr-FR') }, clock(b.endedAt)),
+      h('td', null, b.label, b.project ? h('div', { class: 'faint' }, b.project) : null),
+      h('td', null, KIND[b.kind] || b.kind),
+      h('td', null, h('span', { class: b.ok ? 'ok' : 'ko' }, b.ok ? 'OK' : 'ÉCHEC'), b.how === 'unlocked' ? h('div', { class: 'faint' }, 'sans verrou') : null),
+      h('td', null, b.summary),
+      h('td', null, b.waitMs > 1000 ? dur(b.waitMs) : '—'),
+      h('td', null, dur(b.durationMs))));
+    if (open) {
+      const lines = [...(b.errorLines || [])];
+      if (b.tests && b.tests.failedNames && b.tests.failedNames.length) lines.push('Tests en échec : ' + b.tests.failedNames.join(', '));
+      tb.append(h('tr', null, h('td', { colspan: 7 },
+        h('div', { class: 'cmd' }, b.command),
+        lines.length ? h('pre', { class: 'errs' }, lines.join('\n')) : null)));
+    }
+  }
+}
+
+function renderHeader() {
+  const e = S.editor || {};
+  const ed = $('editor');
+  ed.className = 'badge' + (e.open ? ' live' : '');
+  ed.lastChild.textContent = e.checkedAt ? (e.open ? `Éditeur Unreal ouvert${e.count > 1 ? ' ×' + e.count : ''}` : 'Éditeur Unreal fermé') : 'éditeur ?';
+  const n = S.agents.filter(a => statusOf(a) === 'working').length;
+  const w = S.agents.filter(a => statusOf(a) === 'waiting').length;
+  $('counts').textContent = `${n} au travail · ${w} en attente de réponse · ${S.queue.length} en file`;
+  document.title = (w ? `(${w}) ` : '') + 'Alkatrazz Tower';
+}
+
+function render() {
+  if (!S) return;
+  renderHeader(); renderLock(); renderAgents(); renderChantiers(); renderBuilds();
+}
+
+function setConn(ok) {
+  const c = $('conn');
+  c.className = 'badge ' + (ok ? 'live' : 'off');
+  c.lastChild.textContent = ok ? 'en direct' : 'tour injoignable';
+}
+
+function connect() {
+  const es = new EventSource('/api/stream');
+  es.onmessage = (m) => { S = JSON.parse(m.data); skew = Date.now() - S.now; setConn(true); render(); };
+  es.onerror = () => setConn(false);
+}
+
+$('showEnded').addEventListener('change', render);
+setInterval(render, 1000);
+connect();
+</script>
+</body>
+</html>
