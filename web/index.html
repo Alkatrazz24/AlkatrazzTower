@@ -298,7 +298,7 @@
 'use strict';
 const SILENT_MS = 15 * 60 * 1000;
 const STATUS = { working: 'travaille', waiting: 'attend ta réponse', idle: 'a fini, à toi', ready: 'prêt', ended: 'terminé', silent: 'silencieux' };
-const KIND = { build: 'Compilation', test: 'Tests', package: 'Package', commandlet: 'Commandlet' };
+const KIND = { build: 'Compilation', test: 'Tests', package: 'Package', commandlet: 'Commandlet', livecoding: 'Live Coding' };
 const FEAT = { proven: 'Prête', progress: 'En cours', failing: 'En échec', broken: 'Cassée', todo: 'À vérifier' };
 let S = null, skew = 0, journalOpen = false;
 const openRows = new Set();
@@ -499,6 +499,19 @@ $('mapRefresh').addEventListener('click', () => { api('/api/inventory/refresh');
 function renderHeader() {
   const e = S.editor || {};
   $('editor').className = 'badge' + (e.open ? ' live' : '');
+  // Avec le plugin AlkatrazzTower, l'editeur dit lui-meme ce qu'il fait.
+  const live = Object.values(S.editors || {}).filter(x => now() - x.lastSeen < 15000);
+  if (live.length) {
+    const x = live[0];
+    const bits = [`Éditeur ${x.project}`];
+    if (x.map) bits.push(x.map);
+    if (x.pie) bits.push('PIE en cours');
+    if (x.liveCoding && x.liveCoding.compiling) bits.push('Live Coding compile');
+    if (x.dirty) bits.push(`${x.dirty} non sauvegardé${x.dirty > 1 ? 's' : ''}`);
+    $('editor').className = 'badge live';
+    $('editor').title = x.dirtyNames && x.dirtyNames.length ? 'Non sauvegardés : ' + x.dirtyNames.join(', ') : 'Infos envoyées par le plugin AlkatrazzTower';
+    $('editor').lastChild.textContent = bits.join(' · ') + (live.length > 1 ? ` (+${live.length - 1})` : '');
+  } else
   $('editor').lastChild.textContent = e.checkedAt ? (e.open ? `Éditeur Unreal ouvert${e.count > 1 ? ' ×' + e.count : ''}` : 'Éditeur Unreal fermé') : 'éditeur ?';
   const ag = S.agents.map(statusOf);
   const work = ag.filter(s => s === 'working').length, wait = ag.filter(s => s === 'waiting').length;
@@ -756,6 +769,10 @@ function renderAgents() {
 
 // ---------- compilation ----------
 function sceneSlot(sessionId, state, caption) {
+  if (String(sessionId).startsWith('editor:')) {
+    // Live Coding lance depuis l'editeur : c'est toi, avec ton casque audio.
+    return h('div', { class: 'slot' }, avatarEl({ hat: 'casquette', hatColor: '#78a6ff', accessory: 'casque-audio', tool: 'clavier', shirt: '#334155' }, state, 72), h('span', null, 'Toi (Live Coding)'));
+  }
   const a = S.agents.find(x => x.sessionId === sessionId);
   const ch = a && charOf(a);
   return h('div', { class: 'slot' }, ch ? avatarEl(ch.look, state, 72) : h('span', { class: 'faint' }, '?'), h('span', null, caption || (ch ? ch.name : 'agent')));

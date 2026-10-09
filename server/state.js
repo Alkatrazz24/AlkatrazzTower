@@ -49,6 +49,7 @@ class TowerState {
     this.characters = {};  // id -> { id, name, role, look, createdAt }
     this.projects = [];    // projets Unreal connectes : [{ name, root, uproject, engine }]
     this.inventories = {}; // nom du projet -> inventaire (lib/inventory.js), recalcule par le serveur
+    this.editors = {};     // nom du projet -> ce que dit le plugin Unreal de l'editeur ouvert
     this.onVictory = null; // (campagne) => void, branche par le serveur
     this.seq = 0;
     this.listeners = new Set();
@@ -132,6 +133,11 @@ class TowerState {
         const touched = ev.tool_input && (ev.tool_input.file_path || ev.tool_input.path);
         const room = touched ? roomForPath(touched) : null;
         if (room) { a.room = room; a.roomAt = t; }
+        if (touched && ev.hook_event_name === 'PreToolUse' || touched && /^(Edit|Write|MultiEdit)$/.test(ev.tool_name || '')) a.lastFile = { path: String(touched), at: t, tool: ev.tool_name };
+        if (Array.isArray(ev.game_paths) && ev.game_paths.length) {
+          const keep = (a.lastAssets || []).filter(x => t - x.at < 30 * 60_000 && !ev.game_paths.includes(x.pkg));
+          a.lastAssets = [...ev.game_paths.slice(0, 8).map(p => ({ pkg: String(p).slice(0, 300), at: t })), ...keep].slice(0, 20);
+        }
         if (ev.hook_event_name === 'PostToolUse') {
           const d = docRead(ev.tool_name, ev.tool_input);
           if (d) {
@@ -185,6 +191,7 @@ class TowerState {
   }
 
   label(sessionId) {
+    if (String(sessionId).startsWith('editor:')) return `Editeur Unreal (${String(sessionId).slice(7)})`;
     const a = this.agents[sessionId];
     if (!a) return sessionId ? `agent ${String(sessionId).slice(0, 8)}` : 'inconnu';
     const where = a.project ? a.project.name : (a.cwd || '').split(/[\\/]/).filter(Boolean).pop();
@@ -269,10 +276,15 @@ class TowerState {
 
   release(ticket, result) {
     if (!this.lock || this.lock.ticket !== ticket) {
-      // Ticket deja expire ou retire de la file : on garde quand meme le resultat.
+      // Ticket encore en file (la commande a tourne sans attendre, comme Live Coding qu'on ne
+      // peut pas retenir) ou deja expire : on garde quand meme le resultat.
       const q = this.queue.findIndex(e => e.ticket === ticket);
-      if (q >= 0) this.queue.splice(q, 1);
-      if (result && result.entry) this.recordBuild(result.entry, result, 'late');
+      if (q >= 0) {
+        const [entry] = this.queue.splice(q, 1);
+        this.recordBuild({ ...entry, grantedAt: entry.since }, result || {}, 'unlocked');
+      } else if (result && result.entry) {
+        this.recordBuild(result.entry, result, 'late');
+      }
       this.changed();
       return false;
     }
@@ -442,6 +454,84 @@ class TowerState {
     return n !== this.projects.length;
   }
 
+  // ---- editeur Unreal (plugin AlkatrazzTower) -------------------------------------------------
+
+  // Le plugin envoie l'etat de l'editeur toutes les quelques secondes.
+  editorState(b) {
+    if (!b || !b.project) return false;
+    const name = String(b.project).slice(0, 80);
+    const prev = this.editors[name] || {};
+    this.editors[name] = {
+      project: name,
+      uproject: String(b.uproject || '').slice(0, 400),
+      engine: String(b.engine || '').slice(0, 40),
+      pid: Number(b.pid) || null,
+      map: String(b.map || '').slice(0, 200),
+      pie: !!b.pie,
+      dirty: Math.max(0, Number(b.dirty) || 0),
+      dirtyNames: Array.isArray(b.dirtyNames) ? b.dirtyNames.slice(0, 10).map(x => String(x).slice(0, 120)) : [],
+      liveCoding: { enabled: !!(b.liveCoding && b.liveCoding.enabled), compiling: !!(b.liveCoding && b.liveCoding.compiling) },
+      openAssets: Array.isArray(b.openAssets) ? b.openAssets.slice(0, 20).map(x => String(x).slice(0, 300)) : [],
+      lastSaved: prev.lastSaved || null,
+      lastSeen: this.now(),
+    };
+    this.changed();
+    return true;
+  }
+
+  // Editeur vu depuis moins de 15 s : le plugin est vivant.
+  liveEditor(project) {
+    const e = project && Object.values(this.editors).find(x => x.project.toLowerCase() === String(project).toLowerCase());
+    return e && this.now() - e.lastSeen < 15_000 ? e : null;
+  }
+
+  // Le plugin signale un asset ouvert dans un editeur d'asset : un agent est-il dessus ?
+  // On compare le fichier (.uasset modifie a la main) et le paquet /Game/... (MCP, scripts Python).
+  agentsOnAsset(file, pkg) {
+    const norm = (p) => String(p || '').replace(/\\/g, '/').toLowerCase().replace(/\.(uasset|umap)$/, '');
+    const f = norm(file), p = String(pkg || '').toLowerCase();
+    if (!f && !p) return [];
+    const recent = (at) => this.now() - at < 30 * 60_000;
+    const out = [];
+    for (const a of Object.values(this.agents)) {
+      if (a.status === 'ended') continue;
+      let at = 0;
+      if (f && a.lastFile && norm(a.lastFile.path) === f && recent(a.lastFile.at)) at = a.lastFile.at;
+      const hit = p && (a.lastAssets || []).find(x => x.pkg.toLowerCase() === p && recent(x.at));
+      if (hit) at = Math.max(at, hit.at);
+      if (at) out.push({ sessionId: a.sessionId, name: this.label(a.sessionId), at });
+    }
+    return out;
+  }
+
+  // Ce que le plugin affiche dans l'editeur : petit, pour etre lu toutes les 3 s.
+  editorFeed(project) {
+    const p = String(project || '').toLowerCase();
+    const mine = (a) => !p || (a.project && a.project.name.toLowerCase() === p);
+    const agents = Object.values(this.agents).filter(a => a.status !== 'ended' && mine(a));
+    const camp = this.campaigns.find(c => !c.archived && (!p || c.project.toLowerCase() === p));
+    const v = camp ? campaign.view(camp) : null;
+    return {
+      now: this.now(),
+      agents: agents.map(a => ({
+        sessionId: a.sessionId,
+        name: this.label(a.sessionId),
+        status: a.status,
+        message: a.status === 'waiting' ? a.message : '',
+        tool: a.tool ? `${a.tool.name} ${a.tool.summary}`.slice(0, 120) : '',
+        room: a.room || null,
+      })),
+      lock: this.lock ? { label: this.lock.label, kind: this.lock.kind, since: this.lock.grantedAt || this.lock.since, sessionId: this.lock.sessionId } : null,
+      queue: this.queue.map(e => ({ label: e.label, kind: e.kind, sessionId: e.sessionId })),
+      lastBuild: (() => {
+        // Le dernier build de CE projet : l'editeur n'a pas a annoncer ceux des autres.
+        const b = this.builds.find(x => !p || (x.project && x.project.toLowerCase() === p));
+        return b ? { id: b.id, sessionId: b.sessionId, project: b.project, label: b.label, kind: b.kind, ok: b.ok, summary: b.summary, endedAt: b.endedAt } : null;
+      })(),
+      version: v ? { name: v.name, proven: v.progress.proven, total: v.progress.total, won: !!v.wonAt } : null,
+    };
+  }
+
   // ---- campagnes ----------------------------------------------------------------------------
 
   feedCampaigns(b) {
@@ -503,6 +593,7 @@ class TowerState {
       characters: this.characters,
       projects: this.projects,
       inventories: this.inventories,
+      editors: this.editors,
     };
   }
 

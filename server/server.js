@@ -87,7 +87,8 @@ function probeEditor() {
     if (err) return;
     const count = (String(out).match(/"UnrealEditor\.exe"/gi) || []).length;
     const was = state.editor;
-    state.editor = { open: count > 0, count, checkedAt: Date.now() };
+    const plugin = Object.values(state.editors).some(e => Date.now() - e.lastSeen < 15_000);
+    state.editor = { open: count > 0 || plugin, count: Math.max(count, plugin ? 1 : 0), checkedAt: Date.now(), plugin };
     if (was.open !== state.editor.open || was.count !== count) state.changed();
   });
 }
@@ -134,6 +135,11 @@ function knownProjects() {
     if (p) m.set(p.root.toLowerCase(), p);
   }
   return [...m.values()];
+}
+const pendingInv = new Map();
+function scheduleInventory(p) {
+  if (pendingInv.has(p.root)) return;
+  pendingInv.set(p.root, setTimeout(() => { pendingInv.delete(p.root); inventoryOf(p); }, 5000));
 }
 function refreshInventories(force) {
   for (const p of knownProjects()) {
@@ -182,10 +188,18 @@ const routes = {
 
   'POST /api/event': (b) => ({ ok: state.event(b) }),
 
-  'POST /api/lock/acquire': (b) => state.acquire({
-    sessionId: b.sessionId, kind: b.kind, command: b.command, cwd: b.cwd, pid: b.pid,
-    target: b.target, testFilter: b.testFilter,
-  }),
+  'POST /api/lock/acquire': (b) => {
+    const st = state.acquire({
+      sessionId: b.sessionId, kind: b.kind, command: b.command, cwd: b.cwd, pid: b.pid,
+      target: b.target, testFilter: b.testFilter,
+    });
+    // tower-run previent l'agent si l'editeur de ce projet est ouvert (Build.bat de la cible
+    // Editeur echoue alors avec le code 6 quand Live Coding est actif).
+    const project = b.cwd ? (require('../lib/detect').findProject(b.cwd) || {}).name : null;
+    const ed = state.liveEditor(project);
+    if (ed) st.editor = { open: true, liveCoding: ed.liveCoding, pie: ed.pie, dirty: ed.dirty, map: ed.map };
+    return st;
+  },
   'POST /api/lock/heartbeat': (b) => ({ ok: state.touch(b.ticket) }),
   'POST /api/lock/release': (b) => ({ ok: state.release(b.ticket, b.result || {}) }),
   'POST /api/lock/force-release': () => ({ ok: state.forceRelease() }),
@@ -214,6 +228,19 @@ const routes = {
   },
   'POST /api/projects/disconnect': (b) => ({ ok: state.disconnectProject(b.uproject) }),
   'POST /api/inventory/refresh': () => { refreshInventories(true); return { ok: true }; },
+
+  // Plugin Unreal (unreal/AlkatrazzTower)
+  'POST /api/editor/state': (b) => ({ ok: state.editorState(b) }),
+  'GET /api/editor/feed': (b, url) => state.editorFeed(url.searchParams.get('project')),
+  'POST /api/editor/asset-opened': (b) => ({ ok: true, agents: state.agentsOnAsset(b.file, b.package) }),
+  'POST /api/editor/assets-changed': (b) => {
+    // Un asset ajoute, renomme, supprime ou sauvegarde : on recompte le projet (0,3 s) sous 5 s.
+    const p = knownProjects().find(x => x.name.toLowerCase() === String(b.project || '').toLowerCase());
+    if (p) scheduleInventory(p);
+    const ed = state.editors[p ? p.name : b.project];
+    if (ed && b.saved) { ed.lastSaved = { asset: String(b.saved).slice(0, 200), at: Date.now() }; state.changed(); }
+    return { ok: !!p };
+  },
 
   'POST /api/campaigns': (b) => {
     try { return { ok: true, campaign: state.createCampaign(b) }; }

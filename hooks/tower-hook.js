@@ -33,6 +33,18 @@ function slim(ev) {
       if (typeof ti[k] === 'string') out.tool_input[k] = ti[k].slice(0, 500);
     }
   }
+  // Les agents travaillent les assets par MCP ou par scripts Python, pas en editant le .uasset :
+  // on releve les chemins /Game/... cites dans l'appel, pour prevenir l'humain qui ouvre le meme.
+  if (ti && typeof ti === 'object') {
+    let txt = '';
+    try { txt = JSON.stringify(ti); } catch { /* entree non serialisable */ }
+    const paths = new Set();
+    for (const m of txt.slice(0, 20000).matchAll(/\/Game\/[A-Za-z0-9_\/.-]+/g)) {
+      paths.add(m[0].split('.')[0].replace(/\/+$/, ''));
+      if (paths.size >= 8) break;
+    }
+    if (paths.size) out.game_paths = [...paths];
+  }
   return out;
 }
 

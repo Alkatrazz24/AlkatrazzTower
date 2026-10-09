@@ -53,6 +53,15 @@ async function takeLock(o) {
   };
   let st = await post('/api/lock/acquire', req, 1500);
   if (!st) return null;
+  // Le plugin de l'editeur dit ce qui s'y passe : on previent avant un echec previsible.
+  if (st.editor && st.editor.open) {
+    const ed = st.editor;
+    if (o.kind === 'build' && req.target && /Editor$/.test(req.target) && ed.liveCoding && ed.liveCoding.enabled && !/cycle_editeur\.ps1/i.test(o.cmd)) {
+      say(`attention : l'editeur Unreal de ce projet est ouvert avec Live Coding. Build.bat de la cible ${req.target} va echouer (code 6) : compile la cible Jeu, ou ferme l'editeur.`);
+    }
+    if (ed.pie) say('attention : une session PIE tourne dans l\'editeur.');
+    if (ed.dirty) say(`info : ${ed.dirty} asset(s) non sauvegarde(s) dans l'editeur.`);
+  }
   if (st.granted) return st.ticket;
 
   say(`build en file d'attente, position ${st.position}${holderText(st)}. J'attends mon tour.`);

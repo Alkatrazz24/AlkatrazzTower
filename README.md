@@ -34,6 +34,18 @@ La tour compte le projet en lisant `Content` et `Source` (lecture seule) : le ty
 son préfixe (`BP_`, `AM_`, `T_`…), sinon de son dossier, sinon de l'en-tête du `.uasset`. Le comptage
 tourne dans un thread à part, se refait toutes les 10 minutes et à la demande (« Actualiser »).
 
+## Plugin Unreal : la tour dans l'éditeur
+
+Le plugin `unreal/AlkatrazzTower` (UE 5.8, Win64) relie l'éditeur à la tour : bouton **Tour** et onglet
+avec la page, notifications (agent qui attend ta réponse, build en échec, compilation d'un agent,
+version validée), Live Coding sous le verrou de build, avertissement quand tu ouvres un asset qu'un
+agent travaille, carte du projet mise à jour à chaque asset sauvegardé. Il reste en sommeil dans les
+`UnrealEditor-Cmd` des agents. Détails et installation : [unreal/README.md](unreal/README.md).
+
+```bat
+node scriptsinstall-plugin.js "C:cheminersMonJeu.uproject"
+```
+
 ## Version à sortir : finir le jeu comme une partie
 
 Le haut de la page, c'est la version que tu veux sortir (par exemple « CTB 0.3 »). Clique sur
@@ -144,5 +156,6 @@ npm test
 | `lib/characters.js`, `web/avatar.js` | personnages : allure, validation, dessin en pixels |
 | `lib/projects.js` | recherche et connexion des projets Unreal |
 | `lib/inventory.js`, `web/map.js` | carte du projet : comptage des assets et dessin de la ville |
+| `unreal/AlkatrazzTower`, `scripts/install-plugin.js` | plugin d'éditeur Unreal et son installation dans un projet |
 | `skills/alkatrazz-tower-personnages` | skill qui apprend aux agents à modifier un personnage |
 | `vendor/unreal-engine-skills` | 31 skills Unreal de quodsoler (MIT, commit f3742d7) |
