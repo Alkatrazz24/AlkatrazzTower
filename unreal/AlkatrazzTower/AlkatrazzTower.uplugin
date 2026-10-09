@@ -1,0 +1,26 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "0.1",
+	"FriendlyName": "Alkatrazz Tower",
+	"Description": "Relie l'editeur a la tour Alkatrazz : etat de l'editeur, Live Coding sous le verrou de build, onglet de la tour, notifications et carte du projet en direct.",
+	"Category": "Editor",
+	"CreatedBy": "Alkatrazz24",
+	"CreatedByURL": "https://github.com/Alkatrazz24/AlkatrazzTower",
+	"DocsURL": "https://github.com/Alkatrazz24/AlkatrazzTower/blob/main/unreal/README.md",
+	"EnabledByDefault": true,
+	"CanContainContent": false,
+	"IsBetaVersion": true,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "AlkatrazzTower",
+			"Type": "EditorNoCommandlet",
+			"LoadingPhase": "PostEngineInit",
+			"PlatformAllowList": [
+				"Win64"
+			]
+		}
+	]
+}

@@ -9,6 +9,8 @@ const yes = {
     'cd "/c/Users/x/CTB 5.8" && MSYS_NO_PATHCONV=1 "C:/Program Files/Epic Games/UE_5.8/Engine/Build/BatchFiles/Build.bat" CTB Win64 Development -project="C:/x/CTB.uproject" -waitmutex 2>&1 | tail -40',
     String.raw`& "C:\Users\x\CTB 5.8\tools\cycle_editeur.ps1" -Cible Jeu 2>&1 | Select-Object -Last 6`,
     String.raw`Get-Process | Where-Object { $_.ProcessName -match 'UnrealEditor' } | Format-Table | Out-String; & "C:\UE\Engine\Build\BatchFiles\Build.bat" CTB Win64 Development -waitmutex`,
+    // RunUAT sans BuildCookRun n'est pas un paquet : il ne doit pas valider l'epreuve finale.
+    String.raw`& "C:\UE\Engine\Build\BatchFiles\RunUAT.bat" BuildPlugin -Plugin="C:\p\X.uplugin" -Package="C:\t\out"`,
   ],
   test: [
     '& $Cmd (Join-Path $Projet "CTB.uproject") "-ExecCmds=Automation RunTests CTB.Reglages; Quit" -unattended -nullrhi',

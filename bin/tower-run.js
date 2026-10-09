@@ -10,7 +10,8 @@
 
 const { spawn, execFile } = require('child_process');
 const { post } = require('../lib/client');
-const { parseOutput, testsFromAbslog } = require('../lib/results');
+const { parseOutput, testsFromAbslog, testsFromProjectLogs } = require('../lib/results');
+const { findProject, buildTarget, testFilter } = require('../lib/detect');
 
 const HEARTBEAT_MS = 5000;
 const NOTICE_MS = 30_000;
@@ -45,9 +46,22 @@ function holderText(st) {
 
 // Attend son tour. Renvoie le ticket, ou null pour lancer sans verrou.
 async function takeLock(o) {
-  const req = { sessionId: o.session, kind: o.kind, command: o.cmd, cwd: process.cwd(), pid: process.pid };
+  const project = findProject(process.cwd());
+  const req = {
+    sessionId: o.session, kind: o.kind, command: o.cmd, cwd: process.cwd(), pid: process.pid,
+    target: buildTarget(o.cmd, project && project.name), testFilter: testFilter(o.cmd),
+  };
   let st = await post('/api/lock/acquire', req, 1500);
   if (!st) return null;
+  // Le plugin de l'editeur dit ce qui s'y passe : on previent avant un echec previsible.
+  if (st.editor && st.editor.open) {
+    const ed = st.editor;
+    if (o.kind === 'build' && req.target && /Editor$/.test(req.target) && ed.liveCoding && ed.liveCoding.enabled && !/cycle_editeur\.ps1/i.test(o.cmd)) {
+      say(`attention : l'editeur Unreal de ce projet est ouvert avec Live Coding. Build.bat de la cible ${req.target} va echouer (code 6) : compile la cible Jeu, ou ferme l'editeur.`);
+    }
+    if (ed.pie) say('attention : une session PIE tourne dans l\'editeur.');
+    if (ed.dirty) say(`info : ${ed.dirty} asset(s) non sauvegarde(s) dans l'editeur.`);
+  }
   if (st.granted) return st.ticket;
 
   say(`build en file d'attente, position ${st.position}${holderText(st)}. J'attends mon tour.`);
@@ -151,9 +165,15 @@ async function main() {
 
   const text = Buffer.concat(chunks).toString('latin1');
   const result = parseOutput(text, code, o.kind);
-  if (!result.tests) {
-    const t = testsFromAbslog(o.cmd, started);
-    if (t) { result.tests = t; result.ok = t.failed === 0; result.summary = `${t.passed}/${t.total} tests`; }
+  // Les chemins des tests (pour les campagnes) sont dans le journal : -abslog, ou Saved/Logs du projet.
+  if (!result.tests || !result.tests.passedPaths || !result.tests.passedPaths.length) {
+    const project = findProject(process.cwd());
+    const t = testsFromAbslog(o.cmd, started) || (o.kind === 'test' && project ? testsFromProjectLogs(project.root, started) : null);
+    if (t) {
+      const honest = !result.tests || result.tests.total === t.total;
+      if (!result.tests) { result.ok = t.failed === 0; result.summary = `${t.passed}/${t.total} tests`; }
+      if (honest) result.tests = t;
+    }
   }
   result.durationMs = Date.now() - started;
 

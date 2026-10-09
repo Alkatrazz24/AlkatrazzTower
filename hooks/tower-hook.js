@@ -29,9 +29,21 @@ function slim(ev) {
   const ti = ev.tool_input;
   if (ti && typeof ti === 'object') {
     out.tool_input = {};
-    for (const k of ['command', 'file_path', 'pattern', 'url', 'description', 'prompt', 'subagent_type']) {
+    for (const k of ['command', 'file_path', 'path', 'pattern', 'url', 'description', 'prompt', 'subagent_type']) {
       if (typeof ti[k] === 'string') out.tool_input[k] = ti[k].slice(0, 500);
     }
+  }
+  // Les agents travaillent les assets par MCP ou par scripts Python, pas en editant le .uasset :
+  // on releve les chemins /Game/... cites dans l'appel, pour prevenir l'humain qui ouvre le meme.
+  if (ti && typeof ti === 'object') {
+    let txt = '';
+    try { txt = JSON.stringify(ti); } catch { /* entree non serialisable */ }
+    const paths = new Set();
+    for (const m of txt.slice(0, 20000).matchAll(/\/Game\/[A-Za-z0-9_\/.-]+/g)) {
+      paths.add(m[0].split('.')[0].replace(/\/+$/, ''));
+      if (paths.size >= 8) break;
+    }
+    if (paths.size) out.game_paths = [...paths];
   }
   return out;
 }
@@ -55,7 +67,7 @@ async function main() {
   process.stdin.setEncoding('utf8');
   for await (const chunk of process.stdin) raw += chunk;
   let ev;
-  try { ev = JSON.parse(raw); } catch { return quit(); }
+  try { ev = JSON.parse(raw.replace(/^﻿/, '')); } catch { return quit(); }
   if (!ev || !ev.session_id) return quit();
 
   // Ne jamais traiter les evenements quand l'utilisateur coupe la tour : TOWER_OFF=1
@@ -63,6 +75,17 @@ async function main() {
 
   const { post } = require('../lib/client');
   const reply = await post('/api/event', slim(ev), BUDGET_MS);
+
+  // Debut de session sur un projet Unreal : on rappelle a l'agent de lire la doc officielle avant
+  // d'agir. Ne depend pas du serveur : la consigne passe meme tour eteinte.
+  if (ev.hook_event_name === 'SessionStart' && process.env.TOWER_NO_DOCS !== '1') {
+    const project = require('../lib/detect').findProject(ev.cwd);
+    if (project) {
+      const additionalContext = require('../lib/unreal').docsContext(project);
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext } }), quit);
+      return;
+    }
+  }
 
   if (reply && ev.hook_event_name === 'PreToolUse' && (ev.tool_name === 'Bash' || ev.tool_name === 'PowerShell')) {
     const cmd = ev.tool_input && ev.tool_input.command;

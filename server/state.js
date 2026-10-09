@@ -3,6 +3,10 @@
 // Aucune E/S ici, pour pouvoir tout tester sans serveur.
 
 const { findProject } = require('../lib/detect');
+const campaign = require('../lib/campaign');
+const { docRead } = require('../lib/unreal');
+const chars = require('../lib/characters');
+const { roomForPath } = require('../lib/inventory');
 
 const LEASE_MS = 30_000;      // sans signe de vie, le verrou ou la place en file est rendu
 const MAX_BUILDS = 50;
@@ -40,6 +44,13 @@ class TowerState {
     this.builds = [];      // les plus recents d'abord
     this.editor = { open: false, count: 0, checkedAt: 0 };
     this.chantiers = {};   // projet -> [{ file, text, mtime }]
+    this.campaigns = [];   // voir lib/campaign.js
+    this.testGroups = {};  // projet -> { 'CTB.Munitions': nombre de tests vus }
+    this.characters = {};  // id -> { id, name, role, look, createdAt }
+    this.projects = [];    // projets Unreal connectes : [{ name, root, uproject, engine }]
+    this.inventories = {}; // nom du projet -> inventaire (lib/inventory.js), recalcule par le serveur
+    this.editors = {};     // nom du projet -> ce que dit le plugin Unreal de l'editeur ouvert
+    this.onVictory = null; // (campagne) => void, branche par le serveur
     this.seq = 0;
     this.listeners = new Set();
   }
@@ -70,6 +81,7 @@ class TowerState {
         lastTest: null,
       };
     }
+    if (!a.characterId || !this.characters[a.characterId]) this.assignCharacter(a);
     if (cwd && cwd !== a.cwd) a.cwd = cwd;
     if (a.cwd && !a.project) {
       const p = findProject(a.cwd);
@@ -89,7 +101,12 @@ class TowerState {
     const ts = Number(ev.ts) || t;
     if (a.eventTs && ts < a.eventTs) { this.changed(); return true; }
     a.eventTs = ts;
-    if (ev.session_title) a.title = snip(ev.session_title, 80);
+    if (ev.session_title && a.title !== snip(ev.session_title, 80)) {
+      a.title = snip(ev.session_title, 80);
+      // Un personnage attache a ce role prend la place du personnage donne par defaut.
+      const owner = Object.values(this.characters).find(c => c.role && c.role.toLowerCase() === a.title.toLowerCase());
+      if (owner && owner.id !== a.characterId) a.characterId = owner.id;
+    }
     const sub = ev.agent_id ? String(ev.agent_id) : null;
     if (sub) {
       a.subagents[sub] = { type: ev.agent_type || 'agent', lastSeen: t };
@@ -112,6 +129,24 @@ class TowerState {
       case 'PostToolUse':
         a.status = 'working';
         a.tool = { name: ev.tool_name || '?', summary: toolSummary(ev.tool_name, ev.tool_input), at: t, sub: !!sub };
+        // Sur la carte, le personnage se tient devant l'extension du fichier qu'il touche.
+        const touched = ev.tool_input && (ev.tool_input.file_path || ev.tool_input.path);
+        const room = touched ? roomForPath(touched) : null;
+        if (room) { a.room = room; a.roomAt = t; }
+        if (touched && ev.hook_event_name === 'PreToolUse' || touched && /^(Edit|Write|MultiEdit)$/.test(ev.tool_name || '')) a.lastFile = { path: String(touched), at: t, tool: ev.tool_name };
+        if (Array.isArray(ev.game_paths) && ev.game_paths.length) {
+          const keep = (a.lastAssets || []).filter(x => t - x.at < 30 * 60_000 && !ev.game_paths.includes(x.pkg));
+          a.lastAssets = [...ev.game_paths.slice(0, 8).map(p => ({ pkg: String(p).slice(0, 300), at: t })), ...keep].slice(0, 20);
+        }
+        if (ev.hook_event_name === 'PostToolUse') {
+          const d = docRead(ev.tool_name, ev.tool_input);
+          if (d) {
+            a.docs = a.docs || { count: 0, last: null };
+            a.docs.count++;
+            a.docs.last = { ...d, at: t };
+          }
+          if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(ev.tool_name || '')) a.edits = (a.edits || 0) + 1;
+        }
         if (ev.hook_event_name === 'PreToolUse') a.message = '';
         break;
       case 'PostToolUseFailure':
@@ -156,9 +191,12 @@ class TowerState {
   }
 
   label(sessionId) {
+    if (String(sessionId).startsWith('editor:')) return `Editeur Unreal (${String(sessionId).slice(7)})`;
     const a = this.agents[sessionId];
     if (!a) return sessionId ? `agent ${String(sessionId).slice(0, 8)}` : 'inconnu';
     const where = a.project ? a.project.name : (a.cwd || '').split(/[\\/]/).filter(Boolean).pop();
+    const c = this.characters[a.characterId];
+    if (c) return where ? `${c.name} (${where})` : c.name;
     return a.title || (where ? `${where} · ${sessionId.slice(0, 8)}` : `agent ${sessionId.slice(0, 8)}`);
   }
 
@@ -176,6 +214,8 @@ class TowerState {
       cwd: req.cwd || '',
       project: req.cwd ? (findProject(req.cwd) || {}).name || null : null,
       pid: req.pid || null,
+      target: req.target || null,
+      testFilter: req.testFilter || null,
       since: t,
       lastSeen: t,
     };
@@ -236,10 +276,15 @@ class TowerState {
 
   release(ticket, result) {
     if (!this.lock || this.lock.ticket !== ticket) {
-      // Ticket deja expire ou retire de la file : on garde quand meme le resultat.
+      // Ticket encore en file (la commande a tourne sans attendre, comme Live Coding qu'on ne
+      // peut pas retenir) ou deja expire : on garde quand meme le resultat.
       const q = this.queue.findIndex(e => e.ticket === ticket);
-      if (q >= 0) this.queue.splice(q, 1);
-      if (result && result.entry) this.recordBuild(result.entry, result, 'late');
+      if (q >= 0) {
+        const [entry] = this.queue.splice(q, 1);
+        this.recordBuild({ ...entry, grantedAt: entry.since }, result || {}, 'unlocked');
+      } else if (result && result.entry) {
+        this.recordBuild(result.entry, result, 'late');
+      }
       this.changed();
       return false;
     }
@@ -286,8 +331,18 @@ class TowerState {
       warnings: result.warnings || 0,
       errorLines: (result.errorLines || []).slice(0, 5).map(l => snip(l, 300)),
       tests: result.tests || null,
+      target: entry.target || null,
+      testFilter: entry.testFilter || null,
       how,
     };
+    this.noteTestGroups(b);
+    // Un verrou perdu ou libere a la main ne dit rien de la qualite du code.
+    if (how !== 'expired' && how !== 'forced') this.feedCampaigns(b);
+    // Les chemins de tests ne servent qu'aux campagnes : on ne les garde pas dans l'historique.
+    if (b.tests) {
+      const { passedPaths, failedPaths, ...rest } = b.tests;
+      b.tests = rest;
+    }
     this.builds.unshift(b);
     if (this.builds.length > MAX_BUILDS) this.builds.length = MAX_BUILDS;
     const a = this.agents[entry.sessionId];
@@ -296,6 +351,230 @@ class TowerState {
       if (b.kind === 'test' || b.tests) a.lastTest = b; else a.lastBuild = b;
     }
     return b;
+  }
+
+  // Groupes de tests vus (CTB.Munitions...) : proposes dans le formulaire de version.
+  noteTestGroups(b) {
+    const t = b.tests;
+    if (!t || !b.project) return;
+    const g = this.testGroups[b.project] = this.testGroups[b.project] || {};
+    for (const p of [...(t.passedPaths || []), ...(t.failedPaths || [])]) {
+      const parts = String(p).split('.');
+      for (let d = 1; d <= Math.min(2, parts.length - 1); d++) {
+        const k = parts.slice(0, d + 1).join('.');
+        g[k] = (g[k] || 0) + 1;
+      }
+    }
+  }
+
+  // ---- personnages ---------------------------------------------------------------------------
+
+  // Donne un personnage a un agent : celui de son role s'il existe, sinon un personnage libre,
+  // sinon un nouveau tire au hasard (toujours le meme pour une meme session).
+  assignCharacter(a) {
+    const list = Object.values(this.characters);
+    const busy = new Set(Object.values(this.agents).filter(x => x !== a && x.status !== 'ended').map(x => x.characterId));
+    let c = a.title && list.find(x => x.role && x.role.toLowerCase() === a.title.toLowerCase());
+    if (!c) c = list.filter(x => !x.role && !busy.has(x.id)).sort((x, y) => x.createdAt - y.createdAt)[0];
+    if (!c) c = this.createCharacter({ seed: a.sessionId });
+    a.characterId = c.id;
+    return c;
+  }
+
+  createCharacter({ name, look, role, seed } = {}) {
+    const id = `P${++this.seq}-${this.now().toString(36)}`;
+    const taken = new Set(Object.values(this.characters).map(c => c.name));
+    const c = {
+      id,
+      name: chars.cleanName(name) || chars.randomName(seed || id, taken),
+      role: chars.cleanName(role),
+      look: chars.cleanLook(look, chars.randomLook(seed || id)),
+      createdAt: this.now(),
+    };
+    this.characters[id] = c;
+    this.changed();
+    return c;
+  }
+
+  // Retrouve un personnage par id, par nom, ou par la session qu'il represente.
+  findCharacter({ id, name, sessionId } = {}) {
+    if (id && this.characters[id]) return this.characters[id];
+    if (sessionId && this.agents[sessionId]) return this.characters[this.agents[sessionId].characterId] || null;
+    if (name) {
+      const n = String(name).trim().toLowerCase();
+      return Object.values(this.characters).find(c => c.name.toLowerCase() === n)
+        || Object.values(this.characters).find(c => c.role && c.role.toLowerCase() === n) || null;
+    }
+    return null;
+  }
+
+  updateCharacter(req) {
+    const c = this.findCharacter(req);
+    if (!c) return null;
+    if (req.newName !== undefined || (req.name !== undefined && req.id)) {
+      const n = chars.cleanName(req.newName !== undefined ? req.newName : req.name);
+      if (n) c.name = n;
+    }
+    if (req.role !== undefined) c.role = chars.cleanName(req.role);
+    if (req.look) c.look = chars.cleanLook(req.look, c.look);
+    if (req.randomize) c.look = chars.randomLook(`${c.id}:${this.now()}`);
+    this.changed();
+    return c;
+  }
+
+  deleteCharacter(id) {
+    if (!this.characters[id]) return false;
+    delete this.characters[id];
+    for (const a of Object.values(this.agents)) if (a.characterId === id) delete a.characterId;
+    this.changed();
+    return true;
+  }
+
+  setAgentCharacter(sessionId, characterId) {
+    const a = this.agents[sessionId];
+    if (!a || !this.characters[characterId]) return false;
+    a.characterId = characterId;
+    this.changed();
+    return true;
+  }
+
+  // ---- projets connectes -----------------------------------------------------------------------
+
+  connectProject(p) {
+    if (!p || !p.uproject) return false;
+    if (!this.projects.some(x => x.uproject.toLowerCase() === p.uproject.toLowerCase())) this.projects.push(p);
+    this.changed();
+    return true;
+  }
+
+  disconnectProject(uproject) {
+    const n = this.projects.length;
+    this.projects = this.projects.filter(x => x.uproject.toLowerCase() !== String(uproject).toLowerCase());
+    if (n !== this.projects.length) this.changed();
+    return n !== this.projects.length;
+  }
+
+  // ---- editeur Unreal (plugin AlkatrazzTower) -------------------------------------------------
+
+  // Le plugin envoie l'etat de l'editeur toutes les quelques secondes.
+  editorState(b) {
+    if (!b || !b.project) return false;
+    const name = String(b.project).slice(0, 80);
+    const prev = this.editors[name] || {};
+    this.editors[name] = {
+      project: name,
+      uproject: String(b.uproject || '').slice(0, 400),
+      engine: String(b.engine || '').slice(0, 40),
+      pid: Number(b.pid) || null,
+      map: String(b.map || '').slice(0, 200),
+      pie: !!b.pie,
+      dirty: Math.max(0, Number(b.dirty) || 0),
+      dirtyNames: Array.isArray(b.dirtyNames) ? b.dirtyNames.slice(0, 10).map(x => String(x).slice(0, 120)) : [],
+      liveCoding: { enabled: !!(b.liveCoding && b.liveCoding.enabled), compiling: !!(b.liveCoding && b.liveCoding.compiling) },
+      openAssets: Array.isArray(b.openAssets) ? b.openAssets.slice(0, 20).map(x => String(x).slice(0, 300)) : [],
+      lastSaved: prev.lastSaved || null,
+      lastSeen: this.now(),
+    };
+    this.changed();
+    return true;
+  }
+
+  // Editeur vu depuis moins de 15 s : le plugin est vivant.
+  liveEditor(project) {
+    const e = project && Object.values(this.editors).find(x => x.project.toLowerCase() === String(project).toLowerCase());
+    return e && this.now() - e.lastSeen < 15_000 ? e : null;
+  }
+
+  // Le plugin signale un asset ouvert dans un editeur d'asset : un agent est-il dessus ?
+  // On compare le fichier (.uasset modifie a la main) et le paquet /Game/... (MCP, scripts Python).
+  agentsOnAsset(file, pkg) {
+    const norm = (p) => String(p || '').replace(/\\/g, '/').toLowerCase().replace(/\.(uasset|umap)$/, '');
+    const f = norm(file), p = String(pkg || '').toLowerCase();
+    if (!f && !p) return [];
+    const recent = (at) => this.now() - at < 30 * 60_000;
+    const out = [];
+    for (const a of Object.values(this.agents)) {
+      if (a.status === 'ended') continue;
+      let at = 0;
+      if (f && a.lastFile && norm(a.lastFile.path) === f && recent(a.lastFile.at)) at = a.lastFile.at;
+      const hit = p && (a.lastAssets || []).find(x => x.pkg.toLowerCase() === p && recent(x.at));
+      if (hit) at = Math.max(at, hit.at);
+      if (at) out.push({ sessionId: a.sessionId, name: this.label(a.sessionId), at });
+    }
+    return out;
+  }
+
+  // Ce que le plugin affiche dans l'editeur : petit, pour etre lu toutes les 3 s.
+  editorFeed(project) {
+    const p = String(project || '').toLowerCase();
+    const mine = (a) => !p || (a.project && a.project.name.toLowerCase() === p);
+    const agents = Object.values(this.agents).filter(a => a.status !== 'ended' && mine(a));
+    const camp = this.campaigns.find(c => !c.archived && (!p || c.project.toLowerCase() === p));
+    const v = camp ? campaign.view(camp) : null;
+    return {
+      now: this.now(),
+      agents: agents.map(a => ({
+        sessionId: a.sessionId,
+        name: this.label(a.sessionId),
+        status: a.status,
+        message: a.status === 'waiting' ? a.message : '',
+        tool: a.tool ? `${a.tool.name} ${a.tool.summary}`.slice(0, 120) : '',
+        room: a.room || null,
+      })),
+      lock: this.lock ? { label: this.lock.label, kind: this.lock.kind, since: this.lock.grantedAt || this.lock.since, sessionId: this.lock.sessionId } : null,
+      queue: this.queue.map(e => ({ label: e.label, kind: e.kind, sessionId: e.sessionId })),
+      lastBuild: (() => {
+        // Le dernier build de CE projet : l'editeur n'a pas a annoncer ceux des autres.
+        const b = this.builds.find(x => !p || (x.project && x.project.toLowerCase() === p));
+        return b ? { id: b.id, sessionId: b.sessionId, project: b.project, label: b.label, kind: b.kind, ok: b.ok, summary: b.summary, endedAt: b.endedAt } : null;
+      })(),
+      version: v ? { name: v.name, proven: v.progress.proven, total: v.progress.total, won: !!v.wonAt } : null,
+    };
+  }
+
+  // ---- campagnes ----------------------------------------------------------------------------
+
+  feedCampaigns(b) {
+    for (const c of this.campaigns) {
+      if (!campaign.applyBuild(c, b)) continue;
+      if (campaign.checkVictory(c, this.now()) && this.onVictory) {
+        try { this.onVictory(c); } catch { /* le commit est un bonus */ }
+      }
+    }
+  }
+
+  createCampaign({ name, project, text }) {
+    const c = campaign.newCampaign({ id: `C${++this.seq}-${this.now().toString(36)}`, name, project, text, now: this.now() });
+    // Une seule campagne en cours par projet : la precedente est rangee.
+    for (const o of this.campaigns) if (!o.wonAt && !o.archived && o.project.toLowerCase() === c.project.toLowerCase()) o.archived = true;
+    this.campaigns.unshift(c);
+    this.changed();
+    return c;
+  }
+
+  manualProof(id, featureId, ok) {
+    const c = this.campaigns.find(x => x.id === id);
+    if (!c || !campaign.setManual(c, featureId, ok, this.now())) return false;
+    if (campaign.checkVictory(c, this.now()) && this.onVictory) {
+      try { this.onVictory(c); } catch { /* bonus */ }
+    }
+    this.changed();
+    return true;
+  }
+
+  archiveCampaign(id) {
+    const c = this.campaigns.find(x => x.id === id);
+    if (!c) return false;
+    c.archived = true;
+    this.changed();
+    return true;
+  }
+
+  deleteCampaign(id) {
+    const n = this.campaigns.length;
+    this.campaigns = this.campaigns.filter(x => x.id !== id);
+    if (n !== this.campaigns.length) this.changed();
+    return n !== this.campaigns.length;
   }
 
   // ---- instantane ---------------------------------------------------------------------------
@@ -309,11 +588,17 @@ class TowerState {
       builds: this.builds,
       editor: this.editor,
       chantiers: this.chantiers,
+      campaigns: this.campaigns.map(campaign.view),
+      testGroups: this.testGroups,
+      characters: this.characters,
+      projects: this.projects,
+      inventories: this.inventories,
+      editors: this.editors,
     };
   }
 
   toJSON() {
-    return { agents: this.agents, builds: this.builds, seq: this.seq };
+    return { agents: this.agents, builds: this.builds, seq: this.seq, campaigns: this.campaigns, testGroups: this.testGroups, characters: this.characters, projects: this.projects };
   }
 
   load(saved) {
@@ -321,6 +606,10 @@ class TowerState {
     if (saved.agents) this.agents = saved.agents;
     if (Array.isArray(saved.builds)) this.builds = saved.builds.slice(0, MAX_BUILDS);
     if (saved.seq) this.seq = saved.seq;
+    if (Array.isArray(saved.campaigns)) this.campaigns = saved.campaigns;
+    if (saved.testGroups && typeof saved.testGroups === 'object') this.testGroups = saved.testGroups;
+    if (saved.characters && typeof saved.characters === 'object') this.characters = saved.characters;
+    if (Array.isArray(saved.projects)) this.projects = saved.projects;
     for (const a of Object.values(this.agents)) delete a.building; // aucun verrou ne survit a un redemarrage
   }
 }
