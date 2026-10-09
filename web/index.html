@@ -157,6 +157,25 @@
   .scanlist { display: grid; gap: 6px; max-height: 50vh; overflow: auto; margin: 10px 0; }
   .scanitem { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; background: var(--panel2); border-radius: 8px; padding: 8px 12px; }
 
+  /* Carte */
+  .mapbox { background: #0b1020; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  .map { display: block; width: 100%; height: auto; }
+  .map-room, .map-house { cursor: pointer; }
+  .map-room:hover, .map-room:focus, .map-house:hover, .map-house:focus { filter: brightness(1.18); outline: none; }
+  .map-room.sel .map-sign, .map-house.sel .map-sign { stroke-width: 3; }
+  .map-smoke { animation: smoke 2.4s ease-in-out infinite; }
+  @keyframes smoke { 0% { transform: translateY(4px); opacity: .2; } 50% { opacity: 1; } 100% { transform: translateY(-8px); opacity: 0; } }
+  .map-name { paint-order: stroke; stroke: #0b1020; stroke-width: 3px; }
+  .maptabs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .maptabs button.on { border-color: var(--blue); color: var(--blue); }
+  .roominfo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; margin-top: 12px; }
+  @media (max-width: 760px) { .roominfo { grid-template-columns: 1fr; } }
+  .roominfo h3 { margin: 0 0 6px; font-size: 15px; }
+  .roominfo ul { margin: 0; padding-left: 18px; font-size: 13px; }
+  .bars { display: grid; gap: 4px; font-size: 13px; }
+  .bars .b { display: grid; grid-template-columns: 140px 1fr 60px; gap: 8px; align-items: center; }
+  .bars .b i { display: block; height: 8px; border-radius: 4px; }
+
   /* Historique */
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; color: var(--faint); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
@@ -178,6 +197,14 @@
 </header>
 <main>
   <div class="projbar" id="projbar"></div>
+
+  <!-- 0. La carte du projet -->
+  <section id="mapSection">
+    <div class="head"><h2>Carte du projet</h2><span class="hint">la maison, c'est le jeu ; chaque extension grandit avec ce qu'elle contient ; échafaudages = modifié ces 3 derniers jours</span><span class="grow"></span>
+      <span id="mapTabs" class="maptabs"></span><button type="button" class="quiet" id="mapRefresh" title="Recompter le projet">Actualiser</button></div>
+    <div class="mapbox" id="mapBox"></div>
+    <div class="panel" id="roomInfo" style="margin-top:10px"></div>
+  </section>
 
   <!-- 1. La version a sortir -->
   <section>
@@ -266,6 +293,7 @@
 </dialog>
 
 <script src="avatar.js"></script>
+<script src="map.js"></script>
 <script>
 'use strict';
 const SILENT_MS = 15 * 60 * 1000;
@@ -406,6 +434,66 @@ $('projPathBtn').addEventListener('click', async () => {
   $('projPath').value = '';
   $('projDialog').close();
 });
+
+// ---------- carte du projet ----------
+let mapProject = null, mapRoom = 'maison';
+function invList() { return Object.values(S.inventories || {}).sort((a, b) => b.assets - a.assets); }
+function renderMap() {
+  const list = invList();
+  if (!list.length) {
+    $('mapTabs').replaceChildren();
+    $('mapBox').replaceChildren(h('div', { class: 'empty', style: 'padding:20px' }, (S.projects || []).length || S.agents.some(a => a.project)
+      ? 'Inventaire du projet en cours…' : 'Connecte un projet Unreal (bouton en haut) : sa carte apparaîtra ici.'));
+    $('roomInfo').hidden = true;
+    return;
+  }
+  if (!mapProject || !list.some(i => i.project === mapProject)) mapProject = list[0].project;
+  const inv = list.find(i => i.project === mapProject);
+  $('mapTabs').replaceChildren(...(list.length > 1 ? list.map(i => h('button', { class: i.project === mapProject ? 'on' : '', onclick: () => { mapProject = i.project; mapRoom = 'maison'; renderMap(); } }, i.project)) : []));
+  const people = S.agents.filter(a => a.status !== 'ended' && a.project && a.project.name === inv.project).map(a => {
+    const ch = charOf(a);
+    return { look: ch ? ch.look : {}, name: ch ? ch.name : agentName(a), state: statusOf(a), room: a.room, building: !!(S.lock && S.lock.sessionId === a.sessionId) };
+  });
+  const camp = (S.campaigns || []).find(c => !c.archived && c.project === inv.project);
+  $('mapBox').innerHTML = ProjectMap.render(inv, people, { campaign: camp, lockHeld: !!S.lock });
+  $('mapBox').querySelectorAll('[data-room]').forEach(el => {
+    if (el.dataset.room === mapRoom) el.classList.add('sel');
+    const pickRoom = () => { mapRoom = el.dataset.room; renderMap(); };
+    el.addEventListener('click', pickRoom);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickRoom(); } });
+  });
+  renderRoomInfo(inv, people);
+}
+function renderRoomInfo(inv, people) {
+  const box = $('roomInfo');
+  box.hidden = false;
+  const R = ProjectMap.ROOMS;
+  if (mapRoom === 'maison' || !inv.rooms[mapRoom]) {
+    const rooms = Object.values(inv.rooms).filter(r => r.count).sort((a, b) => b.count - a.count);
+    const max = Math.max(...rooms.map(r => r.count), 1);
+    box.replaceChildren(h('div', { class: 'roominfo' },
+      h('div', null,
+        h('h3', null, inv.project),
+        h('div', { class: 'muted' }, `Unreal Engine ${inv.engine || '?'} · ${inv.assets.toLocaleString('fr-FR')} assets · ${inv.code.lines.toLocaleString('fr-FR')} lignes de C++ · ${inv.code.classes} classes UCLASS · ${inv.code.tests} tests d'automatisation`),
+        h('div', { class: 'faint', style: 'margin-top:6px' }, `Compté ${ago(inv.scannedAt)} en ${inv.ms} ms. Clique une extension pour voir ce qu'elle contient.`)),
+      h('div', { class: 'bars' }, rooms.map(r => h('div', { class: 'b', style: 'cursor:pointer', onclick: () => { mapRoom = r.id; renderMap(); } },
+        h('span', null, R[r.id][0]), h('i', { style: `width:${Math.max(3, Math.round(100 * Math.log10(r.count + 1) / Math.log10(max + 1)))}%; background:${R[r.id][1]}` }), h('span', { class: 'muted' }, r.count.toLocaleString('fr-FR')))))));
+    return;
+  }
+  const r = inv.rooms[mapRoom];
+  const workers = people.filter(p => p.room === mapRoom);
+  box.replaceChildren(h('div', { class: 'roominfo' },
+    h('div', null,
+      h('h3', { style: `color:${R[r.id][1]}` }, `${R[r.id][0]} · ${r.count.toLocaleString('fr-FR')}`),
+      h('div', { class: 'muted' }, r.recent ? `${r.recent} modifié${r.recent > 1 ? 's' : ''} ces 3 derniers jours` : 'Rien de modifié ces 3 derniers jours.'),
+      workers.length ? h('div', { style: 'margin-top:6px' }, 'En train d\'y travailler : ', h('b', null, workers.map(w => w.name).join(', '))) : null,
+      h('div', { class: 'faint', style: 'margin-top:10px' }, 'Où c\'est rangé (dossiers de Content ou de Source) :'),
+      h('ul', null, r.folders.map(f => h('li', null, h('b', null, f.name), ` · ${f.n.toLocaleString('fr-FR')}`)))),
+    h('div', null,
+      h('div', { class: 'faint' }, 'Derniers modifiés :'),
+      h('ul', null, r.latest.map(l => h('li', null, h('b', null, l.name), ' ', h('span', { class: 'faint' }, `${l.folder} · ${ago(l.mtime)}`)))))));
+}
+$('mapRefresh').addEventListener('click', () => { api('/api/inventory/refresh'); $('mapRefresh').textContent = 'Comptage…'; setTimeout(() => { $('mapRefresh').textContent = 'Actualiser'; }, 4000); });
 
 // ---------- en-tete ----------
 function renderHeader() {
@@ -725,7 +813,7 @@ function renderBuilds() {
 
 function render() {
   if (!S) return;
-  renderHeader(); renderProjects(); renderVersion(); renderAgents(); renderLock(); renderBuilds();
+  renderHeader(); renderProjects(); renderMap(); renderVersion(); renderAgents(); renderLock(); renderBuilds();
 }
 function setConn(ok) {
   $('conn').className = 'badge ' + (ok ? 'live' : 'off');
@@ -745,7 +833,7 @@ setInterval(() => {
   if (!S) return;
   tick++;
   renderHeader(); renderVersion(); renderBuilds();
-  if (tick % 15 === 0) { renderAgents(); renderLock(); }
+  if (tick % 15 === 0) { renderAgents(); renderLock(); renderMap(); }
 }, 1000);
 connect();
 </script>

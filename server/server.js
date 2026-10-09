@@ -112,6 +112,38 @@ function probeChantiers() {
   if (JSON.stringify(next) !== JSON.stringify(state.chantiers)) { state.chantiers = next; state.changed(); }
 }
 
+// ---- inventaire des projets pour la carte ----------------------------------------------------
+
+const scanning = new Set();
+function inventoryOf(project) {
+  if (scanning.has(project.root)) return;
+  scanning.add(project.root);
+  const w = new Worker(`const { parentPort, workerData } = require('worker_threads');
+    parentPort.postMessage(require(${JSON.stringify(path.join(ROOT, 'lib', 'inventory.js'))}).inventory(workerData));`, { eval: true, workerData: project });
+  const done = () => scanning.delete(project.root);
+  w.once('message', (inv) => { done(); state.inventories[project.name] = inv; state.changed(); });
+  w.once('error', (e) => { done(); console.error('[tower] inventaire impossible :', e.message); });
+  setTimeout(() => { w.terminate(); done(); }, 120_000).unref();
+}
+function knownProjects() {
+  const m = new Map();
+  for (const p of state.projects) m.set(p.root.toLowerCase(), p);
+  for (const a of Object.values(state.agents)) {
+    if (!a.project || m.has(a.project.root.toLowerCase())) continue;
+    const p = projectsLib.resolve(a.project.root);
+    if (p) m.set(p.root.toLowerCase(), p);
+  }
+  return [...m.values()];
+}
+function refreshInventories(force) {
+  for (const p of knownProjects()) {
+    const inv = state.inventories[p.name];
+    if (force || !inv || Date.now() - inv.scannedAt > 10 * 60_000 || inv.root !== p.root) inventoryOf(p);
+  }
+}
+setInterval(() => refreshInventories(false), 60_000).unref();
+setTimeout(() => refreshInventories(false), 1500).unref();
+
 setInterval(() => { state.expire(); }, 2000).unref();
 setInterval(probeEditor, 10_000).unref();
 setInterval(probeChantiers, 10_000).unref();
@@ -177,9 +209,11 @@ const routes = {
     const p = projectsLib.resolve(b.uproject || b.path);
     if (!p) return { ok: false, error: 'aucun .uproject a cet endroit' };
     state.connectProject(p);
+    inventoryOf(p);
     return { ok: true, project: p };
   },
   'POST /api/projects/disconnect': (b) => ({ ok: state.disconnectProject(b.uproject) }),
+  'POST /api/inventory/refresh': () => { refreshInventories(true); return { ok: true }; },
 
   'POST /api/campaigns': (b) => {
     try { return { ok: true, campaign: state.createCampaign(b) }; }
