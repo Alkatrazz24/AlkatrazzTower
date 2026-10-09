@@ -43,7 +43,7 @@ agent travaille, carte du projet mise à jour à chaque asset sauvegardé. Il re
 `UnrealEditor-Cmd` des agents. Détails et installation : [unreal/README.md](unreal/README.md).
 
 ```bat
-node scriptsinstall-plugin.js "C:cheminersMonJeu.uproject"
+node scripts\install-plugin.js "C:\chemin\vers\MonJeu.uproject"
 ```
 
 ## Version à sortir : finir le jeu comme une partie
