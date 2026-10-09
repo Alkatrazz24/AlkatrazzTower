@@ -29,6 +29,7 @@
     select: '#ffd23f', mini: '#16140f',
   };
   let TH = null, COL = BASE, SC = false; // monde courant ; SC : dessin facon plan d'ingenieur
+  let MODE = {}; // fonctionnement courant (web/templates/<id>.js) : ce que montre le HUD et comment on s'en sert
 
   // ---------- etat du jeu (garde d'un rendu a l'autre) ----------
   const G = {
@@ -64,7 +65,7 @@
       im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(window.Avatar.render(look, { state, size: 88 }).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '));
       G.imgs.set(key, im);
     }
-    if (!TH.avatarFilter || !im.complete || !im.naturalWidth) return im;
+    if (!TH || !TH.avatarFilter || !im.complete || !im.naturalWidth) return im;
     const fk = key + '|' + TH.avatarFilter;
     let cv = G.imgs.get(fk);
     if (!cv) {
@@ -599,8 +600,9 @@
     const W = G.world; if (!W) return;
     const vw = G.canvas.width / G.dpr, vh = G.canvas.height / G.dpr;
     const wide = vw > 900;
-    // Sur grand ecran, le HUD prend les bords : on cadre l'usine dans la zone libre.
-    const padL = wide ? 20 : 8, padR = wide ? 290 : 8, padT = wide ? 100 : 8, padB = wide ? 110 : 8;
+    // Sur grand ecran, le HUD du mode prend des bords : on cadre l'usine dans la zone libre.
+    const P = wide && MODE.pads ? MODE.pads(!!G.sel) : { l: 8, r: 8, t: 8, b: 8 };
+    const padL = P.l, padR = P.r, padT = P.t, padB = P.b;
     const z = Math.min((vw - padL - padR) / (W.w * TS), (vh - padT - padB) / (W.h * TS));
     G.cam.z = Math.max(.35, Math.min(4, z));
     G.cam.x = W.w * TS / 2 - (padL + (vw - padL - padR) / 2) / G.cam.z;
@@ -651,7 +653,7 @@
   }
 
   function drawMini() {
-    const m = G.mini; if (!m || !G.world) return;
+    const m = G.mini; if (!m || !G.world || !m.isConnected) return;
     const W = G.world, c = m.getContext('2d');
     const mh = Math.max(40, Math.min(160, Math.round(m.width * W.h / W.w)));
     if (m.height !== mh) m.height = mh;
@@ -718,8 +720,10 @@
     }
   }
   function select(sel, ctr) {
+    const had = !!G.sel;
     G.sel = sel;
     if (sel && sel.kind === 'patch') T.ui.mapRoom = sel.id;
+    if (!G.userMoved && had !== !!sel) fit();
     if (ctr && sel) center(sel);
     G.dirty = true;
     renderHud();
@@ -762,8 +766,9 @@
     G.keysBound = true;
     window.addEventListener('resize', () => { if (G.canvas.isConnected) { resize(); G.dirty = true; } });
     document.addEventListener('keydown', (e) => {
-      if (!G.canvas.isConnected) return;
-      if (e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
+      if (!G.canvas.isConnected || document.querySelector('dialog[open]')) return;
+      if (MODE.onKey && MODE.onKey(e, api)) { e.preventDefault(); return; }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = (e.target.tagName || '').toLowerCase();
       if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
       const W = G.world; if (!W) return;
@@ -781,11 +786,11 @@
     });
   }
 
-  // ---------- HUD ----------
+  // ---------- HUD commun : barre du haut et fiche ; le reste appartient au mode ----------
   const dotFor = (st) => ({ waiting: 'warn', idle: 'ok', working: 'blue', ready: 'grey', silent: 'grey', ended: 'grey' }[st] || 'grey');
   const btn = (text, onclick, cls = '', attrs = {}) => h('button', { type: 'button', class: 'us-btn ' + cls, onclick, ...attrs }, text);
 
-  // Compteurs facon jeu de gestion, en haut : ce qui tourne, ce qui t'attend, ce qui est sorti.
+  // Compteurs facon jeu de gestion : ce qui tourne, ce qui t'attend, ce qui est sorti.
   function counters(M) {
     const ok = M.builds.filter(b => b.ok).length;
     const item = (cls, n, text, title, onclick) => h('button', { type: 'button', class: `us-r us-r-${cls}`, title, onclick, disabled: !onclick }, h('i', { 'aria-hidden': 'true' }), h('b', null, String(n)), h('span', null, text));
@@ -799,55 +804,46 @@
     ];
   }
 
-  function topLeft(M) {
+  // Petites etiquettes de la barre du haut : direct ou demo, version en cours, projet connecte.
+  function chips(M) {
     const c = M.campaign;
-    const e = M.editor;
     return [
-      h('div', { class: 'us-panel us-research', role: 'button', tabindex: 0, title: 'Voir la version (V)', onclick: () => select({ kind: 'silo' }, true), onkeydown: (ev) => { if (ev.key === 'Enter') select({ kind: 'silo' }, true); } },
-        c ? [
-          h('div', { class: 'us-ptitle' }, c.won ? `${c.name} : fusée lancée` : `Version ${c.name}`),
-          h('div', { class: 'us-bar' }, h('i', { style: `width:${c.won ? 100 : c.pct}%` })),
-          h('div', { class: 'us-research-line' }, c.won ? 'Version validée.' : `${c.proven} sur ${c.total} features prêtes`, c.next ? h('span', { class: `us-t-${c.next.tone}` }, c.next.text) : null)]
-          : [h('div', { class: 'us-ptitle' }, 'Aucune version en cours'), h('div', { class: 'us-research-line' }, 'Le silo attend sa fusée.'), btn('Préparer une version', (ev) => { ev.stopPropagation(); T.act.openBuilder(); }, 'us-go')]),
-      h('div', { class: 'us-panel us-status' },
-        h('span', { class: 'us-live ' + (M.demo ? 'demo' : M.connected ? 'on' : 'off') }, M.demo ? 'Démo' : M.connected ? 'En direct' : 'Tour injoignable'),
-        h('span', null, e.plugin ? [h('b', null, e.map || 'aucune map'), e.pie ? ', partie lancée' : '', e.liveCoding.compiling ? ', Live Coding compile' : '',
-          e.dirty ? h('span', { class: 'us-t-warn', title: e.dirtyNames.join(', ') }, `, ${T.plural(e.dirty, 'asset non sauvegardé', 'assets non sauvegardés')}`) : ''] : `Éditeur ${e.text}`)),
+      h('span', { class: 'us-live ' + (M.demo ? 'demo' : M.connected ? 'on' : 'off') }, M.demo ? 'Démo' : M.connected ? 'En direct' : 'Tour injoignable'),
+      c ? h('button', { type: 'button', class: 'us-chip2', title: 'Voir la version (V)', onclick: () => select({ kind: 'silo' }, true) }, h('b', null, c.name), c.won ? ' lancée' : ` ${c.proven}/${c.total}`) : null,
+      h('button', { type: 'button', class: 'us-chip2', title: 'Projets Unreal connectés', onclick: T.act.openProjects },
+        M.projects.length ? [h('b', null, M.projects[0].name), M.projects.length > 1 ? ` +${M.projects.length - 1}` : ` UE ${M.projects[0].engine || '?'}`] : 'Connecter un projet'),
     ];
-  }
-
-  function alertsPanel(M) {
-    const icon = (tone) => h('span', { class: `us-tri us-tri-${tone}`, 'aria-hidden': 'true' });
-    return h('div', { class: 'us-panel us-alerts' },
-      h('div', { class: 'us-ptitle' }, M.attention.length ? `Alertes (${M.attention.length})` : 'Aucune alerte'),
-      M.attention.length ? h('ul', null, M.attention.map(x => h('li', null,
-        h('button', { type: 'button', class: `us-alert us-a-${x.tone}`, onclick: () => x.agent ? select({ kind: 'agent', id: x.agent.id }, true) : x.feature ? select({ kind: 'silo' }, true) : null },
-          icon(x.tone), h('span', null, h('b', null, x.title), x.text ? h('small', null, x.text) : null)))))
-        : h('p', { class: 'us-dim' }, 'Toutes les machines tournent sans toi.'));
-  }
-
-  function quickbar(M) {
-    const W = G.world;
-    return h('div', { class: 'us-panel us-quick' },
-      h('div', { class: 'us-slots' }, (W ? W.machines : []).slice(0, 9).map((m, i) => {
-        const sel = G.sel && G.sel.kind === 'agent' && G.sel.id === m.a.id;
-        return h('button', { type: 'button', class: `us-slot us-s-${dotFor(m.a.st)}${sel ? ' sel' : ''}`, title: `${m.a.name} : ${m.a.stText} (touche ${i + 1})`, onclick: () => select({ kind: 'agent', id: m.a.id }, true) },
-          T.avatar(m.a.look, m.a.st === 'ended' ? 'ended' : m.a.st, 34), h('kbd', null, String(i + 1)));
-      })),
-      h('div', { class: 'us-cmds' },
-        btn('Forge', () => select({ kind: 'forge' }, true), '', { title: 'Touche F' }),
-        btn('Version', () => select({ kind: 'silo' }, true), '', { title: 'Touche V' }),
-        btn('Journal', () => select({ kind: G.M.builds.some(b => !b.ok) ? 'ko' : 'ok' }, true), '', { title: 'Touche J' }),
-        btn(T.ui.showEnded ? 'Masquer terminées' : `Terminées (${M.endedCount})`, () => T.act.toggleEnded(), '', { disabled: !M.endedCount && !T.ui.showEnded }),
-        btn('Recadrer', () => { G.userMoved = false; fit(); G.dirty = true; }, '', { title: 'Touche 0' })));
   }
 
   function rowsOf(pairs) { return h('dl', { class: 'us-dl' }, pairs.filter(Boolean).map(([k, v]) => [h('dt', null, k), h('dd', null, v)])); }
   function resultTxt(b) { return b ? [h('span', { class: b.ok ? 'us-t-ok' : 'us-t-ko' }, b.ok ? 'réussi' : 'en échec'), ' ', b.summary || '', ', ', T.agoEl(b.endedAt)] : null; }
 
+  // La version : liste des features et de leurs preuves, reutilisee par la fiche du silo et par le mode « La version ».
+  function featureList(c) {
+    const verb = (k) => h('span', { class: k.ok === true ? 'us-t-ok' : k.ok === false ? 'us-t-ko' : 'us-dim' }, k.verb);
+    return h('ul', { class: 'us-feats' },
+      c.features.map(f => h('li', { class: `us-f-${f.status}` },
+        h('span', { class: 'us-chip' }, f.statusText),
+        h('div', null, h('b', null, f.title), f.checks.map(k => h('small', null, `${k.text} : `, verb(k), k.detail ? `, ${k.detail}` : '', k.at ? [', ', T.agoEl(k.at)] : ''))),
+        f.manual ? btn(f.manual.done ? 'Annuler' : 'Je l\'ai testée', () => T.act.manual(f.id, !f.manual.done), f.manual.done ? '' : 'us-go') : null)),
+      h('li', { class: `us-f-${c.final.status}` }, h('span', { class: 'us-chip' }, c.final.statusText),
+        h('div', null, h('b', null, 'Lancement : épreuve finale'), c.final.locked ? h('small', null, 'Se débloque quand toutes les features sont prêtes.') : null,
+          c.final.checks.map(k => h('small', null, `${k.text} : `, verb(k))))));
+  }
+  function wonRows(c) {
+    return rowsOf([['Développement', T.dur(c.wonAt - c.createdAt)], ['Features', String(c.features.length)], ['Builds et tests', String(c.stats.builds)], ['Échecs corrigés', String(c.stats.failures)], ['Agents', String(c.stats.agents)], c.commit && ['Commit', `${c.commit.sha}${c.commit.dirty ? `, ${c.commit.dirty} fichiers non commités` : ''}`]]);
+  }
+  function buildList(list) {
+    return h('ul', { class: 'us-builds' }, list.map(b => h('li', null,
+      h('button', { type: 'button', class: 'us-build', 'aria-expanded': String(T.ui.openBuilds.has(b.id)), onclick: () => T.act.toggleBuild(b.id) },
+        h('span', { class: 'us-time' }, T.clock(b.endedAt)), h('span', null, h('b', null, `${b.kindText}${b.detail ? ' ' + b.detail : ''}`), h('small', null, `${b.agent ? b.agent.name : b.label}, ${b.summary}${b.how ? ', ' + b.how : ''}`)), h('span', { class: 'us-time' }, T.dur(b.durationMs))),
+      T.ui.openBuilds.has(b.id) ? h('div', { class: 'us-errs' }, h('code', { class: 'us-code' }, b.command), b.lines.length ? h('pre', null, b.lines.join('\n')) : h('span', { class: 'us-dim' }, 'Aucune ligne d\'erreur relevée.'), b.waitMs > 1000 ? h('span', { class: 'us-dim' }, `A attendu ${T.dur(b.waitMs)} devant la forge.`) : null) : null)));
+  }
+
+  // Fiche de ce qu'on a selectionne dans le jeu.
   function entityPanel(M) {
     const s = G.sel;
-    if (!s) return null;
+    if (!s || (MODE.noFiche && MODE.noFiche.includes(s.kind))) return null;
     const close = btn('Fermer', () => select(null), 'us-x', { 'aria-label': 'Fermer la fiche', title: 'Échap' });
     let title, body;
     if (s.kind === 'agent') {
@@ -899,75 +895,88 @@
       title = ok ? 'Coffre des builds réussis' : 'Coffre des échecs';
       body = [
         h('div', { class: 'us-actions' }, btn(ok ? 'Voir les échecs' : 'Voir les réussis', () => select({ kind: ok ? 'ko' : 'ok' }))),
-        list.length ? h('ul', { class: 'us-builds' }, list.map(b => h('li', null,
-          h('button', { type: 'button', class: 'us-build', 'aria-expanded': String(T.ui.openBuilds.has(b.id)), onclick: () => T.act.toggleBuild(b.id) },
-            h('span', { class: 'us-time' }, T.clock(b.endedAt)), h('span', null, h('b', null, `${b.kindText}${b.detail ? ' ' + b.detail : ''}`), h('small', null, `${b.agent ? b.agent.name : b.label}, ${b.summary}${b.how ? ', ' + b.how : ''}`)), h('span', { class: 'us-time' }, T.dur(b.durationMs))),
-          T.ui.openBuilds.has(b.id) ? h('div', { class: 'us-errs' }, h('code', { class: 'us-code' }, b.command), b.lines.length ? h('pre', null, b.lines.join('\n')) : h('span', { class: 'us-dim' }, 'Aucune ligne d\'erreur relevée.'), b.waitMs > 1000 ? h('span', { class: 'us-dim' }, `A attendu ${T.dur(b.waitMs)} devant la forge.`) : null) : null)))
-          : h('p', { class: 'us-dim' }, ok ? 'Aucun build réussi pour l\'instant.' : 'Aucun échec récent.'),
+        list.length ? buildList(list) : h('p', { class: 'us-dim' }, ok ? 'Aucun build réussi pour l\'instant.' : 'Aucun échec récent.'),
       ];
     } else if (s.kind === 'silo') {
       const c = M.campaign;
       title = c ? `Silo : ${c.name}` : 'Silo à fusée';
       if (!c) body = [h('p', null, 'Chaque version est une fusée : ses features en sont les pièces, et l\'épreuve finale (le package) est le lancement.'), h('div', { class: 'us-actions' }, btn('Préparer une version', T.act.openBuilder, 'us-go'))];
-      else if (c.won) body = [
-        h('p', { class: 'us-t-ok' }, h('b', null, 'Fusée lancée : version validée.')),
-        rowsOf([['Développement', T.dur(c.wonAt - c.createdAt)], ['Features', String(c.features.length)], ['Builds et tests', String(c.stats.builds)], ['Échecs corrigés', String(c.stats.failures)], ['Agents', String(c.stats.agents)], c.commit && ['Commit', `${c.commit.sha}${c.commit.dirty ? `, ${c.commit.dirty} fichiers non commités` : ''}`]]),
-        h('div', { class: 'us-actions' }, btn('Ranger', T.act.archive), btn('Préparer la suivante', T.act.next, 'us-go'))];
+      else if (c.won) body = [h('p', { class: 'us-t-ok' }, h('b', null, 'Fusée lancée : version validée.')), wonRows(c), h('div', { class: 'us-actions' }, btn('Ranger', T.act.archive), btn('Préparer la suivante', T.act.next, 'us-go'))];
       else body = [
         h('div', { class: 'us-bar' }, h('i', { style: `width:${c.pct}%` })),
         c.next ? h('p', { class: `us-next us-t-${c.next.tone}` }, c.next.text) : null,
-        h('ul', { class: 'us-feats' },
-          c.features.map(f => h('li', { class: `us-f-${f.status}` },
-            h('span', { class: 'us-chip' }, f.statusText),
-            h('div', null, h('b', null, f.title), f.checks.map(k => h('small', null, `${k.text} : `, h('span', { class: k.ok === true ? 'us-t-ok' : k.ok === false ? 'us-t-ko' : 'us-dim' }, k.verb), k.detail ? `, ${k.detail}` : '', k.at ? [', ', T.agoEl(k.at)] : ''))),
-            f.manual ? btn(f.manual.done ? 'Annuler' : 'Je l\'ai testée', () => T.act.manual(f.id, !f.manual.done), f.manual.done ? '' : 'us-go') : null)),
-          h('li', { class: `us-f-${c.final.status}` }, h('span', { class: 'us-chip' }, c.final.statusText),
-            h('div', null, h('b', null, 'Lancement : épreuve finale'), c.final.locked ? h('small', null, 'Se débloque quand toutes les features sont prêtes.') : null,
-              c.final.checks.map(k => h('small', null, `${k.text} : `, h('span', { class: k.ok === true ? 'us-t-ok' : k.ok === false ? 'us-t-ko' : 'us-dim' }, k.verb)))))),
+        featureList(c),
         h('div', { class: 'us-actions' }, btn('Abandonner la version', T.act.abandon, 'us-danger'))];
-      if (M.past.length) body.push(h('p', { class: 'us-dim' }, 'Fusées précédentes : ', M.past.slice(0, 6).map(p => p.won ? `${p.name} (lancée)` : `${p.name} (abandonnée)`).join(', ')));
     }
     return h('section', { class: 'us-panel us-entity', 'aria-label': title }, h('div', { class: 'us-ehead' }, h('h2', null, title), close), h('div', { class: 'us-ebody' }, body));
   }
 
-  function projectsPanel(M) {
-    return h('div', { class: 'us-panel us-projects' },
-      M.projects.length ? M.projects.map(p => h('span', { class: 'us-proj', title: p.uproject }, h('b', null, p.name), ` UE ${p.engine || '?'}`, btn('✕', () => T.act.disconnect(p), 'us-mini', { 'aria-label': `Déconnecter ${p.name}`, title: 'Déconnecter' })))
-        : h('span', { class: 'us-dim' }, 'Aucun projet Unreal connecté.'),
-      M.inventories.length > 1 ? M.inventories.map(i => btn(i.project, () => { T.ui.mapProject = i.project; T.rerender(); }, i.project === (M.inv && M.inv.project) ? 'us-go' : '')) : null,
-      btn(M.projects.length ? 'Connecter un projet' : 'Connecter un projet Unreal', T.act.openProjects, M.projects.length ? '' : 'us-go'));
+  // ---------- ambiance (decor) : independante du fonctionnement ----------
+  const WORLDS = [['jour', 'Jour'], ['nuit', 'Nuit'], ['plan', 'Plan'], ['volcan', 'Volcan'], ['banquise', 'Banquise']];
+  function chosenWorld() {
+    const q = new URLSearchParams(location.search).get('w') || location.hash.slice(1).split('.').find(x => WORLDS.some(w => w[0] === x));
+    if (q && WORLDS.some(w => w[0] === q)) return q;
+    try { const s = localStorage.getItem('tower.world'); if (s && WORLDS.some(w => w[0] === s)) return s; } catch { /* stockage bloque */ }
+    return 'jour';
+  }
+  let worldLink = null, worldWait = null;
+  function loadWorld(id, then) {
+    if (TH && TH.id === id) { if (then) then(); return; }
+    worldWait = then;
+    const link = h('link', { rel: 'stylesheet', href: `usine/mondes/${id}.css` });
+    document.head.append(link);
+    if (worldLink) worldLink.remove();
+    worldLink = link;
+    const s = document.createElement('script'); s.src = `usine/mondes/${id}.js`; document.body.append(s);
+  }
+  function worldSwitch() {
+    const sel = h('select', { 'aria-label': 'Ambiance du jeu', onchange: (e) => {
+      try { localStorage.setItem('tower.world', e.target.value); } catch { /* stockage bloque */ }
+      loadWorld(e.target.value, () => { G.dirty = true; G.canvas.setAttribute('aria-label', `L'usine (${TH.name}) : agents, forge et version, en direct`); renderHud(); });
+    } }, WORLDS.map(([id, name]) => h('option', { value: id, selected: TH && TH.id === id }, name)));
+    return h('label', { class: 'tw-switch' }, h('span', null, 'Ambiance'), sel);
   }
 
+  // ---------- montage ----------
+  // Le mode recoit cette boite a outils pour construire son HUD.
+  const api = {
+    h, T, btn, dotFor, rowsOf, resultTxt, featureList, wonRows, buildList, counters,
+    select, center, refit: () => { G.userMoved = false; fit(); G.dirty = true; },
+    get M() { return G.M; }, get sel() { return G.sel; }, get world() { return G.world; }, get mini() { return G.mini; },
+    rerender: () => renderHud(),
+  };
+
+  function same(a, b) { return a.length === b.length && a.every((x, i) => x === b[i]); }
   function renderHud() {
     const M = G.M; if (!M) return;
-    G.hud.res.replaceChildren(...counters(M));
-    G.hud.tl.replaceChildren(...topLeft(M));
-    G.hud.alerts.replaceChildren(alertsPanel(M));
-    G.hud.quick.replaceChildren(quickbar(M));
+    G.hud.chips.replaceChildren(...chips(M).filter(Boolean));
+    G.hud.res.replaceChildren(...(MODE.counters ? counters(M) : []));
     const ent = entityPanel(M);
     G.hud.entity.replaceChildren(...(ent ? [ent] : []));
     G.hud.entity.hidden = !ent;
-    G.hud.projects.replaceChildren(projectsPanel(M));
+    G.app.classList.toggle('us-has-sel', !!ent);
+    // Un mode peut rendre les memes noeuds d'une fois sur l'autre (un champ de saisie garde alors son focus).
+    const nodes = (MODE.hud ? MODE.hud(M, api) : []).filter(Boolean);
+    if (!same(nodes, [...G.hud.mode.children])) G.hud.mode.replaceChildren(...nodes);
     if (!M.inv) G.hud.empty.replaceChildren(h('p', null, M.projects.length ? 'La tour compte le projet : les gisements apparaissent dans un instant.' : 'Connecte un projet Unreal : ses domaines deviennent les gisements de l\'usine.'));
     G.hud.empty.hidden = !!M.inv;
   }
 
   function build(root) {
-    G.canvas = h('canvas', { class: 'us-canvas', role: 'img', 'aria-label': `${TH.name} : agents, forge et version, en direct` });
+    G.canvas = h('canvas', { class: 'us-canvas', role: 'img', 'aria-label': `L'usine (${TH.name}) : agents, forge et version, en direct` });
     G.mini = h('canvas', { class: 'us-mini', width: 220, height: 120, 'aria-label': 'Mini-carte : clique pour déplacer la vue' });
     G.ctx = G.canvas.getContext('2d');
     G.hud = {
-      res: h('div', { class: 'us-res', 'aria-label': 'Compteurs' }),
-      tl: h('div', { class: 'us-tl' }), alerts: h('div', { class: 'us-alertbox' }), quick: h('div', { class: 'us-quickbox' }),
-      entity: h('div', { class: 'us-entitybox' }), projects: h('div', { class: 'us-projbox' }), empty: h('div', { class: 'us-emptymap' }),
+      chips: h('span', { class: 'us-chips' }), res: h('div', { class: 'us-res', 'aria-label': 'Compteurs' }),
+      mode: h('div', { class: 'us-hud' }), entity: h('div', { class: 'us-entitybox' }), empty: h('div', { class: 'us-emptymap' }),
       tip: h('div', { class: 'us-tip', hidden: true, 'aria-hidden': 'true' }),
     };
-    root.replaceChildren(h('div', { class: 'us-app' },
+    G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
-      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, TH.name), G.hud.res, h('span', { class: 'us-grow' }), T.switcher()),
-      h('div', { class: 'us-left' }, G.hud.tl, G.hud.entity),
-      h('div', { class: 'us-right' }, h('div', { class: 'us-panel us-minibox' }, G.mini, h('small', { class: 'us-dim' }, 'Glisse pour bouger, molette pour zoomer, 1 à 9 pour un agent')), G.hud.alerts, G.hud.projects),
-      G.hud.quick));
+      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), T.switcher('Fonctionnement'), worldSwitch()),
+      G.hud.mode,
+      G.hud.entity);
+    root.replaceChildren(G.app);
     bindCanvas();
     G.built = true;
     requestAnimationFrame(() => { resize(); G.dirty = true; });
@@ -981,18 +990,25 @@
     G.world = layout(M);
     if (G.sel && G.sel.kind === 'agent' && !M.agents.some(a => a.id === G.sel.id)) G.sel = null;
     if (!G.userMoved && (!prev || prev.w !== G.world.w)) fit();
+    if (MODE.follow && G.sel && !G.drag) center(G.sel);
     G.dirty = true;
     renderHud();
   }
 
-  // Un monde s'enregistre ici : web/templates/<id>.js appelle Usine.start({ id, name, col, ... }).
+  // web/usine/mondes/<id>.js appelle Usine.world({...}) ; web/templates/<id>.js appelle Usine.mode({...}).
   window.Usine = {
     TS, fbm, h2, shade, hexA, reduced,
-    start(theme) {
+    world(theme) {
       TH = theme;
       COL = Object.assign({}, BASE, theme.col || {});
       SC = !!theme.schematic;
-      T.register({ id: theme.id, render });
+      G.terrain = null; G.imgs.forEach((v, k) => { if (k.includes('|')) G.imgs.delete(k); });
+      const then = worldWait; worldWait = null;
+      if (then) then();
+    },
+    mode(def) {
+      MODE = def;
+      loadWorld(chosenWorld(), () => T.register({ id: def.id, render }));
     },
   };
 })();

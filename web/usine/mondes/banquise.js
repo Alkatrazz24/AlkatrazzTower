@@ -4,8 +4,8 @@
 (function () {
   const U = window.Usine, TS = U.TS;
   const SNOW = ['#eef4f8', '#e8f0f5', '#f3f7fa', '#e4edf3'];
-  U.start({
-    id: 'banquise', name: 'La banquise',
+  U.world({
+    id: 'banquise', name: 'Banquise',
     col: {
       bg: '#e6eef4', concrete: '#9ea9b2', concrete2: '#97a2ab', grid: 'rgba(30,50,70,.14)', stripeA: '#2f7fc4', stripeB: '#e8f0f5',
       machine: '#8f9ba4', steel: '#9aa6af', steelLight: '#d4dde3', steelDark: '#56636e', belt: '#d6a23d', beltDark: '#7a5a1c',

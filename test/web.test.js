@@ -23,7 +23,7 @@ test('cinq templates, chacun avec son JS et son CSS', () => {
     const js = fs.readFileSync(path.join(WEB, 'templates', `${id}.js`), 'utf8');
     assert.ok(fs.existsSync(path.join(WEB, 'templates', `${id}.css`)), `${id}.css manquant`);
     if (engine) {
-      assert.match(js, new RegExp(`start\\(\\{\\s*id: '${id}'`), `${id}.js doit demarrer le moteur sous son id`);
+      assert.match(js, new RegExp(`mode\\(\\{\\s*id: '${id}'`), `${id}.js doit demarrer le moteur sous son id`);
     } else {
       assert.match(js, new RegExp(`register\\(\\{ id: '${id}'`), `${id}.js doit se declarer sous son id`);
       assert.match(js, /T\.switcher\(\)/, `${id}.js doit proposer le choix du template`);
@@ -33,7 +33,16 @@ test('cinq templates, chacun avec son JS et son CSS', () => {
     const js = fs.readFileSync(path.join(WEB, e, 'moteur.js'), 'utf8');
     assert.ok(fs.existsSync(path.join(WEB, e, 'hud.css')), `${e}/hud.css manquant`);
     assert.match(js, /T\.register\(/, `${e}/moteur.js doit declarer le template`);
-    assert.match(js, /T\.switcher\(\)/, `${e}/moteur.js doit proposer le choix du template`);
+    assert.match(js, /T\.switcher\(/, `${e}/moteur.js doit proposer le choix du template`);
+    // chaque ambiance proposee a son monde (decor) en JS et en CSS
+    const worlds = [...js.match(/const WORLDS = \[(.*)\];/)[1].matchAll(/\['([a-z]+)'/g)].map(m => m[1]);
+    assert.ok(worlds.length >= 1);
+    for (const w of worlds) {
+      assert.ok(fs.existsSync(path.join(WEB, e, 'mondes', `${w}.css`)), `${e}/mondes/${w}.css manquant`);
+      const wjs = path.join(WEB, e, 'mondes', `${w}.js`);
+      assert.match(fs.readFileSync(wjs, 'utf8'), new RegExp(`world\\(\\{\\s*id: '${w}'`), `${w}.js doit se declarer sous son id`);
+      execFileSync(process.execPath, ['--check', wjs]);
+    }
   }
 });
 

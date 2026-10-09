@@ -69,9 +69,15 @@ h1, h2, h3, p { margin: 0; }
 .us-top .tw-switch { color: var(--us-muted); }
 .us-top .tw-switch select { background: var(--us-inset); border-color: var(--us-hi); }
 
-/* ---------- colonne de gauche : version, etat, puis la fiche selectionnee ---------- */
-.us-left { position: absolute; top: 48px; left: 16px; bottom: 98px; width: 400px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; pointer-events: none; }
-.us-tl { width: 330px; display: grid; gap: 8px; flex: none; }
+/* ---------- HUD du mode : chaque template place ses panneaux dans .us-hud ---------- */
+.us-hud { position: absolute; inset: 0; pointer-events: none; }
+.us-hud > * { pointer-events: auto; }
+.us-chips { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; }
+.us-chip2 { background: var(--us-inset); border: 1px solid var(--us-edge); border-radius: var(--us-radius); color: var(--us-ink); padding: 3px 9px; font: 500 14px/1.2 var(--us-cond); cursor: pointer; white-space: nowrap; }
+.us-chip2:hover { background: var(--us-hover); }
+.us-chip2 b { font-weight: 700; }
+.us-empty { display: grid; gap: 6px; justify-items: start; }
+.us-empty strong { font: 600 22px/1.15 var(--us-cond); }
 .us-research { cursor: pointer; display: grid; gap: 6px; }
 .us-research:hover { filter: brightness(1.08); }
 .us-research .us-ptitle { margin: 0; }
@@ -83,8 +89,7 @@ h1, h2, h3, p { margin: 0; }
 .us-live.on { color: var(--us-ok); }
 .us-live.demo { color: var(--us-blue); }
 
-/* ---------- colonne de droite : mini-carte, alertes, projets ---------- */
-.us-right { position: absolute; top: 48px; right: 16px; width: 256px; display: grid; gap: 8px; max-height: calc(100% - 150px); grid-template-rows: auto minmax(0, 1fr) auto; pointer-events: none; }
+/* ---------- mini-carte et alertes (utilisees par certains modes) ---------- */
 .us-minibox { display: grid; gap: 4px; padding: 6px; }
 .us-mini { display: block; width: 100%; height: auto; border: 1px solid var(--us-edge); background: var(--us-inset); cursor: crosshair; image-rendering: pixelated; }
 .us-minibox small { font-size: 12px; line-height: 1.25; }
@@ -109,8 +114,7 @@ h1, h2, h3, p { margin: 0; }
 .us-projects { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 14px; }
 .us-proj { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; background: var(--us-inset); border: 1px solid var(--us-edge); padding: 2px 4px 2px 8px; border-radius: 2px; }
 
-/* ---------- barre rapide en bas ---------- */
-.us-quickbox { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); max-width: calc(100% - 32px); pointer-events: none; }
+/* ---------- emplacements d'agents ---------- */
 .us-quick { display: flex; align-items: center; gap: 14px; padding: 8px; }
 .us-slots { display: flex; gap: 4px; }
 .us-slot {
@@ -128,7 +132,8 @@ h1, h2, h3, p { margin: 0; }
 .us-cmds { display: flex; gap: 4px; }
 
 /* ---------- fiche de l'element selectionne ---------- */
-.us-entitybox { width: 100%; min-height: 0; display: flex; flex-direction: column; }
+.us-entitybox { position: absolute; top: 60px; right: 16px; bottom: 16px; width: 380px; min-height: 0; display: flex; flex-direction: column; pointer-events: none; }
+.us-entitybox > * { pointer-events: auto; }
 .us-entity { display: flex; flex-direction: column; min-height: 0; padding: 0; }
 .us-ehead { flex: none; }
 .us-ebody { min-height: 0; }
@@ -204,21 +209,19 @@ h1, h2, h3, p { margin: 0; }
   .us-app { position: static; overflow: visible; display: flex; flex-direction: column; gap: 8px; padding-bottom: 16px; }
   .us-top { position: sticky; top: 0; z-index: 3; order: 0; background: var(--us-topsolid); padding: 8px 12px; flex-wrap: wrap; }
   .us-stage { position: relative; inset: auto; order: 1; height: 42vh; min-height: 260px; border-bottom: 1px solid var(--us-edge); }
-  .us-quickbox { position: static; transform: none; order: 2; max-width: none; margin: 0 12px; }
-  .us-quick { flex-wrap: wrap; gap: 8px; }
-  .us-cmds { flex-wrap: wrap; }
-  .us-slots { flex-wrap: wrap; }
-  .us-left { position: static; order: 3; width: auto; margin: 0 12px; display: flex; flex-direction: column-reverse; align-items: stretch; }
-  .us-tl { width: auto; }
-  .us-right { position: static; order: 5; width: auto; max-height: none; margin: 0 12px; display: grid; grid-template-rows: none; }
+  .us-entitybox { position: static; order: 2; width: auto; margin: 0 12px; }
+  .us-hud { position: static; order: 3; display: grid; gap: 8px; margin: 0 12px; }
+  .us-hud > * { position: static !important; transform: none !important; width: auto !important; max-width: none !important; max-height: none !important; }
+  .us-quick, .us-cmds, .us-slots { flex-wrap: wrap; }
   .us-minibox { display: none; }
+  .us-chips { margin-left: 0; flex-wrap: wrap; }
   .us-res { margin-left: 0; order: 3; width: 100%; }
   .us-r { padding: 2px 8px 2px 5px; font-size: 14px; }
   .us-tip { display: none; }
   .us-feats li { grid-template-columns: 80px minmax(0, 1fr); }
   .us-feats li > .us-btn { grid-column: 2; justify-self: start; }
 }
-@media (max-width: 1180px) and (min-width: 901px) {
-  .us-left { width: 340px; }
-  .us-tl { width: 290px; }
+@media (max-width: 1500px) and (min-width: 901px) {
+  .us-r span { display: none; }
+  .us-r { padding-right: 8px; }
 }

@@ -4,8 +4,8 @@
 (function () {
   const U = window.Usine, TS = U.TS;
   const ROCK = ['#2b2320', '#282020', '#302725', '#251e1c'];
-  U.start({
-    id: 'volcan', name: 'Le volcan',
+  U.world({
+    id: 'volcan', name: 'Volcan',
     col: {
       bg: '#1c1412', concrete: '#4c423d', concrete2: '#453b36', grid: 'rgba(0,0,0,.28)', stripeA: '#ff7a1a', stripeB: '#2a1a14',
       belt: '#c4882c', beltDark: '#5a3a14', machine: '#736a65', steel: '#7d746f', steelLight: '#aaa19b', steelDark: '#3e3734',

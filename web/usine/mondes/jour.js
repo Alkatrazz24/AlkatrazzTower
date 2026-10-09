@@ -3,8 +3,8 @@
 (function () {
   const U = window.Usine, TS = U.TS;
   const GRASS = ['#5f7d3b', '#5a7738', '#63823e', '#577236'];
-  U.start({
-    id: 'usine', name: 'L\'usine',
+  U.world({
+    id: 'jour', name: 'Jour',
     col: { bg: '#5a7738', concrete: '#8d8a82', concrete2: '#86837b', grid: 'rgba(0,0,0,.1)', labelBg: 'rgba(24,22,20,.82)', mini: '#3f5a2a', wire: 'rgba(30,24,18,.7)' },
     safe: '#5f7d3b',
     tile(x, y, n, k) {

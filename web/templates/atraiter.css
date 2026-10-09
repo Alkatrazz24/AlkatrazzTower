@@ -1,0 +1,27 @@
+/* « À traiter » : une colonne de sujets a gauche, le jeu au milieu, la fiche a droite. */
+.us-inbox { position: absolute; top: 60px; left: 16px; max-height: calc(100% - 76px); width: 400px; display: flex; flex-direction: column; gap: 10px; padding: 14px 14px 12px; }
+.us-ihead { display: flex; align-items: center; gap: 10px; }
+.us-ihead h2 { font: 600 24px/1.1 var(--us-cond); color: var(--us-orange); letter-spacing: .02em; }
+.us-count { font: 700 15px/1 var(--us-cond); padding: 4px 9px; border-radius: 999px; background: var(--us-chip-bg); color: var(--us-muted); }
+.us-count.on { background: var(--us-warn); color: #1a1204; }
+.us-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; overflow: auto; min-height: 0; align-content: start; }
+.us-card {
+  display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 4px 10px; padding: 10px 12px; cursor: pointer;
+  background: var(--us-inset); border: 1px solid var(--us-edge); border-left: 4px solid var(--us-grey); border-radius: var(--us-radius);
+}
+.us-card:hover { background: var(--us-hover); }
+.us-card.cur { outline: 2px solid var(--us-orange); outline-offset: -1px; }
+.us-c-warn, .us-c-you { border-left-color: var(--us-warn); }
+.us-c-ko { border-left-color: var(--us-ko); }
+.us-c-ok { border-left-color: var(--us-ok); }
+.us-c-info { border-left-color: var(--us-blue); }
+.us-ctext { display: grid; gap: 2px; min-width: 0; }
+.us-ctext b { font-size: 16px; line-height: 1.25; }
+.us-ctext p { color: var(--us-muted); font-size: 14px; overflow-wrap: anywhere; }
+.us-ctext small { color: var(--us-muted); font-size: 12px; font-style: italic; }
+.us-cact { grid-column: 2; display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.us-empty { padding: 12px 2px; }
+.us-empty strong { font-size: 26px; color: var(--us-ok); }
+.us-empty p { font-size: 16px; }
+.us-ifoot { margin-top: auto; font-size: 13px; color: var(--us-muted); border-top: 1px solid var(--us-edge); padding-top: 8px; }
+.us-ifoot kbd { font: 600 12px/1 var(--us-cond); border: 1px solid var(--us-hi); border-radius: 3px; padding: 1px 5px; margin-right: 3px; }

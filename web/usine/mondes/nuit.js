@@ -4,8 +4,8 @@
 (function () {
   const U = window.Usine, TS = U.TS;
   const GRASS = ['#3d5a3a', '#395536', '#41603d', '#365234'];
-  U.start({
-    id: 'nuit', name: 'Équipe de nuit',
+  U.world({
+    id: 'nuit', name: 'Nuit',
     col: {
       bg: '#0c1220', concrete: '#5d6168', concrete2: '#575b62', grid: 'rgba(0,0,0,.18)', stripeA: '#e2b23a',
       labelBg: 'rgba(8,12,24,.85)', text: '#e6ecff', mini: '#0b1220', wire: 'rgba(20,24,34,.85)', select: '#7cc4ff', blue: '#5fb4ff',

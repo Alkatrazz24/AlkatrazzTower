@@ -3,8 +3,8 @@
 // Le moteur est dans web/usine/moteur.js (SC = dessin au trait).
 (function () {
   const U = window.Usine, TS = U.TS;
-  U.start({
-    id: 'plan', name: 'Le plan', schematic: true,
+  U.world({
+    id: 'plan', name: 'Plan', schematic: true,
     col: {
       bg: '#1b4c8c', ground: '#1d5193', concrete: 'rgba(255,255,255,.035)', grid: 'rgba(255,255,255,.1)',
       steel: '#2a64a8', steelLight: '#e8f1ff', steelDark: '#9cc0ee', machine: '#2a64a8', belt: '#9cc8ff', beltDark: '#9cc8ff',
