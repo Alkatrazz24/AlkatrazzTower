@@ -12,7 +12,7 @@
   const STATUS = { working: 'travaille', waiting: 'attend ta réponse', idle: 'a fini, à toi', ready: 'prêt', ended: 'terminé', silent: 'silencieux' };
   const KIND = { build: 'Compilation', test: 'Tests', package: 'Package', commandlet: 'Commandlet', livecoding: 'Live Coding' };
   const FEAT = { proven: 'Prête', progress: 'En cours', failing: 'En échec', broken: 'Cassée', todo: 'À vérifier' };
-  // Reglages par l'adresse : ?demo&t=console, ou #demo.console (le # passe la ou ?... est retire).
+  // Reglages par l'adresse : ?demo&t=nuit, ou #demo.nuit (le # passe la ou ?... est retire).
   const params = new URLSearchParams(location.search);
   const hashTokens = location.hash.slice(1).split('.').filter(Boolean);
   const DEMO = params.has('demo') || hashTokens.includes('demo');
@@ -500,7 +500,7 @@
   function switcher(label = 'Apparence') {
     const sel = h('select', { 'aria-label': 'Template de la tour', onchange: (e) => choose(e.target.value) },
       TEMPLATES.map(t => h('option', { value: t.id, selected: t.id === current }, t.name)));
-    return h('label', { class: 'tw-switch' }, h('span', null, label), sel, h('a', { href: 'galerie.html', title: 'Comparer les cinq templates' }, 'Galerie'));
+    return h('label', { class: 'tw-switch' }, h('span', null, label), sel, h('a', { href: 'galerie.html', title: 'Comparer les templates' }, 'Galerie'));
   }
 
   // ---------- rendu ----------
@@ -516,11 +516,14 @@
     document.documentElement.dataset.template = current;
     rerender();
   }
+  // Un template peut reposer sur un moteur commun (web/<moteur>/moteur.js et hud.css), charge avant lui.
   function load() {
+    const def = TEMPLATES.find(t => t.id === current) || {};
+    const script = (src, then) => { const s = document.createElement('script'); s.src = src; if (then) s.onload = then; document.body.append(s); };
+    if (def.engine) document.head.append(h('link', { rel: 'stylesheet', href: `${def.engine}/hud.css` }));
     document.head.append(h('link', { rel: 'stylesheet', href: `templates/${current}.css` }));
-    const s = document.createElement('script');
-    s.src = `templates/${current}.js`;
-    document.body.append(s);
+    if (def.engine) script(`${def.engine}/moteur.js`, () => script(`templates/${current}.js`));
+    else script(`templates/${current}.js`);
   }
 
   // Dates de la demo decalees pour que tout se passe "maintenant".

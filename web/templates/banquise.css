@@ -1,0 +1,17 @@
+/* La banquise : HUD clair en verre givre, encre bleu nuit, accent bleu glacier. Base : web/usine/hud.css. */
+:root {
+  --us-bg: #e6eef4; --us-panel: rgba(246, 250, 253, .86); --us-panel2: rgba(255, 255, 255, .92); --us-inset: rgba(226, 236, 243, .9); --us-edge: #b7c8d4; --us-hi: #ffffff;
+  --us-hover: #d6e5ef; --us-sel-bg: #d2e6f7; --us-code-bg: #eef4f8; --us-chip-bg: #cfdae3;
+  --us-ink: #14263a; --us-muted: #4d6276; --us-orange: #1d6fb8; --us-orange2: #155a96; --us-on-orange: #ffffff;
+  --us-ok: #2a8a3a; --us-ko: #c2352a; --us-warn: #a46400; --us-blue: #1d6fb8; --us-grey: #7d8b97; --us-you: #7a4fc4;
+  --us-btn1: #ffffff; --us-btn2: #e8f0f5; --us-btn-hi: #ffffff; --us-btn-ink: #14263a;
+  --us-topbg: linear-gradient(180deg, rgba(232, 240, 246, .95), rgba(232, 240, 246, .6) 70%, transparent); --us-topsolid: rgba(232, 240, 246, .97);
+  --us-panel-shadow: inset 0 1px 0 #ffffff, 0 6px 18px rgba(30, 60, 90, .16);
+  --us-radius: 8px;
+}
+.us-panel { -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.us-slot, .us-portrait, .us-r, .us-bar { box-shadow: inset 0 1px 2px rgba(30, 60, 90, .15); }
+.us-tri-warn, .us-tri-you { background: #e8a21a; }
+.us-tri::after { color: #14263a; }
+.us-f-proven .us-chip, .us-f-broken .us-chip, .us-f-failing .us-chip { color: #fff; }
+.us-live::before { box-shadow: none; }

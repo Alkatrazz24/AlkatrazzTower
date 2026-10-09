@@ -16,22 +16,29 @@ Spécification complète : [Alkatrazz Tower — Spécification](https://claude.a
   de domaine `Saved/chantiers/*.txt` des projets vus.
 - **Jamais bloquant** : tour éteinte, les agents travaillent et buildent exactement comme avant.
 
-## Six templates pour la page
+## Cinq templates pour la page
 
-La page existe en six présentations, avec les mêmes données et les mêmes actions. Le menu
-**Apparence**, en haut de chaque template, passe de l'une à l'autre ; le choix est retenu par le
-navigateur. **Galerie** (<http://127.0.0.1:4777/galerie.html>) les compare côte à côte en captures.
+La page est un jeu de gestion d'usine qui tourne en fond, en direct : chaque agent est une machine
+avec son personnage, les domaines du projet sont des gisements, les builds roulent en caisses sur le
+tapis jusqu'à la forge (une seule à la fois) puis vers le coffre des réussis ou des échecs, et la
+version est une fusée à assembler dans le silo. Un HUD de jeu flotte par-dessus : compteurs, version,
+mini-carte, alertes, barre rapide et fiche de ce qu'on a sélectionné. On glisse pour se déplacer, la
+molette zoome, un clic ouvre une fiche ; touches 1 à 9 pour un agent, F la forge, V la version,
+J le journal, 0 pour recadrer.
 
-| Template | L'idée |
+Les cinq templates sont cinq mondes du même jeu (moteur commun `web/usine/`). Le menu **Apparence**
+passe de l'un à l'autre ; le choix est retenu par le navigateur. **Galerie**
+(<http://127.0.0.1:4777/galerie.html>) les compare côte à côte en captures.
+
+| Template | Le monde |
 | --- | --- |
-| L'usine (par défaut) | un jeu de gestion d'usine en fond : agents en machines, builds sur le tapis jusqu'à la forge, version en fusée ; clic, molette, touches 1 à 9, F, V, J |
-| Essentiel | clair et calme : une phrase sur l'état du moment, puis ce qui t'attend |
-| Tour de contrôle | chaque agent est une bande de vol, la forge est la piste |
-| Le village | la carte du projet en grand, l'équipe en HUD de jeu, la version comme une quête |
-| Level 0 | l'ambiance de Conquer the Backrooms, les agents sur des écrans de surveillance |
-| Console | panneaux de terminal pilotés au clavier (`?` affiche les raccourcis) |
+| L'usine (par défaut) | en plein jour, entre herbe, rivières et forêts |
+| Équipe de nuit | dans le noir : seules les machines qui tournent, la forge et les alertes s'allument |
+| Le plan | plan d'ingénieur blanc sur bleu, sans décor |
+| Le volcan | basalte et coulées de lave, braises dans l'air |
+| La banquise | neige et glace, HUD clair ; une machine arrêtée se couvre de givre |
 
-- `?t=console` dans l'adresse ouvre un template précis ; `?demo` joue une matinée de démonstration
+- `?t=nuit` dans l'adresse ouvre un template précis ; `?demo` joue une matinée de démonstration
   (`web/demo/state.json`, régénérée par `node scripts/demo-state.js`) sans toucher à la tour.
 - L'ancienne page reste disponible : <http://127.0.0.1:4777/classique.html>.
 
@@ -170,7 +177,7 @@ npm test
 | `lib/campaign.js` | versions à sortir : features, épreuve finale, victoire |
 | `lib/unreal.js` | version du moteur, liens de la doc, consigne « doc d'abord » |
 | `web/index.html`, `web/core.js`, `web/core.css` | la page : flux en direct, données, actions et dialogues communs |
-| `web/templates/` | les six templates (`list.js` les déclare et fixe celui par défaut) et leurs captures |
+| `web/templates/` | les cinq mondes de l'usine (`list.js` les déclare et fixe celui par défaut) et leurs captures ; `web/usine/` : le moteur du jeu et son HUD |
 | `web/galerie.html`, `web/demo/`, `scripts/demo-state.js` | galerie des templates et état de démonstration |
 | `web/fonts/` | polices servies en local (SIL Open Font License) |
 | `web/classique.html` | l'ancienne page, gardée en secours |

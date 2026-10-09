@@ -1,0 +1,20 @@
+/* Le plan : HUD de dessin technique, traits blancs sur bleu, titres en mono. Base : web/usine/hud.css. */
+:root {
+  --us-bg: #1b4c8c; --us-panel: rgba(18, 61, 117, .95); --us-panel2: rgba(21, 70, 127, .95); --us-inset: rgba(12, 46, 94, .9); --us-edge: rgba(232, 241, 255, .55); --us-hi: rgba(232, 241, 255, .3);
+  --us-hover: rgba(232, 241, 255, .1); --us-sel-bg: rgba(232, 241, 255, .16); --us-code-bg: rgba(8, 34, 72, .9); --us-chip-bg: rgba(232, 241, 255, .16);
+  --us-ink: #ffffff; --us-muted: #b9d1f2; --us-orange: #ffffff; --us-orange2: #d4e5fb; --us-on-orange: #123d75;
+  --us-ok: #8ff0a4; --us-ko: #ffa391; --us-warn: #ffe08a; --us-blue: #a8dcff; --us-grey: #9fb6d6; --us-you: #e2c8ff;
+  --us-btn1: rgba(232, 241, 255, .08); --us-btn2: rgba(232, 241, 255, .04); --us-btn-hi: rgba(232, 241, 255, .15);
+  --us-topbg: linear-gradient(180deg, rgba(16, 52, 100, .96), rgba(16, 52, 100, .6) 70%, transparent); --us-topsolid: rgba(16, 52, 100, .98);
+  --us-panel-shadow: none; --us-radius: 0;
+  --us-cond: "JetBrains Mono", Consolas, monospace;
+}
+.us-panel { outline: 1px solid rgba(232, 241, 255, .22); outline-offset: -5px; }
+.us-ptitle, .us-ehead h2, .us-sub, .us-brand, .us-sub2 { text-transform: uppercase; letter-spacing: .08em; font-weight: 500; }
+.us-ptitle, .us-ehead h2 { font-size: 14px; }
+.us-btn, .us-r { font-size: 13px; }
+.us-r b { font-size: 15px; }
+.us-bar > i { background: repeating-linear-gradient(135deg, #fff 0 4px, #d4e5fb 4px 8px); }
+.us-dl dt { font-size: 12px; }
+.us-chip { font-size: 11px; }
+.us-tri::after { color: #123d75; }
