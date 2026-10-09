@@ -4,6 +4,7 @@
 
 const { findProject } = require('../lib/detect');
 const campaign = require('../lib/campaign');
+const { docRead } = require('../lib/unreal');
 
 const LEASE_MS = 30_000;      // sans signe de vie, le verrou ou la place en file est rendu
 const MAX_BUILDS = 50;
@@ -42,6 +43,7 @@ class TowerState {
     this.editor = { open: false, count: 0, checkedAt: 0 };
     this.chantiers = {};   // projet -> [{ file, text, mtime }]
     this.campaigns = [];   // voir lib/campaign.js
+    this.testGroups = {};  // projet -> { 'CTB.Munitions': nombre de tests vus }
     this.onVictory = null; // (campagne) => void, branche par le serveur
     this.seq = 0;
     this.listeners = new Set();
@@ -115,6 +117,15 @@ class TowerState {
       case 'PostToolUse':
         a.status = 'working';
         a.tool = { name: ev.tool_name || '?', summary: toolSummary(ev.tool_name, ev.tool_input), at: t, sub: !!sub };
+        if (ev.hook_event_name === 'PostToolUse') {
+          const d = docRead(ev.tool_name, ev.tool_input);
+          if (d) {
+            a.docs = a.docs || { count: 0, last: null };
+            a.docs.count++;
+            a.docs.last = { ...d, at: t };
+          }
+          if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(ev.tool_name || '')) a.edits = (a.edits || 0) + 1;
+        }
         if (ev.hook_event_name === 'PreToolUse') a.message = '';
         break;
       case 'PostToolUseFailure':
@@ -295,6 +306,7 @@ class TowerState {
       testFilter: entry.testFilter || null,
       how,
     };
+    this.noteTestGroups(b);
     // Un verrou perdu ou libere a la main ne dit rien de la qualite du code.
     if (how !== 'expired' && how !== 'forced') this.feedCampaigns(b);
     // Les chemins de tests ne servent qu'aux campagnes : on ne les garde pas dans l'historique.
@@ -310,6 +322,20 @@ class TowerState {
       if (b.kind === 'test' || b.tests) a.lastTest = b; else a.lastBuild = b;
     }
     return b;
+  }
+
+  // Groupes de tests vus (CTB.Munitions...) : proposes dans le formulaire de version.
+  noteTestGroups(b) {
+    const t = b.tests;
+    if (!t || !b.project) return;
+    const g = this.testGroups[b.project] = this.testGroups[b.project] || {};
+    for (const p of [...(t.passedPaths || []), ...(t.failedPaths || [])]) {
+      const parts = String(p).split('.');
+      for (let d = 1; d <= Math.min(2, parts.length - 1); d++) {
+        const k = parts.slice(0, d + 1).join('.');
+        g[k] = (g[k] || 0) + 1;
+      }
+    }
   }
 
   // ---- campagnes ----------------------------------------------------------------------------
@@ -369,11 +395,12 @@ class TowerState {
       editor: this.editor,
       chantiers: this.chantiers,
       campaigns: this.campaigns.map(campaign.view),
+      testGroups: this.testGroups,
     };
   }
 
   toJSON() {
-    return { agents: this.agents, builds: this.builds, seq: this.seq, campaigns: this.campaigns };
+    return { agents: this.agents, builds: this.builds, seq: this.seq, campaigns: this.campaigns, testGroups: this.testGroups };
   }
 
   load(saved) {
@@ -382,6 +409,7 @@ class TowerState {
     if (Array.isArray(saved.builds)) this.builds = saved.builds.slice(0, MAX_BUILDS);
     if (saved.seq) this.seq = saved.seq;
     if (Array.isArray(saved.campaigns)) this.campaigns = saved.campaigns;
+    if (saved.testGroups && typeof saved.testGroups === 'object') this.testGroups = saved.testGroups;
     for (const a of Object.values(this.agents)) delete a.building; // aucun verrou ne survit a un redemarrage
   }
 }
