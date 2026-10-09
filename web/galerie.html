@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Templates de la tour</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  :root { --bg: #e9ecef; --ink: #1b2430; --muted: #5d6b7a; --line: #cfd6dd; --accent: #2457c5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; }
+  header { max-width: 1240px; margin: 0 auto; padding: 40px 24px 8px; }
+  h1 { font-size: 30px; margin: 0 0 6px; }
+  header p { margin: 0; color: var(--muted); max-width: 70ch; }
+  main { max-width: 1240px; margin: 0 auto; padding: 24px 24px 80px; display: grid; gap: 56px; }
+  article { display: grid; grid-template-columns: minmax(0, 1fr) 180px; gap: 20px 24px; align-items: end; }
+  .text { grid-column: 1 / -1; display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
+  h2 { font-size: 22px; margin: 0; }
+  .pitch { color: var(--muted); flex: 1 1 320px; margin: 0; }
+  .current { font-size: 14px; color: #1d7f4c; font-weight: 700; }
+  figure { margin: 0; background: #fff; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  figure img { display: block; width: 100%; height: auto; }
+  .desk { max-height: 640px; overflow: hidden; }
+  .phone { border-radius: 14px; border-width: 6px; border-color: #1b2430; max-height: 380px; }
+  .actions { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; }
+  a.btn, button { font: inherit; font-size: 15px; padding: 8px 16px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--ink); text-decoration: none; cursor: pointer; }
+  a.btn:hover, button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media (max-width: 700px) { article { grid-template-columns: 1fr; } .phone { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Les cinq templates de la tour</h1>
+  <p>Chaque template montre les mêmes données et fait les mêmes choses ; seule la façon de les présenter change. Les captures utilisent une matinée de démo sur Conquer the Backrooms. Ouvre la démo pour cliquer partout, ou essaie un template sur tes propres agents. Celui que tu choisis reste affiché à chaque ouverture de la tour.</p>
+</header>
+<main id="list"></main>
+<script src="templates/list.js"></script>
+<script>
+'use strict';
+let current = null;
+try { current = localStorage.getItem('tower.template'); } catch { /* stockage bloque */ }
+current = current || window.TOWER_DEFAULT;
+const live = location.protocol.startsWith('http') && /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+const list = document.getElementById('list');
+for (const t of window.TOWER_TEMPLATES) {
+  const a = document.createElement('article');
+  a.innerHTML = `
+    <div class="text"><h2></h2><p class="pitch"></p>${t.id === current ? '<span class="current">Affiché en ce moment</span>' : ''}</div>
+    <figure class="desk"><img loading="lazy" alt="" src="templates/shots/${t.id}.jpg"></figure>
+    <figure class="phone"><img loading="lazy" alt="" src="templates/shots/${t.id}-mobile.jpg"></figure>
+    <div class="actions">
+      <a class="btn" href="index.html#demo.${t.id}">Voir la démo</a>
+      ${live ? `<a class="btn" href="index.html?t=${t.id}">Essayer sur mes agents</a><button class="primary" type="button">Garder celui-ci</button>` : ''}
+    </div>`;
+  a.querySelector('h2').textContent = t.name;
+  a.querySelector('.pitch').textContent = t.pitch;
+  a.querySelector('.desk img').alt = `${t.name} sur grand écran`;
+  a.querySelector('.phone img').alt = `${t.name} sur téléphone`;
+  const keep = a.querySelector('button.primary');
+  if (keep) keep.addEventListener('click', () => {
+    try { localStorage.setItem('tower.template', t.id); } catch { /* stockage bloque */ }
+    location.href = `index.html?t=${t.id}`;
+  });
+  list.append(a);
+}
+</script>
+</body>
+</html>

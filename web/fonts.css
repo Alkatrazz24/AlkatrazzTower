@@ -1,0 +1,14 @@
+/* Polices sous licence SIL Open Font License 1.1 (voir fonts/OFL.txt). Sous-ensemble latin, servies en local. */
+@font-face { font-family: 'Atkinson Hyperlegible'; font-weight: 400; font-display: swap; src: url(fonts/atkinson-hyperlegible-400.woff2) format('woff2'); }
+@font-face { font-family: 'Atkinson Hyperlegible'; font-weight: 700; font-display: swap; src: url(fonts/atkinson-hyperlegible-700.woff2) format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-weight: 500; font-display: swap; src: url(fonts/barlow-condensed-500.woff2) format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-weight: 600; font-display: swap; src: url(fonts/barlow-condensed-600.woff2) format('woff2'); }
+@font-face { font-family: 'Barlow Condensed'; font-weight: 700; font-display: swap; src: url(fonts/barlow-condensed-700.woff2) format('woff2'); }
+@font-face { font-family: 'Barlow Semi Condensed'; font-weight: 400; font-display: swap; src: url(fonts/barlow-semi-condensed-400.woff2) format('woff2'); }
+@font-face { font-family: 'Barlow Semi Condensed'; font-weight: 500; font-display: swap; src: url(fonts/barlow-semi-condensed-500.woff2) format('woff2'); }
+@font-face { font-family: 'Barlow Semi Condensed'; font-weight: 600; font-display: swap; src: url(fonts/barlow-semi-condensed-600.woff2) format('woff2'); }
+@font-face { font-family: 'JetBrains Mono'; font-weight: 400 800; font-display: swap; src: url(fonts/jetbrains-mono.woff2) format('woff2'); }
+@font-face { font-family: 'Libre Franklin'; font-weight: 400 700; font-display: swap; src: url(fonts/libre-franklin.woff2) format('woff2'); }
+@font-face { font-family: 'Nunito Sans'; font-weight: 400 800; font-display: swap; src: url(fonts/nunito-sans.woff2) format('woff2'); }
+@font-face { font-family: 'Pixelify Sans'; font-weight: 500 700; font-display: swap; src: url(fonts/pixelify-sans.woff2) format('woff2'); }
+@font-face { font-family: 'VT323'; font-weight: 400; font-display: swap; src: url(fonts/vt323-400.woff2) format('woff2'); }

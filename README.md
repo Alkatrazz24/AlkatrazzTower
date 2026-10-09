@@ -16,9 +16,27 @@ Spécification complète : [Alkatrazz Tower — Spécification](https://claude.a
   de domaine `Saved/chantiers/*.txt` des projets vus.
 - **Jamais bloquant** : tour éteinte, les agents travaillent et buildent exactement comme avant.
 
+## Cinq templates pour la page
+
+La page existe en cinq présentations, avec les mêmes données et les mêmes actions. Le menu
+**Apparence**, en haut de chaque template, passe de l'une à l'autre ; le choix est retenu par le
+navigateur. **Galerie** (<http://127.0.0.1:4777/galerie.html>) les compare côte à côte en captures.
+
+| Template | L'idée |
+| --- | --- |
+| Essentiel (par défaut) | clair et calme : une phrase sur l'état du moment, puis ce qui t'attend |
+| Tour de contrôle | chaque agent est une bande de vol, la forge est la piste |
+| Le village | la carte du projet en grand, l'équipe en HUD de jeu, la version comme une quête |
+| Level 0 | l'ambiance de Conquer the Backrooms, les agents sur des écrans de surveillance |
+| Console | panneaux de terminal pilotés au clavier (`?` affiche les raccourcis) |
+
+- `?t=console` dans l'adresse ouvre un template précis ; `?demo` joue une matinée de démonstration
+  (`web/demo/state.json`, régénérée par `node scripts/demo-state.js`) sans toucher à la tour.
+- L'ancienne page reste disponible : <http://127.0.0.1:4777/classique.html>.
+
 ## La carte du projet
 
-En haut de la page, le projet est une petite ville. La maison au centre, c'est le jeu, avec son nom,
+Sur la page, le projet est une petite ville. La maison au centre, c'est le jeu, avec son nom,
 sa version d'Unreal et le drapeau de la version en cours. Autour, une extension par domaine :
 Blueprints, Animations, Personnages, Décors, Matériaux, Textures, Sons, Effets, Niveaux, Interface,
 Données, IA, Cinématiques, Code C++ et Tests.
@@ -150,7 +168,11 @@ npm test
 | `lib/results.js` | lecture des verdicts UBT et des tests |
 | `lib/campaign.js` | versions à sortir : features, épreuve finale, victoire |
 | `lib/unreal.js` | version du moteur, liens de la doc, consigne « doc d'abord » |
-| `web/index.html` | la page |
+| `web/index.html`, `web/core.js`, `web/core.css` | la page : flux en direct, données, actions et dialogues communs |
+| `web/templates/` | les cinq templates (`list.js` les déclare et fixe celui par défaut) et leurs captures |
+| `web/galerie.html`, `web/demo/`, `scripts/demo-state.js` | galerie des templates et état de démonstration |
+| `web/fonts/` | polices servies en local (SIL Open Font License) |
+| `web/classique.html` | l'ancienne page, gardée en secours |
 | `scripts/install-hooks.js` | branchement des hooks |
 | `scripts/setup.js`, `setup.cmd`, `uninstall.cmd` | installation et retrait sur un PC |
 | `lib/characters.js`, `web/avatar.js` | personnages : allure, validation, dessin en pixels |

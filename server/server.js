@@ -180,7 +180,10 @@ function foreignOrigin(req) {
   return !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(o);
 }
 
-const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+const MIME = {
+  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml',
+  '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8',
+};
 
 const routes = {
   'GET /api/health': () => ({ ok: true, name: 'alkatrazz-tower', pid: process.pid }),
