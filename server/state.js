@@ -5,6 +5,7 @@
 const { findProject } = require('../lib/detect');
 const campaign = require('../lib/campaign');
 const { docRead } = require('../lib/unreal');
+const chars = require('../lib/characters');
 
 const LEASE_MS = 30_000;      // sans signe de vie, le verrou ou la place en file est rendu
 const MAX_BUILDS = 50;
@@ -44,6 +45,8 @@ class TowerState {
     this.chantiers = {};   // projet -> [{ file, text, mtime }]
     this.campaigns = [];   // voir lib/campaign.js
     this.testGroups = {};  // projet -> { 'CTB.Munitions': nombre de tests vus }
+    this.characters = {};  // id -> { id, name, role, look, createdAt }
+    this.projects = [];    // projets Unreal connectes : [{ name, root, uproject, engine }]
     this.onVictory = null; // (campagne) => void, branche par le serveur
     this.seq = 0;
     this.listeners = new Set();
@@ -75,6 +78,7 @@ class TowerState {
         lastTest: null,
       };
     }
+    if (!a.characterId || !this.characters[a.characterId]) this.assignCharacter(a);
     if (cwd && cwd !== a.cwd) a.cwd = cwd;
     if (a.cwd && !a.project) {
       const p = findProject(a.cwd);
@@ -94,7 +98,12 @@ class TowerState {
     const ts = Number(ev.ts) || t;
     if (a.eventTs && ts < a.eventTs) { this.changed(); return true; }
     a.eventTs = ts;
-    if (ev.session_title) a.title = snip(ev.session_title, 80);
+    if (ev.session_title && a.title !== snip(ev.session_title, 80)) {
+      a.title = snip(ev.session_title, 80);
+      // Un personnage attache a ce role prend la place du personnage donne par defaut.
+      const owner = Object.values(this.characters).find(c => c.role && c.role.toLowerCase() === a.title.toLowerCase());
+      if (owner && owner.id !== a.characterId) a.characterId = owner.id;
+    }
     const sub = ev.agent_id ? String(ev.agent_id) : null;
     if (sub) {
       a.subagents[sub] = { type: ev.agent_type || 'agent', lastSeen: t };
@@ -173,6 +182,8 @@ class TowerState {
     const a = this.agents[sessionId];
     if (!a) return sessionId ? `agent ${String(sessionId).slice(0, 8)}` : 'inconnu';
     const where = a.project ? a.project.name : (a.cwd || '').split(/[\\/]/).filter(Boolean).pop();
+    const c = this.characters[a.characterId];
+    if (c) return where ? `${c.name} (${where})` : c.name;
     return a.title || (where ? `${where} · ${sessionId.slice(0, 8)}` : `agent ${sessionId.slice(0, 8)}`);
   }
 
@@ -338,6 +349,93 @@ class TowerState {
     }
   }
 
+  // ---- personnages ---------------------------------------------------------------------------
+
+  // Donne un personnage a un agent : celui de son role s'il existe, sinon un personnage libre,
+  // sinon un nouveau tire au hasard (toujours le meme pour une meme session).
+  assignCharacter(a) {
+    const list = Object.values(this.characters);
+    const busy = new Set(Object.values(this.agents).filter(x => x !== a && x.status !== 'ended').map(x => x.characterId));
+    let c = a.title && list.find(x => x.role && x.role.toLowerCase() === a.title.toLowerCase());
+    if (!c) c = list.filter(x => !x.role && !busy.has(x.id)).sort((x, y) => x.createdAt - y.createdAt)[0];
+    if (!c) c = this.createCharacter({ seed: a.sessionId });
+    a.characterId = c.id;
+    return c;
+  }
+
+  createCharacter({ name, look, role, seed } = {}) {
+    const id = `P${++this.seq}-${this.now().toString(36)}`;
+    const taken = new Set(Object.values(this.characters).map(c => c.name));
+    const c = {
+      id,
+      name: chars.cleanName(name) || chars.randomName(seed || id, taken),
+      role: chars.cleanName(role),
+      look: chars.cleanLook(look, chars.randomLook(seed || id)),
+      createdAt: this.now(),
+    };
+    this.characters[id] = c;
+    this.changed();
+    return c;
+  }
+
+  // Retrouve un personnage par id, par nom, ou par la session qu'il represente.
+  findCharacter({ id, name, sessionId } = {}) {
+    if (id && this.characters[id]) return this.characters[id];
+    if (sessionId && this.agents[sessionId]) return this.characters[this.agents[sessionId].characterId] || null;
+    if (name) {
+      const n = String(name).trim().toLowerCase();
+      return Object.values(this.characters).find(c => c.name.toLowerCase() === n)
+        || Object.values(this.characters).find(c => c.role && c.role.toLowerCase() === n) || null;
+    }
+    return null;
+  }
+
+  updateCharacter(req) {
+    const c = this.findCharacter(req);
+    if (!c) return null;
+    if (req.newName !== undefined || (req.name !== undefined && req.id)) {
+      const n = chars.cleanName(req.newName !== undefined ? req.newName : req.name);
+      if (n) c.name = n;
+    }
+    if (req.role !== undefined) c.role = chars.cleanName(req.role);
+    if (req.look) c.look = chars.cleanLook(req.look, c.look);
+    if (req.randomize) c.look = chars.randomLook(`${c.id}:${this.now()}`);
+    this.changed();
+    return c;
+  }
+
+  deleteCharacter(id) {
+    if (!this.characters[id]) return false;
+    delete this.characters[id];
+    for (const a of Object.values(this.agents)) if (a.characterId === id) delete a.characterId;
+    this.changed();
+    return true;
+  }
+
+  setAgentCharacter(sessionId, characterId) {
+    const a = this.agents[sessionId];
+    if (!a || !this.characters[characterId]) return false;
+    a.characterId = characterId;
+    this.changed();
+    return true;
+  }
+
+  // ---- projets connectes -----------------------------------------------------------------------
+
+  connectProject(p) {
+    if (!p || !p.uproject) return false;
+    if (!this.projects.some(x => x.uproject.toLowerCase() === p.uproject.toLowerCase())) this.projects.push(p);
+    this.changed();
+    return true;
+  }
+
+  disconnectProject(uproject) {
+    const n = this.projects.length;
+    this.projects = this.projects.filter(x => x.uproject.toLowerCase() !== String(uproject).toLowerCase());
+    if (n !== this.projects.length) this.changed();
+    return n !== this.projects.length;
+  }
+
   // ---- campagnes ----------------------------------------------------------------------------
 
   feedCampaigns(b) {
@@ -396,11 +494,13 @@ class TowerState {
       chantiers: this.chantiers,
       campaigns: this.campaigns.map(campaign.view),
       testGroups: this.testGroups,
+      characters: this.characters,
+      projects: this.projects,
     };
   }
 
   toJSON() {
-    return { agents: this.agents, builds: this.builds, seq: this.seq, campaigns: this.campaigns, testGroups: this.testGroups };
+    return { agents: this.agents, builds: this.builds, seq: this.seq, campaigns: this.campaigns, testGroups: this.testGroups, characters: this.characters, projects: this.projects };
   }
 
   load(saved) {
@@ -410,6 +510,8 @@ class TowerState {
     if (saved.seq) this.seq = saved.seq;
     if (Array.isArray(saved.campaigns)) this.campaigns = saved.campaigns;
     if (saved.testGroups && typeof saved.testGroups === 'object') this.testGroups = saved.testGroups;
+    if (saved.characters && typeof saved.characters === 'object') this.characters = saved.characters;
+    if (Array.isArray(saved.projects)) this.projects = saved.projects;
     for (const a of Object.values(this.agents)) delete a.building; // aucun verrou ne survit a un redemarrage
   }
 }

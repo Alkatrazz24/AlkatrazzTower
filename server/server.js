@@ -7,6 +7,8 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { TowerState } = require('./state');
+const { Worker } = require('worker_threads');
+const projectsLib = require('../lib/projects');
 
 const PORT = Number(process.env.TOWER_PORT) || 4777;
 const HOST = '127.0.0.1';
@@ -93,6 +95,7 @@ function probeEditor() {
 function probeChantiers() {
   const roots = new Map();
   for (const a of Object.values(state.agents)) if (a.project) roots.set(a.project.name, a.project.root);
+  for (const p of state.projects) roots.set(p.name, p.root);
   const next = {};
   for (const [name, root] of roots) {
     const dir = path.join(root, 'Saved', 'chantiers');
@@ -157,6 +160,27 @@ const routes = {
   'POST /api/report': (b) => { state.report(b.entry || {}, b.result || {}); return { ok: true }; },
   'POST /api/agents/forget': (b) => ({ ok: state.forget(b.sessionId) }),
 
+  // Personnages
+  'GET /api/characters': () => Object.values(state.characters).map(c => ({
+    ...c, agents: Object.values(state.agents).filter(a => a.characterId === c.id && a.status !== 'ended').map(a => a.sessionId),
+  })),
+  'POST /api/characters': (b) => ({ ok: true, character: state.createCharacter(b) }),
+  'POST /api/characters/update': (b) => {
+    const c = state.updateCharacter(b);
+    return c ? { ok: true, character: c } : { ok: false, error: 'personnage introuvable (id, name ou sessionId)' };
+  },
+  'POST /api/characters/delete': (b) => ({ ok: state.deleteCharacter(b.id) }),
+  'POST /api/agents/character': (b) => ({ ok: state.setAgentCharacter(b.sessionId, b.characterId) }),
+
+  // Projets Unreal connectes
+  'POST /api/projects/connect': (b) => {
+    const p = projectsLib.resolve(b.uproject || b.path);
+    if (!p) return { ok: false, error: 'aucun .uproject a cet endroit' };
+    state.connectProject(p);
+    return { ok: true, project: p };
+  },
+  'POST /api/projects/disconnect': (b) => ({ ok: state.disconnectProject(b.uproject) }),
+
   'POST /api/campaigns': (b) => {
     try { return { ok: true, campaign: state.createCampaign(b) }; }
     catch (e) { return { ok: false, error: e.message }; }
@@ -198,6 +222,17 @@ const server = http.createServer(async (req, res) => {
     list.push(finish);
     waiters.set(b.ticket, list);
     req.on('close', () => { if (!done) { done = true; clearTimeout(timer); } });
+    return;
+  }
+
+  if (key === 'GET /api/projects/scan') {
+    const w = new Worker(`const { parentPort } = require('worker_threads');
+      parentPort.postMessage(require(${JSON.stringify(path.join(ROOT, 'lib', 'projects.js'))}).scan());`, { eval: true });
+    let done = false;
+    const finish = (code, body) => { if (!done) { done = true; send(res, code, body); } };
+    w.once('message', (m) => finish(200, m));
+    w.once('error', (e) => finish(500, { error: e.message }));
+    setTimeout(() => { w.terminate(); finish(200, { projects: [], complete: false }); }, 10_000).unref();
     return;
   }
 
