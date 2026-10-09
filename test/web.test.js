@@ -13,8 +13,8 @@ const WEB = path.join(__dirname, '..', 'web');
 const list = fs.readFileSync(path.join(WEB, 'templates', 'list.js'), 'utf8');
 const ids = [...list.matchAll(/id: '([a-z0-9-]+)'/g)].map(m => m[1]);
 
-test('cinq templates, chacun avec son JS et son CSS', () => {
-  assert.strictEqual(ids.length, 5);
+test('six templates, chacun avec son JS et son CSS', () => {
+  assert.strictEqual(ids.length, 6);
   const def = list.match(/TOWER_DEFAULT = '([a-z0-9-]+)'/)[1];
   assert.ok(ids.includes(def), `template par defaut inconnu : ${def}`);
   for (const id of ids) {

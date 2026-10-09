@@ -16,15 +16,16 @@ Spécification complète : [Alkatrazz Tower — Spécification](https://claude.a
   de domaine `Saved/chantiers/*.txt` des projets vus.
 - **Jamais bloquant** : tour éteinte, les agents travaillent et buildent exactement comme avant.
 
-## Cinq templates pour la page
+## Six templates pour la page
 
-La page existe en cinq présentations, avec les mêmes données et les mêmes actions. Le menu
+La page existe en six présentations, avec les mêmes données et les mêmes actions. Le menu
 **Apparence**, en haut de chaque template, passe de l'une à l'autre ; le choix est retenu par le
 navigateur. **Galerie** (<http://127.0.0.1:4777/galerie.html>) les compare côte à côte en captures.
 
 | Template | L'idée |
 | --- | --- |
-| Essentiel (par défaut) | clair et calme : une phrase sur l'état du moment, puis ce qui t'attend |
+| L'usine (par défaut) | un jeu de gestion d'usine en fond : agents en machines, builds sur le tapis jusqu'à la forge, version en fusée ; clic, molette, touches 1 à 9, F, V, J |
+| Essentiel | clair et calme : une phrase sur l'état du moment, puis ce qui t'attend |
 | Tour de contrôle | chaque agent est une bande de vol, la forge est la piste |
 | Le village | la carte du projet en grand, l'équipe en HUD de jeu, la version comme une quête |
 | Level 0 | l'ambiance de Conquer the Backrooms, les agents sur des écrans de surveillance |
@@ -169,7 +170,7 @@ npm test
 | `lib/campaign.js` | versions à sortir : features, épreuve finale, victoire |
 | `lib/unreal.js` | version du moteur, liens de la doc, consigne « doc d'abord » |
 | `web/index.html`, `web/core.js`, `web/core.css` | la page : flux en direct, données, actions et dialogues communs |
-| `web/templates/` | les cinq templates (`list.js` les déclare et fixe celui par défaut) et leurs captures |
+| `web/templates/` | les six templates (`list.js` les déclare et fixe celui par défaut) et leurs captures |
 | `web/galerie.html`, `web/demo/`, `scripts/demo-state.js` | galerie des templates et état de démonstration |
 | `web/fonts/` | polices servies en local (SIL Open Font License) |
 | `web/classique.html` | l'ancienne page, gardée en secours |
