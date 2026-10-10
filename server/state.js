@@ -9,6 +9,8 @@ const chars = require('../lib/characters');
 const { roomForPath } = require('../lib/inventory');
 const taches = require('../lib/taches');
 const suivi = require('../lib/suivi');
+const { salleOf } = require('../lib/salles');
+const equipe = require('../lib/equipe');
 
 // Agents des tutos (lib/tuto.js) : jamais sauvegardes, jamais comptes pour une version.
 const isTuto = (id) => String(id || '').startsWith('tuto-');
@@ -32,6 +34,7 @@ function toolSummary(name, input) {
     if (m) return snip('[verrou] ' + Buffer.from(m[1], 'base64').toString('utf8'), 120);
     return snip(input.command, 120);
   }
+  if (input.question) return snip(input.question, 120);
   if (input.file_path) return snip(input.file_path.split(/[\\/]/).slice(-2).join('/'), 120);
   if (input.pattern) return snip(input.pattern, 80);
   if (input.url) return snip(input.url, 120);
@@ -128,7 +131,10 @@ class TowerState {
       case 'UserPromptSubmit':
         a.status = 'working';
         // Les messages injectes par Claude Code (fin de tache de fond...) ne sont pas une demande.
-        if (ev.prompt && !/^\s*<[a-z_-]+[\s>]/i.test(ev.prompt)) a.prompt = snip(ev.prompt, 240);
+        if (ev.prompt && !/^\s*<[a-z_-]+[\s>]/i.test(ev.prompt)) {
+          a.prompt = snip(ev.prompt, 240);
+          if (!a.firstPrompt) a.firstPrompt = a.prompt; // donne son nom a la salle (lib/salles.js)
+        }
         // Une session lancee depuis le panneau Taches (ou avec sa consigne collee) porte sa marque.
         const tid = taches.taskIdIn(ev.prompt);
         if (tid && (!a.task || a.task.id !== tid)) {
@@ -162,6 +168,11 @@ class TowerState {
           if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(ev.tool_name || '') && !suivi.isTowerFile(touched)) a.edits = (a.edits || 0) + 1;
         }
         if (ev.hook_event_name === 'PreToolUse') a.message = '';
+        // L'agent pose une question a l'humain dans sa fenetre : il attend sa reponse.
+        if (ev.tool_name === 'AskUserQuestion' && ev.hook_event_name === 'PreToolUse' && !sub) {
+          a.status = 'waiting';
+          a.message = snip((ev.tool_input && ev.tool_input.question) || 'Une question dans sa session Claude Code.', 200);
+        }
         break;
       case 'PostToolUseFailure':
         a.status = 'working';
@@ -203,6 +214,9 @@ class TowerState {
   setUsage(sessionId, usage) {
     const a = this.agents[sessionId];
     if (!a || !usage) return false;
+    // Le titre que Claude Code donne a la session (ou /rename) est dans son journal.
+    if (usage.title) a.sessionName = snip(usage.title, 80);
+    delete usage.title;
     a.usage = usage;
     this.changed();
     return true;
@@ -610,12 +624,41 @@ class TowerState {
     return n !== this.campaigns.length;
   }
 
+  // Le nom de salle choisi par l'utilisateur ; vide = le nom automatique revient.
+  renameRoom(sessionId, label) {
+    const a = this.agents[sessionId];
+    if (!a) return false;
+    const v = snip(String(label || '').replace(/[\u0000-\u001f]/g, ' '), 60);
+    if (v) a.label = v; else delete a.label;
+    this.changed();
+    return true;
+  }
+
+  // L'equipe de chaque projet connecte : ses agents .claude/agents, ranges par section.
+  teams() {
+    const out = {};
+    for (const p of this.projects) if (p && p.root && p.name) out[p.name] = equipe.teamOf(p.root);
+    return out;
+  }
+
   // ---- instantane ---------------------------------------------------------------------------
 
   snapshot() {
+    const team = this.teams();
+    const section = (a, type) => {
+      const list = a.project ? team[a.project.name] || [] : [];
+      const m = list.find(x => x.name.toLowerCase() === String(type).toLowerCase());
+      return m ? m.section : '';
+    };
+    const view = (a) => ({
+      ...a,
+      salle: salleOf(a),
+      subagents: Object.fromEntries(Object.entries(a.subagents || {}).map(([k, v]) => [k, { ...v, section: section(a, v.type) }])),
+    });
     return {
       now: this.now(),
-      agents: Object.values(this.agents).sort((x, y) => y.lastSeen - x.lastSeen),
+      agents: Object.values(this.agents).sort((x, y) => y.lastSeen - x.lastSeen).map(view),
+      team,
       lock: this.lock,
       queue: this.queue,
       builds: this.builds,

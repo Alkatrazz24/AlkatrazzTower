@@ -24,9 +24,9 @@
         return h('li', null, h('button', { type: 'button', class: `us-mate us-s-${dotFor(a.st)}${sel ? ' sel' : ''}`, 'aria-pressed': String(sel), onclick: () => api.select(sel ? null : { kind: 'agent', id: a.id }, true) },
           h('span', { class: 'us-mface' }, T.avatar(a.look, a.st === 'ended' ? 'ended' : a.st, 52), i < 9 ? h('kbd', null, String(i + 1)) : null),
           h('span', { class: 'us-mtext' },
-            h('b', null, a.name), h('span', { class: `us-state us-s-${dotFor(a.st)}` }, a.stText),
+            h('b', null, a.salle || a.name), h('span', { class: `us-state us-s-${dotFor(a.st)}` }, a.stText),
             h('span', { class: 'us-mdo' }, doing(a, T, M)),
-            h('small', { class: 'us-dim' }, a.subs ? `${T.plural(a.subs, 'sous-agent', 'sous-agents')}, ` : '', a.roomName ? `${a.roomName}, ` : '', 'vu ', T.agoEl(a.lastSeen)))));
+            h('small', { class: 'us-dim' }, a.salle ? `${a.name}, ` : '', a.subs ? `${T.plural(a.subs, 'sous-agent', 'sous-agents')}, ` : '', a.roomName ? `${a.roomName}, ` : '', 'vu ', T.agoEl(a.lastSeen)))));
       };
       return [h('section', { class: 'us-panel us-roster', 'aria-label': 'L\'équipe' },
         h('header', { class: 'us-rhead' }, h('h2', null, 'L\'équipe'), h('span', { class: 'us-dim' }, ms.length ? 'Choisis un agent : la caméra le suit.' : ''), h('span', { class: 'us-grow' }),

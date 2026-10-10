@@ -636,17 +636,19 @@
       const [sx, sy] = S(wg.x + wg.w / 2, CY + 1.5);
       label(c, wg.name, sx, sy, { edge: wg.project ? COL.blue : '#999', size: small ? 11 : 13, max: wg.w * TS * z, color: COL.text, weight: 600, bg: 'rgba(20,20,22,.55)' });
     }
-    // plaque de chaque salle, dehors contre le mur : le personnage, puis sa tache ou le titre de la session
+    // plaque de chaque salle, dehors contre le mur : ce que fait la session (son nom de salle)
     for (const m of W.machines) {
       const a = m.a, [sx, sy] = S(m.x + m.w / 2, m.top ? m.y - .55 : m.y + m.h + .55);
       const sel = G.sel && G.sel.kind === 'agent' && G.sel.id === a.id;
-      const subject = a.task ? a.task.title : a.role;
-      label(c, !small && subject ? `${a.name} · ${subject}` : a.name, sx, sy, { edge: edgeOf(a), color: sel ? COL.select : COL.text, size: small ? 11 : 14, weight: 700, max: Math.max(70, (m.w - .3) * TS * z) });
+      label(c, a.salle || a.name, sx, sy, { edge: edgeOf(a), color: sel ? COL.select : COL.text, size: small ? 11 : 14, weight: 700, max: Math.max(70, (m.w - .3) * TS * z) });
+      // le personnage, sous son bureau
+      if (z >= 1.4 && a.st !== 'ended' && !a.holds && !a.queuePos) { const [nx, ny] = S(m.x + 2.45, m.y + 4.05); label(c, a.name, nx, ny, { size: 10, weight: 600, max: 3.6 * TS * z, bg: 'rgba(20,20,22,.6)' }); }
       const subs = subsOf(a);
       if (a.st === 'ended' || !subs.length) continue;
-      if (z >= 2.2) subs.slice(0, MAX_SUBS).forEach((s, i) => {
+      // chaque sous-agent porte sa section (Animation, Interface...) ; sans section, son type
+      if (z >= 1.6) subs.slice(0, MAX_SUBS).forEach((s, i) => {
         const [px, py] = S(m.x + 4.6 + .78 + Math.floor(i / 2) * 1.7, m.y + (i % 2 ? 6.35 : 1.2));
-        label(c, s.type, px, py, { size: 10, weight: 600, max: 1.7 * TS * z });
+        label(c, s.section || s.type, px, py, { size: 10, weight: 600, max: 1.7 * TS * z, edge: s.section ? COL.blue : null });
       });
       if (subs.length > MAX_SUBS && z >= .9) { const [px, py] = S(m.x + m.w - 1, m.y + 3.75); label(c, `+${subs.length - MAX_SUBS}`, px, py, { size: 11, weight: 700 }); }
     }
@@ -774,7 +776,7 @@
     const M = G.M;
     if (s.kind === 'agent') {
       const a = M.agents.find(x => x.id === s.id);
-      return a && [a.name, [a.holds ? `${a.stText}, à la forge` : a.queuePos ? `${a.stText}, ${a.queuePos}e devant la forge` : a.stText,
+      return a && [a.salle || a.name, [a.name, a.holds ? `${a.stText}, à la forge` : a.queuePos ? `${a.stText}, ${a.queuePos}e devant la forge` : a.stText,
         a.subs ? T.plural(a.subs, 'sous-agent', 'sous-agents') : ''].filter(Boolean).join(', ')];
     }
     if (s.kind === 'forge') return ['Forge', M.lock ? `${M.lock.kindText} de ${M.lock.agent ? M.lock.agent.name : M.lock.label}` : 'Libre'];
@@ -933,10 +935,10 @@
     if (s.kind === 'agent') {
       const a = M.agents.find(x => x.id === s.id);
       if (!a) return null;
-      title = a.name;
+      title = a.salle || a.name;
       body = [
         h('div', { class: 'us-who' }, h('button', { type: 'button', class: 'us-portrait', title: 'Personnaliser', onclick: () => T.act.openChar(a.id) }, T.avatar(a.look, a.st, 88)),
-          h('div', null, h('div', { class: 'us-dim' }, a.role || a.where),
+          h('div', null, h('div', null, h('b', null, a.name), a.project || a.where ? h('span', { class: 'us-dim' }, ` · ${a.project || a.where}`) : null),
             h('div', { class: `us-state us-s-${dotFor(a.st)}` }, a.holds ? `${a.stText}, à la forge` : a.queuePos ? `${a.stText}, ${a.queuePos}e devant la forge` : a.stText),
             h('div', { class: 'us-dim' }, 'vu ', T.agoEl(a.lastSeen)))),
         a.ask ? h('p', { class: 'us-ask' }, h('b', null, 'Sa question : '), a.ask, h('small', null, 'Réponds dans sa session Claude Code.')) : null,
@@ -945,14 +947,14 @@
           a.prompt && ['Demande', a.prompt],
           a.tool && ['Dernière action', [h('b', null, a.tool.name), ' ', a.tool.summary, ', ', T.agoEl(a.tool.at)]],
           a.roomName && ['Domaine touché', a.roomName],
-          a.subs && ['Dans sa salle', `${T.plural(a.subs, 'sous-agent', 'sous-agents')} : ${[...new Set(a.subList.map(x => x.type))].join(', ')}`],
+          a.subs && ['Dans sa salle', `${T.plural(a.subs, 'sous-agent', 'sous-agents')} : ${[...new Set(a.subList.map(x => (x.section ? `${x.type} (${x.section})` : x.type)))].join(', ')}`],
           a.lastBuild && ['Compilation', resultTxt(a.lastBuild)],
           a.lastTest && ['Tests', resultTxt(a.lastTest)],
           a.docs && ['Doc UE', h('span', { class: a.docs.tone === 'warn' ? 'us-t-warn' : a.docs.tone === 'ok' ? 'us-t-ok' : 'us-dim' }, a.docs.text)],
         ]),
         a.task ? [h('div', { class: 'us-sub' }, `Suivi : ${a.task.title}`), suiviBlock(a)] : null,
         usageBlock(a),
-        h('div', { class: 'us-actions' }, btn('Personnage', () => T.act.openChar(a.id)), a.st === 'ended' || a.st === 'silent' ? btn('Retirer', () => { T.act.forget(a.id); select(null); }, 'us-danger') : null),
+        h('div', { class: 'us-actions' }, btn('Renommer la salle', () => renameDialog(a), '', M.demo ? { disabled: true } : {}), btn('Personnage', () => T.act.openChar(a.id)), a.st === 'ended' || a.st === 'silent' ? btn('Retirer', () => { T.act.forget(a.id); select(null); }, 'us-danger') : null),
       ];
     } else if (s.kind === 'patch') {
       const r = M.inv && T.room(M.inv, s.id);
@@ -1274,6 +1276,61 @@
   }
 
   const suiviOpen = new Map();
+  // Renommer une salle : le nom reste tant que tu ne l'effaces pas (vide = nom automatique).
+  let renameDlg = null;
+  function renameDialog(a) {
+    if (!renameDlg) {
+      const f = {};
+      renameDlg = h('dialog', { class: 'us-dialog', 'aria-label': 'Renommer la salle' },
+        h('form', { method: 'dialog', onsubmit: async (e) => {
+          e.preventDefault();
+          const r = await T.api('/api/agents/rename', { sessionId: renameDlg.dataset.id, label: f.name.value });
+          if (r && r.ok) renameDlg.close(); else if (r) f.err.textContent = r.error || 'Renommage impossible.';
+        } },
+          h('h2', null, 'Renommer la salle'),
+          h('label', null, 'Nom de la salle', f.name = h('input', { name: 'salle', maxlength: 60, placeholder: 'ex. Coup de pied dans les portes' })),
+          f.auto = h('p', { class: 'us-dim' }),
+          f.err = h('p', { class: 'us-t-ko' }),
+          h('div', { class: 'us-actions' }, btn('Annuler', () => renameDlg.close()), h('button', { type: 'submit', class: 'us-btn us-go' }, 'Renommer'))));
+      renameDlg.f = f;
+      document.body.append(renameDlg);
+    }
+    const f = renameDlg.f;
+    renameDlg.dataset.id = a.id;
+    f.name.value = a.label || a.salle || '';
+    f.auto.textContent = 'Laisse vide pour revenir au nom automatique : la tâche lancée, le titre de la session dans Claude Code, sinon sa première demande.';
+    f.err.textContent = '';
+    renameDlg.showModal();
+    f.name.select();
+  }
+
+  // L'equipe du projet : ses agents (.claude/agents), par section, et ou ils travaillent en ce moment.
+  function equipePanel(M) {
+    const close = btn('Fermer', () => sideToggle('equipe', false), 'us-x', { 'aria-label': 'Fermer l\'équipe', title: 'Échap' });
+    const teams = Object.entries(M.S.team || {});
+    const at = (proj, name) => M.agents.filter(a => a.st !== 'ended' && a.project === proj && a.subList.some(s => s.type.toLowerCase() === name.toLowerCase()));
+    const open = (a) => { sideToggle('equipe', false); select({ kind: 'agent', id: a.id }, true); };
+    const projBlock = ([proj, team]) => {
+      const sections = [...new Set(team.map(x => x.section))];
+      return [teams.length > 1 ? h('div', { class: 'us-sub' }, proj) : null,
+        team.length ? h('ul', { class: 'us-tuto-list' }, sections.map(sec => h('li', { class: 'us-task' },
+          h('div', { class: 'us-tuto-head' }, h('b', null, sec), h('span', { class: 'us-dim' }, T.plural(team.filter(x => x.section === sec).length, 'agent', 'agents'))),
+          team.filter(x => x.section === sec).map(x => {
+            const busy = at(proj, x.name);
+            return h('div', { class: 'us-mem' },
+              h('span', { class: `us-dot us-d-${busy.length ? 'blue' : 'none'}` }), h('code', null, x.name),
+              busy.length ? h('span', null, ' au travail dans ', busy.map((a, i) => [i ? ', ' : '', h('button', { type: 'button', class: 'us-link', onclick: () => open(a) }, `« ${a.salle} »`)])) : null,
+              x.description ? h('small', { class: 'us-dim' }, x.description) : null);
+          }))))
+          : h('p', { class: 'us-dim' }, `Aucun agent dans ${proj}\\.claude\\agents. Chaque fichier .md de ce dossier est un agent que tes sessions peuvent appeler ; ajoute « section: Animation » dans son en-tête pour le ranger.`)];
+    };
+    return h('section', { class: 'us-panel us-entity us-taches', 'aria-label': 'Équipe' },
+      h('div', { class: 'us-ehead' }, h('h2', null, 'Équipe'), close),
+      h('div', { class: 'us-ebody' },
+        h('p', null, 'Les agents spécialisés de ton projet, rangés par section. Quand une session en appelle un, il s\'assoit à la table de sa salle avec le nom de sa section.'),
+        teams.length ? teams.map(projBlock) : h('p', { class: 'us-dim' }, 'Connecte d\'abord ton projet Unreal (bouton du projet en haut).')));
+  }
+
   let taskDlg = null;
   function taskDialog(task) {
     if (!taskDlg) {
@@ -1387,7 +1444,7 @@
     const M = G.M; if (!M) return;
     G.hud.chips.replaceChildren(...chips(M).filter(Boolean));
     G.hud.res.replaceChildren(...(MODE.counters ? counters(M) : []));
-    const ent = G.side === 'tuto' ? tutoPanel(M) : G.side === 'taches' ? tachesPanel(M) : entityPanel(M);
+    const ent = G.side === 'tuto' ? tutoPanel(M) : G.side === 'taches' ? tachesPanel(M) : G.side === 'equipe' ? equipePanel(M) : entityPanel(M);
     // La fiche est refaite a chaque nouvelle donnee : on garde l'endroit ou on l'avait fait defiler.
     const was = G.hud.entity.firstChild, oldBody = was && was.querySelector('.us-ebody');
     G.hud.entity.replaceChildren(...(ent ? [ent] : []));
@@ -1402,6 +1459,7 @@
     G.hud.empty.hidden = !none;
     G.hud.tutoBtn.classList.toggle('on', G.side === 'tuto');
     G.hud.taskBtn.classList.toggle('on', G.side === 'taches');
+    G.hud.teamBtn.classList.toggle('on', G.side === 'equipe');
     G.hud.tutoBtn.classList.toggle('run', !!(M.S.tuto && M.S.tuto.running));
   }
 
@@ -1416,7 +1474,7 @@
     };
     G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
-      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
+      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
       G.hud.mode,
       G.hud.entity);
     root.replaceChildren(G.app);

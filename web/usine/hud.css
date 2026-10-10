@@ -304,3 +304,10 @@ h1, h2, h3, p { margin: 0; }
 .us-dialog input, .us-dialog textarea { background: var(--us-inset); color: var(--us-ink); border: 1px solid var(--us-edge); border-radius: var(--us-radius); padding: 6px 8px; font: inherit; }
 .us-dialog textarea { resize: vertical; min-height: 140px; font-size: 13px; line-height: 1.45; }
 .us-dialog .us-t-ko:empty { display: none; }
+
+/* Équipe : un agent par ligne, sa description dessous */
+.us-mem { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 6px; }
+.us-mem code { font-size: 13px; }
+.us-mem small { flex-basis: 100%; padding-left: 15px; }
+.us-link { background: none; border: 0; padding: 0; color: var(--us-blue); font: inherit; cursor: pointer; text-decoration: underline; }
+.us-link:focus-visible { outline: 2px solid var(--us-blue); outline-offset: 2px; }
