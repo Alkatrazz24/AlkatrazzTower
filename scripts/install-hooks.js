@@ -15,16 +15,21 @@ const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
 const HOOK = path.join(ROOT, 'hooks', 'tower-hook.js').replace(/\\/g, '/');
-const TAG = 'tower-hook.js';
+const ASK = path.join(ROOT, 'hooks', 'tower-ask.js').replace(/\\/g, '/');
+const TAGS = ['tower-hook.js', 'tower-ask.js'];
 
 function towerHooks() {
   const cmd = `node "${HOOK}"`;
   const sync = { type: 'command', command: cmd, timeout: 5 };
   const bg = { type: 'command', command: cmd, timeout: 5, async: true };
+  // Questions et permissions : le hook attend la reponse d'ali dans la tour (10 min au plus), puis
+  // laisse la question s'afficher dans la fenetre. Le delai du hook couvre cette attente.
+  const ask = { type: 'command', command: `node "${ASK}"`, timeout: 660 };
   return {
     // Synchrones : PreToolUse sur Bash/PowerShell (il emballe les builds) et SessionStart (il donne
     // a l'agent la consigne de lire la doc Unreal). Tout le reste part en arriere-plan.
-    PreToolUse: [{ matcher: 'Bash|PowerShell', hooks: [sync] }],
+    PreToolUse: [{ matcher: 'Bash|PowerShell', hooks: [sync] }, { matcher: 'AskUserQuestion', hooks: [ask] }],
+    PermissionRequest: [{ matcher: '*', hooks: [ask] }],
     PostToolUse: [{ matcher: '*', hooks: [bg] }],
     PostToolUseFailure: [{ matcher: '*', hooks: [bg] }],
     SessionStart: [{ hooks: [sync] }],
@@ -37,7 +42,7 @@ function towerHooks() {
   };
 }
 
-function isTower(h) { return h && typeof h.command === 'string' && h.command.includes(TAG); }
+function isTower(h) { return h && typeof h.command === 'string' && TAGS.some(t => h.command.includes(t)); }
 
 // Retire nos hooks sans toucher aux autres ; supprime les groupes et evenements devenus vides.
 function strip(hooks) {

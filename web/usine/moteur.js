@@ -989,7 +989,7 @@
           h('div', null, h('div', null, h('b', null, a.name), a.project || a.where ? h('span', { class: 'us-dim' }, ` · ${a.project || a.where}`) : null),
             h('div', { class: `us-state us-s-${dotFor(a.st)}` }, a.holds ? `${a.stText}, à la forge` : a.queuePos ? `${a.stText}, ${a.queuePos}e devant la forge` : a.stText),
             h('div', { class: 'us-dim' }, 'vu ', T.agoEl(a.lastSeen)))),
-        a.ask ? h('p', { class: 'us-ask' }, h('b', null, 'Sa question : '), a.ask, h('small', null, 'Réponds dans sa session Claude Code.')) : null,
+        a.pending ? askBox(a) : a.ask ? h('p', { class: 'us-ask' }, h('b', null, 'Sa question : '), a.ask, h('small', null, 'Réponds dans sa session Claude Code.')) : null,
         a.said ? h('p', { class: 'us-said' }, h('b', null, 'Il a fini : '), a.said) : null,
         rowsOf([
           a.prompt && ['Demande', a.prompt],
@@ -1231,6 +1231,50 @@
         h('b', null, t.name.replace(/^mcp__[^_]+__/, '')), h('span', { class: 'us-dim' }, t.calls ? T.plural(t.calls, 'appel', 'appels') : 'texte'),
         h('i', { style: `width:${Math.max(3, Math.round(100 * (t.out + t.ctx) / max))}%` }), h('span', null, tok(t.out + t.ctx)))))
     );
+  }
+
+  // ---------- question posee a ali, a laquelle il repond dans la tour (hooks/tower-ask.js) ----------
+  const picks = new Map(); // id de question -> { question: [labels choisis] }
+  async function sendAsk(a, body) {
+    if ((G.M || {}).demo) { T.toast('Mode démo : la réponse part sur la vraie tour.'); return; }
+    const r = await T.api('/api/ask/answer', { id: a.pending.id, ...body });
+    if (r && r.ok === false && r.error) T.toast(r.error);
+    else picks.delete(a.pending.id);
+  }
+  function askBox(a) {
+    const k = a.pending;
+    const later = btn('Dans sa fenêtre', () => sendAsk(a, { decision: 'window' }), '', { title: 'La question s\'affiche dans sa fenêtre Claude Code, tu y réponds là-bas' });
+    if (k.kind === 'permission') {
+      return h('div', { class: 'us-ask us-askq' },
+        h('b', null, 'Il demande l\'autorisation'), h('p', null, h('code', null, k.tool), ' ', k.summary),
+        h('div', { class: 'us-actions' }, btn('Autoriser', () => sendAsk(a, { decision: 'allow' }), 'us-go'), btn('Refuser', () => sendAsk(a, { decision: 'deny' })), later));
+    }
+    const sel = picks.get(k.id) || {};
+    const one = k.questions.length === 1 && !k.questions[0].multiSelect;
+    const choose = (q, label) => {
+      if (one) return sendAsk(a, { answers: { [q.question]: label } });
+      const cur = sel[q.question] || [];
+      sel[q.question] = q.multiSelect ? (cur.includes(label) ? cur.filter(x => x !== label) : [...cur, label]) : [label];
+      picks.set(k.id, sel);
+      renderHud();
+    };
+    const other = (q) => {
+      const input = h('input', { type: 'text', name: `autre-${k.id}-${k.questions.indexOf(q)}`, placeholder: 'Autre réponse…', 'aria-label': `Autre réponse à « ${q.question} »`, maxlength: 300,
+        onkeydown: (e) => { if (e.key === 'Enter' && input.value.trim()) { e.preventDefault(); choose(q, input.value.trim()); } } });
+      return h('div', { class: 'us-askother' }, input, btn(one ? 'Envoyer' : 'Choisir', () => { if (input.value.trim()) choose(q, input.value.trim()); }));
+    };
+    const ready = k.questions.every(q => (sel[q.question] || []).length);
+    return h('div', { class: 'us-ask us-askq' },
+      k.questions.map(q => h('fieldset', { class: 'us-askset' },
+        h('legend', null, q.header ? h('span', { class: 'us-dim' }, `${q.header} · `) : null, q.question, q.multiSelect ? h('small', null, ' (plusieurs choix possibles)') : null),
+        h('div', { class: 'us-askopts' }, q.options.map((o) => {
+          const on = (sel[q.question] || []).includes(o.label);
+          return h('button', { type: 'button', class: 'us-askopt' + (on ? ' on' : ''), 'aria-pressed': one ? null : String(on), title: o.description || o.label, onclick: () => choose(q, o.label) },
+            h('b', null, o.label), o.description ? h('small', null, o.description) : null);
+        })),
+        other(q))),
+      h('div', { class: 'us-actions' }, one ? null : btn('Envoyer mes réponses', () => sendAsk(a, { answers: Object.fromEntries(k.questions.map(q => [q.question, sel[q.question] || []])) }), 'us-go', ready ? {} : { disabled: true }), later),
+      h('small', { class: 'us-dim' }, 'La session reprend dès que tu réponds. Sans réponse ici, la question passe dans sa fenêtre au bout de 10 minutes.'));
   }
 
   // ---------- suivi d'une tache lancee (lib/suivi.js) : ou il en est, ce qu'il a fait, ce qu'il reste ----------

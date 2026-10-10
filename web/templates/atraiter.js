@@ -19,7 +19,11 @@
       const key = `${x.kind}:${x.agent ? x.agent.id : x.feature ? x.feature.id : ''}:${x.text}`;
       if (seen[key]) continue;
       const it = { key, tone: x.tone, title: x.title, text: x.text, sel: x.agent ? { kind: 'agent', id: x.agent.id } : x.feature ? { kind: 'silo' } : null };
-      if (x.kind === 'waiting') { it.go = ['Voir sa question', () => api.select(it.sel, true)]; it.hint = 'Tu réponds dans sa session Claude Code.'; }
+      if (x.kind === 'waiting') {
+        const p = x.agent && x.agent.pending;
+        it.go = [p ? 'Répondre' : 'Voir sa question', () => api.select(it.sel, true)];
+        it.hint = p ? 'Tu réponds ici, dans la tour : la session reprend toute seule.' : 'Tu réponds dans sa session Claude Code.';
+      }
       else if (x.kind === 'manual') { it.go = ['Je l\'ai testée', () => T.act.manual(x.feature.id, true)]; it.alt = ['Voir la version', () => api.select({ kind: 'silo' }, true)]; }
       else if (x.kind === 'idle') { it.go = ['Voir', () => api.select(it.sel, true)]; it.alt = ['Vu', () => { hide(key); api.rerender(); }]; }
       else if (x.kind === 'dirty') { it.alt = ['Vu', () => { hide(key); api.rerender(); }]; }
