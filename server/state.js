@@ -14,6 +14,7 @@ const equipe = require('../lib/equipe');
 const sujets = require('../lib/sujets');
 const features = require('../lib/features');
 const regles = require('../lib/regles');
+const docsLib = require('../lib/docs');
 
 // Agents des tutos (lib/tuto.js) : jamais sauvegardes, jamais comptes pour une version.
 const isTuto = (id) => String(id || '').startsWith('tuto-');
@@ -71,6 +72,8 @@ class TowerState {
     this.misePlace = {};   // id de sujet -> sa derniere mise en place (lib/miseenplace.js)
     this.miseView = null;  // () => la file des mises en place, branche par le serveur
     this.regles = {};      // id de sujet ou de feature -> { action: 'oui' | 'demander' | 'non' } (lib/regles.js)
+    this.docs = {};        // projet -> sa documentation : etageres, rayon Unreal (lib/docs.js), relue par le serveur
+    this.docRules = { unreal: 'question' }; // quand les sessions lisent la doc Unreal : 'question' ou 'modif'
     this.answers = {};     // id de question -> reponse donnee dans la tour, en attente du hook
     this.redTests = {};    // projet -> chemins des tests rouges a leur dernier passage
     this.onVictory = null; // (campagne) => void, branche par le serveur
@@ -122,6 +125,8 @@ class TowerState {
     // Les hooks asynchrones peuvent arriver dans le desordre : un PostToolUse en retard ne doit pas
     // faire repasser au travail un agent qui a deja fini. On ignore tout evenement plus vieux que
     // le dernier pris en compte.
+    // La doc obligatoire suit chaque ecriture, meme arrivee en retard : la fin du tour en depend.
+    docsLib.track(a, ev, t);
     const ts = Number(ev.ts) || t;
     if (a.eventTs && ts < a.eventTs) { this.changed(); return true; }
     a.eventTs = ts;
@@ -311,6 +316,35 @@ class TowerState {
     return true;
   }
   ruleArgs(id) { return id && (sujets.isSujet(id) || features.isFeature(id)) ? regles.args(this.regles[id]) : []; }
+
+  // La documentation d'un projet (lib/docs.js).
+  setDocs(project, v) {
+    if (!project || !v) return false;
+    if (JSON.stringify(this.docs[project]) === JSON.stringify(v)) return false;
+    this.docs[project] = v;
+    this.changed();
+    return true;
+  }
+  setDocRule(unreal) {
+    if (!docsLib.UNREAL_MODES.includes(unreal)) return false;
+    this.docRules = { ...this.docRules, unreal };
+    this.changed();
+    return true;
+  }
+  // Ce que la tour repond au hook apres un evenement : la regle doc Unreal (SessionStart, SubagentStart)
+  // et, a la fin d'un tour ou d'un agent, s'il doit d'abord ecrire sa doc (lib/docs.js).
+  hookReply(ev) {
+    const out = { unreal: this.docRules.unreal };
+    const a = ev && this.agents[String(ev.session_id || '')];
+    if (!a || !/^(Stop|SubagentStop)$/.test(ev.hook_event_name || '')) return out;
+    const r = docsLib.check(a, ev, this.now());
+    if (r && r.block) {
+      out.block = r.block;
+      if (!ev.agent_id) { a.status = 'working'; a.message = 'écrit sa doc avant de finir'; }
+      this.changed();
+    }
+    return out;
+  }
 
   setSujets(project, v) {
     if (!project || !v) return false;
@@ -869,6 +903,8 @@ class TowerState {
       skills: this.skills,
       roster: this.roster,
       sujets: this.sujets,
+      docs: this.docs,
+      docRules: this.docRules,
       features: this.features.map(f => ({ ...f, notes: this.featureNotes[f.id] || null })),
       regles: Object.fromEntries([...Object.values(this.sujets).flatMap(v => (v && v.topics) || []), ...this.features].map(x => [x.id, regles.rulesOf(this.regles[x.id])])),
       actions: regles.ACTIONS,
@@ -881,7 +917,7 @@ class TowerState {
     return {
       agents: keep(this.agents, a => !isTuto(a.sessionId)), builds: this.builds.filter(b => !isTuto(b.sessionId)), seq: this.seq,
       campaigns: this.campaigns, testGroups: this.testGroups, characters: keep(this.characters, c => !c.tuto), projects: this.projects,
-      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles, misePlace: this.misePlace,
+      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles, misePlace: this.misePlace, docRules: this.docRules,
     };
   }
 
@@ -900,6 +936,7 @@ class TowerState {
     if (saved.redTests && typeof saved.redTests === 'object') this.redTests = saved.redTests;
     if (Array.isArray(saved.features)) this.features = saved.features;
     if (saved.regles && typeof saved.regles === 'object') this.regles = saved.regles;
+    if (saved.docRules && docsLib.UNREAL_MODES.includes(saved.docRules.unreal)) this.docRules = { unreal: saved.docRules.unreal };
     // une mise en place en cours ou en file est partie avec l'ancienne tour
     if (saved.misePlace && typeof saved.misePlace === 'object') {
       this.misePlace = saved.misePlace;

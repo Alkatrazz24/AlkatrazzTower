@@ -182,6 +182,30 @@ parti travailler dans une salle. Il lit, sans rien modifier :
 - ses **appels** des 30 derniers jours (outil Agent dans les journaux de Claude Code) : sessions, projets,
   tokens rendus par chaque appel, ses derniers travaux, et les salles où il travaille en ce moment.
 
+## La documentation
+
+À droite de la tour, le bâtiment **Documentation** (bouton **Doc**, ou touche D) regroupe la doc
+« humaine » de chaque projet connecté, à lire par toi comme par les sessions :
+
+- des **rayons** : `CLAUDE.md` et `docs/` (bible, décisions, idées, chantiers…), les skills du projet, les
+  pages de la tour (tableau, sujets, features) et les rapports ; un dossier `*.docs` ou `*.wiki` à la racine
+  a aussi son rayon ;
+- une **recherche** (sans accents ni majuscules) et une **liseuse** : la page s'ouvre dans la tour, ses
+  liens vers d'autres pages aussi ;
+- **Écrit par les sessions** : les dernières pages que les sessions et leurs agents ont écrites.
+
+**La doc est obligatoire.** Une session ou un agent qui modifie le jeu (`Source/`, `Content/`, `Config/`,
+`Plugins/`, `tools/`, le `.uproject`) doit écrire dans `docs/` avant de finir : le hook `Stop` (ou
+`SubagentStop` pour un agent) le fait continuer une fois pour l'écrire. S'il s'arrête quand même, sa page
+passe en **Doc en retard** et la salle clignote. Les consignes des sujets et des features le rappellent,
+et chaque agent le reçoit à son démarrage. Pour l'écrire aussi dans le `CLAUDE.md` et les agents d'un
+projet : `node scripts/doc-ctb.js "<projet>"` montre les changements, `--apply` les écrit (copie d'avant
+dans `Saved/Tour/sauvegardes/`).
+
+En face, la salle **Unreal Engine** : la doc officielle de la version du projet rangée par thème
+(création, Blueprints, C++, réseau, UI, animation, rendu…), aussi écrite dans `Saved/Tour/doc-unreal.md`
+pour les sessions.
+
 ## La carte du projet
 
 Sur la page, le projet est une petite ville. La maison au centre, c'est le jeu, avec son nom,
@@ -236,12 +260,13 @@ devient « Cassée » et rebloque l'épreuve finale.
 L'API accepte aussi un texte, une feature par ligne : `Lampe torche | tests:CTB.Lampe, build`,
 `Menu de raid | manuel`, `Boss | paquet, tests:CTB`.
 
-## Doc Unreal d'abord
+## Doc Unreal : quand on se pose la question
 
-Au début de chaque session sur un projet Unreal, le hook donne à l'agent la règle « vérifier dans la
-doc officielle avant d'agir », les liens de la doc épinglés sur la version du projet et le chemin des
-en-têtes du moteur installé. La fiche de l'agent montre ensuite s'il a consulté la doc ou les
-en-têtes, et prévient s'il modifie des fichiers sans l'avoir fait. `TOWER_NO_DOCS=1` coupe ce rappel.
+Au début de chaque session sur un projet Unreal, le hook donne à l'agent les liens de la doc épinglés
+sur la version du projet, le rayon par thème et le chemin des en-têtes du moteur installé. Par défaut,
+la doc se consulte **quand la session se demande comment créer ou utiliser quelque chose**, plus à chaque
+modification. Dans la salle Unreal Engine, « Avant chaque modification » remet l'ancienne règle. La fiche
+de l'agent montre s'il a consulté la doc ou les en-têtes. `TOWER_NO_DOCS=1` coupe ce rappel.
 
 Ce qui aide vraiment les agents sur UE5, avec les sources : [docs/agents-unreal.md](docs/agents-unreal.md).
 
@@ -331,13 +356,15 @@ chaque changement de `web/` au lieu de deviner.
 | `lib/detect.js` | reconnaissance des commandes Unreal et des projets |
 | `lib/results.js` | lecture des verdicts UBT et des tests |
 | `lib/campaign.js` | versions à sortir : features, épreuve finale, victoire |
-| `lib/unreal.js` | version du moteur, liens de la doc, consigne « doc d'abord » |
+| `lib/unreal.js` | version du moteur, liens de la doc Unreal, consigne de début de session |
+| `lib/docs.js` | bâtiment Documentation : rayons, recherche, doc obligatoire, rayon Unreal par thème |
 | `web/index.html`, `web/core.js`, `web/core.css` | la page : flux en direct, données, actions et dialogues communs |
 | `web/templates/` | les cinq façons de se servir de la page (`list.js` les déclare et fixe celui par défaut) et leurs captures ; `web/usine/` : le moteur du jeu, son HUD et les ambiances (`mondes/`) |
 | `web/galerie.html`, `web/demo/`, `scripts/demo-state.js` | galerie des templates et état de démonstration |
 | `web/fonts/` | polices servies en local (SIL Open Font License) |
 | `web/classique.html` | l'ancienne page, gardée en secours |
 | `scripts/install-hooks.js` | branchement des hooks |
+| `scripts/doc-ctb.js` | écrit la règle « doc obligatoire » dans le `CLAUDE.md` et les agents d'un projet |
 | `.mcp.json`, `scripts/chrome-devtools-mcp.js` | Chrome DevTools MCP : Claude voit la page qu'il construit |
 | `scripts/setup.js`, `setup.cmd`, `uninstall.cmd` | installation et retrait sur un PC |
 | `lib/characters.js`, `web/avatar.js` | personnages : allure, validation, dessin en pixels |

@@ -98,3 +98,32 @@ test('une autre page web ne peut pas repondre a la place d\'ali', async () => {
   assert.deepStrictEqual([ok.status, JSON.parse(ok.body).ok], [200, true]);
   assert.strictEqual((await req('GET', '/api/health', { Host: `localhost:${PORT}` })).status, 200);
 });
+
+// Le hook de la tour, comme Claude Code l'appelle : l'evenement en JSON sur stdin.
+function hook(ev) {
+  return new Promise((resolve) => {
+    const p = spawn(process.execPath, [path.join(ROOT, 'hooks', 'tower-hook.js')], { env });
+    let out = '';
+    p.stdout.on('data', c => { out += c; });
+    p.on('close', (code) => resolve({ code, out }));
+    p.stdin.end(JSON.stringify(ev));
+  });
+}
+
+test('doc obligatoire : le hook fait continuer la session qui a modifie le jeu sans doc', { timeout: 30_000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tower-docjeu-'));
+  fs.writeFileSync(path.join(root, 'Jeu.uproject'), JSON.stringify({ EngineAssociation: '5.8' }));
+  const base = { session_id: 'doc-int', cwd: root };
+  const start = await hook({ ...base, hook_event_name: 'SubagentStart', agent_id: 'a1', agent_type: 'ctb-son' });
+  assert.match(JSON.parse(start.out).hookSpecificOutput.additionalContext, /doc obligatoire/);
+  await hook({ ...base, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(root, 'Source', 'Jeu', 'A.cpp') } });
+  const stop = await hook({ ...base, hook_event_name: 'Stop' });
+  assert.strictEqual(stop.code, 0);
+  const out = JSON.parse(stop.out);
+  assert.strictEqual(out.decision, 'block');
+  assert.match(out.reason, /Source\/Jeu\/A\.cpp/);
+  // deuxieme fin (stop_hook_active) : la tour la laisse passer
+  assert.strictEqual((await hook({ ...base, hook_event_name: 'Stop', stop_hook_active: true })).out, '');
+  await hook({ ...base, hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(root, 'docs', 'A.md') } });
+  assert.strictEqual((await hook({ ...base, hook_event_name: 'Stop' })).out, '');
+});

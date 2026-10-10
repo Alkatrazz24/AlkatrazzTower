@@ -13,7 +13,9 @@
 //   - a cote, la bibliotheque : un livre par skill installe, rouge s'il est casse, poussiereux s'il ne
 //     sert jamais ;
 //   - en face, le quartier des agents : un casier par agent que Claude Code peut appeler, range par
-//     section ; ouvert quand l'agent est parti travailler dans une salle.
+//     section ; ouvert quand l'agent est parti travailler dans une salle ;
+//   - a cote, le batiment de la documentation : la doc du jeu sur les etageres (les sessions et leurs
+//     agents y ecrivent la leur, c'est obligatoire), et en face le rayon Unreal Engine.
 // Par-dessus, un HUD : compteurs en haut, version a gauche, mini-carte et alertes a droite, barre
 // rapide en bas, et la fiche de ce qu'on a selectionne (clic sur le jeu, ou touches 1 a 9).
 
@@ -165,6 +167,11 @@
     const aroom = { x: fx + 10, y: BOT, w: 8, h: ROOM_H };
     let right = fx + 18;
     hallOf(B, 0, right, 0, '');
+    // La documentation, un batiment a part a droite : la doc du jeu en haut, le rayon Unreal en bas.
+    const dx0 = right + GAP;
+    const droom = { x: dx0 + 1, y: TOP, w: 10, h: ROOM_H }, uroom = { x: dx0 + 1, y: BOT, w: 10, h: ROOM_H };
+    hallOf(B, dx0, dx0 + 11, 0, 'doc');
+    right = dx0 + 11;
     let h = BOT + ROOM_H + 2;
     // Les batiments core et feature, des qu'un projet a des sujets (ou qu'une session core ou feature existe).
     const core = shown.filter(a => kindOf(a) === 'core'), feat = shown.filter(a => kindOf(a) === 'feature');
@@ -179,7 +186,7 @@
       h = oy + BOT + ROOM_H + 2;
     }
     const you = { x: 1.2, y: CY + .1 };
-    return { ...B, forge, froom, okChest, koChest, silo, vroom, lroom, aroom, hall: B.halls[0], you, w: right + 2, h, x0: 3 };
+    return { ...B, forge, froom, okChest, koChest, silo, vroom, lroom, aroom, droom, uroom, hall: B.halls[0], you, w: right + 2, h, x0: 3 };
   }
 
   // ---------- terrain : calcule une fois par taille de batiment, hors de la boucle ----------
@@ -646,6 +653,81 @@
     light(x + w / 2, by + 6, 64, '#ffe3a8', .8);
   }
 
+  // ---------- la documentation ----------
+  // La doc du projet affichee (le premier projet connecte qui en a une, ou celui choisi dans la fiche).
+  const docUi = { project: null, open: new Set(['ensemble']), q: '', results: null, busy: false };
+  function docsOf(M) {
+    const all = (M.S && M.S.docs) || {};
+    return all[docUi.project] || all[(M.projects[0] || {}).name] || Object.values(all)[0] || null;
+  }
+  // Les sessions qui ont modifie le jeu sans ecrire leur doc : arretees par la tour (owed), ou en cours.
+  function docDebts(M) {
+    return M.agents.filter(a => a.raw && a.raw.docTrack && a.st !== 'ended' && (a.raw.docTrack.owed || a.raw.docTrack.pending.length))
+      .map(a => ({ a, owed: a.raw.docTrack.owed, files: a.raw.docTrack.owed ? a.raw.docTrack.owed.files : a.raw.docTrack.pending }));
+  }
+  const SHELF_COL = { ensemble: '#c9a227', 'docs-bible': '#8a3d6b', 'docs-decisions': '#2f6db5', 'docs-idees': '#3d8b4f', 'docs-memoire': '#7a4fa3', skills: '#1f8a8a', tour: '#b5652f', rapports: '#5a6fb5' };
+  const shelfCol = (id) => SHELF_COL[id] || BOOK[hash(id) % BOOK.length];
+  // Des etageres le long d'un mur, remplies de livres : un livre par page (un par paquet quand il y en a trop).
+  function bookshelf(c, x, y, w, rows, items) {
+    const rowH = 15, per = Math.floor(w / 5), cap = per * rows;
+    box(c, x - 2, y - 2, w + 4, rows * rowH + 5, COL.deskDark, COL.desk, shade(COL.deskDark, -.3));
+    const total = items.reduce((n, it) => n + it.n, 0), k = total > cap ? cap / total : 1;
+    let i = 0;
+    for (const it of items) {
+      const n = Math.max(it.n ? 1 : 0, Math.round(it.n * k));
+      for (let j = 0; j < n && i < cap; j++, i++) {
+        const r = Math.floor(i / per), q = i % per, bh = 9 + (hash(it.id + j) % 4), bx = x + 1 + q * 5, by = y + r * rowH + (rowH - 2 - bh);
+        if (SC) { c.strokeStyle = it.col; c.lineWidth = 1; c.strokeRect(bx + .5, by + .5, 3, bh - 1); continue; }
+        c.fillStyle = it.col; c.fillRect(bx, by, 4, bh);
+        c.fillStyle = shade(it.col, .25); c.fillRect(bx, by, 1, bh);
+        if (it.fresh && j === 0) { c.fillStyle = '#f1ede4'; c.fillRect(bx + 1, by + 1, 2, 2); } // page ecrite aujourd'hui
+      }
+    }
+    if (!SC) for (let r = 1; r <= rows; r++) { c.fillStyle = COL.deskLight; c.fillRect(x - 1, y + r * rowH - 2, w + 2, 2); }
+  }
+  function drawDocRoom(c, W, t) {
+    const R = W.droom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS, M = G.M;
+    const D = docsOf(M), debts = docDebts(M);
+    planks(c, x, y, w, hh, shade(COL.floor, -.08));
+    if (!SC) { c.fillStyle = shade(COL.carpet, -.1); c.fillRect(x + 1.4 * TS, y + 3.7 * TS, w - 2.8 * TS, 2.3 * TS); c.fillStyle = COL.carpetEdge; c.fillRect(x + 1.4 * TS, y + 3.7 * TS, w - 2.8 * TS, 1); c.fillRect(x + 1.4 * TS, y + 6 * TS - 1, w - 2.8 * TS, 1); }
+    walls(c, R, { side: 'bottom', x: R.x + .6, w: 1.6, open: true });
+    const day = Date.now() - 86400_000;
+    bookshelf(c, x + WALL + 3, y + WALL + 2, w - 2 * WALL - 6, 3, D ? D.shelves.map(s => ({ id: s.id, n: s.files.length, col: shelfCol(s.id), fresh: s.files.some(f => f.mtime > day) })) : []);
+    // deux tables de lecture ; sur celle de droite, une page ouverte (rouge : une doc est en retard)
+    const ty = y + 4.2 * TS;
+    for (const tx of [x + 2.2 * TS, x + w - 4.4 * TS]) box(c, tx, ty, 2.2 * TS, 1 * TS, COL.table, shade(COL.table, .2), shade(COL.table, -.35));
+    if (!SC) {
+      const px = x + w - 4.4 * TS + 8, late = debts.some(d => d.owed);
+      c.fillStyle = late && (reduced || Math.floor(t * 2) % 2 === 0) ? COL.ko : '#efe9da'; c.fillRect(px, ty + 4, 9, 8); c.fillRect(px + 10, ty + 4, 9, 8);
+      c.fillStyle = '#b9b09c'; for (let k = 0; k < 3; k++) { c.fillRect(px + 2, ty + 6 + k * 2, 5, 1); c.fillRect(px + 12, ty + 6 + k * 2, 5, 1); }
+      c.fillStyle = '#2b2722'; c.fillRect(px + 22, ty + 2, 2, 10); // la plume
+    }
+    if (debts.some(d => d.owed) && (reduced || Math.floor(t * 2) % 2 === 0)) light(x + w - 3.3 * TS, ty + 6, 40, COL.ko, .7);
+    light(x + w / 2, ty + 6, 72, '#ffe3a8', .9);
+  }
+  // Le rayon Unreal Engine : la doc officielle par theme, un livre bleu acier par page, et un poste en ligne.
+  function drawUnrealRoom(c, W, t) {
+    const R = W.uroom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS, M = G.M;
+    const D = docsOf(M);
+    planks(c, x, y, w, hh, shade(COL.floor, -.16));
+    walls(c, R, { side: 'top', x: R.x + .6, w: 1.6, open: true });
+    const UE = ['#3b5b8a', '#4b6f9e', '#2f4a70', '#5a7fae', '#36557f'];
+    const items = D ? D.ue.map((s, i) => ({ id: s.theme, n: s.pages.length, col: UE[i % UE.length] })).concat((D.tiers || []).map(s => ({ id: s.id, n: s.files.length, col: '#8a7a5a' }))) : [];
+    const sx = x + WALL + 3, sw = w - 2 * WALL - 6, top = y + hh - WALL - 3 - 2 * 15;
+    bookshelf(c, sx, top, sw, 2, items);
+    // le poste qui ouvre la doc en ligne : un ecran bleu sur un bureau
+    const dx = x + 3 * TS, dy = y + 1.6 * TS;
+    box(c, dx, dy, 3.6 * TS, 1 * TS, COL.desk, COL.deskLight, COL.deskDark);
+    const ex = dx + 1.2 * TS, ey = dy - .8 * TS;
+    if (!SC) { c.fillStyle = '#26282b'; c.fillRect(ex - 1, ey - 1, 1.2 * TS + 2, .8 * TS + 2); }
+    G.emit.push(() => {
+      c.fillStyle = COL.blue; c.fillRect(ex, ey, 1.2 * TS, .8 * TS);
+      c.fillStyle = COL.screen; c.fillRect(ex + 3, ey + 3, 7, 1); c.fillRect(ex + 3, ey + 6, 11, 1); c.fillRect(ex + 3, ey + 9, 5, 1);
+    });
+    light(ex + .6 * TS, ey + 6, 40, COL.blue, .7);
+    light(x + w / 2, y + hh / 2, 60, '#ffe3a8', .6);
+  }
+
   // Coins de selection facon jeu : quatre equerres qui respirent autour de l'element choisi.
   function brackets(c, b, t) {
     const pad = 4 + (reduced ? 0 : Math.sin(t * 5) * 1.5), x = b.x * TS - pad, y = b.y * TS - pad, w = b.w * TS + pad * 2, hh = b.h * TS + pad * 2, k = 8;
@@ -668,6 +750,8 @@
     if (sel.kind === 'silo') return W.vroom;
     if (sel.kind === 'skills') return W.lroom;
     if (sel.kind === 'roster') return W.aroom;
+    if (sel.kind === 'docs') return W.droom;
+    if (sel.kind === 'unreal') return W.uroom;
     if (sel.kind === 'ok') return W.okChest;
     if (sel.kind === 'ko') return W.koChest;
     return null;
@@ -700,6 +784,8 @@
     drawVersionRoom(c, W, t);
     drawLibrary(c, W, t);
     drawAgentsRoom(c, W, t);
+    drawDocRoom(c, W, t);
+    drawUnrealRoom(c, W, t);
     drawLamps(c, W);
     // dans le couloir : la file devant la forge, et toi a l'entree
     const people = queueSpots(W).map(p => ({ look: p.q.agent ? p.q.agent.look : {}, st: 'ready', x: p.x * TS, y: p.y * TS }));
@@ -789,8 +875,9 @@
     // les batiments core et feature : leur enseigne au-dessus de l'entree, et la salle libre des features
     for (const b of W.blds) {
       if (!b.name) continue;
-      const [bx, by] = S(b.x + b.w / 2, b.y - 1.1);
-      label(c, b.name === 'core' ? 'Core · la mémoire du jeu' : 'Features · les nouvelles idées', bx, by, { edge: b.name === 'core' ? COL.ok : COL.warn, size: small ? 12 : 14, weight: 700 });
+      const [bx, by] = S(b.x + b.w / 2, b.y - (b.name === 'doc' ? 1.5 : 1.1));
+      const sign = { core: ['Core · la mémoire du jeu', COL.ok], feature: ['Features · les nouvelles idées', COL.warn], doc: ['Documentation', COL.blue] }[b.name];
+      if (sign) label(c, sign[0], bx, by, { edge: sign[1], size: small ? 12 : 14, weight: 700 });
     }
     if (z >= .6) for (const f of W.fillers) if (f.free === 'feature' && f.top) { const [fx, fy] = S(f.x + f.w / 2, f.y + f.h / 2); label(c, '+ Nouvelle feature', fx, fy, { edge: COL.warn, weight: 700, size: small ? 11 : 13 }); }
     // plaque de chaque salle, dehors contre le mur : ce que fait la session (son nom de salle)
@@ -829,6 +916,11 @@
     const busyN = AG ? AG.agents.filter(ag => rosterBusy(G.M, ag).length).length : 0;
     const [ax, ay] = S(W.aroom.x + W.aroom.w / 2, W.aroom.y + W.aroom.h + .55);
     label(c, !AG ? 'Agents : lecture…' : busyN ? `Agents : ${busyN} actif${busyN > 1 ? 's' : ''}` : `Agents : ${AG.total}`, ax, ay, { edge: !AG ? '#777' : AG.ko ? COL.ko : busyN ? COL.blue : AG.warn ? COL.warn : COL.ok, weight: 700, max: Math.max(90, W.aroom.w * TS * z) });
+    const DC = docsOf(G.M), late = docDebts(G.M).filter(d => d.owed).length;
+    const [dlx, dly] = S(W.droom.x + W.droom.w / 2, W.droom.y - .55);
+    label(c, !DC ? 'Doc : lecture…' : late ? `Doc : ${late} en retard` : `Doc : ${T.plural(DC.total, 'page', 'pages')}`, dlx, dly, { edge: !DC ? '#777' : late ? COL.ko : COL.ok, weight: 700, max: Math.max(90, W.droom.w * TS * z) });
+    const [ulx, uly] = S(W.uroom.x + W.uroom.w / 2, W.uroom.y + W.uroom.h + .55);
+    label(c, `Unreal Engine ${DC && DC.version ? DC.version : '5'}`, ulx, uly, { edge: COL.blue, weight: 700, max: Math.max(90, W.uroom.w * TS * z) });
     const [yx, yy] = S(W.you.x + .9, CY + 2.75);
     if (z >= 1.1) label(c, 'Toi', yx, yy, { size: 10, edge: COL.select });
   }
@@ -916,6 +1008,8 @@
     c.fillStyle = COL.steelLight; c.fillRect(W.vroom.x * TS + 6, W.vroom.y * TS + 6, W.vroom.w * TS - 12, W.vroom.h * TS - 12);
     c.fillStyle = G.M.S.skills && G.M.S.skills.ko ? COL.ko : COL.desk; c.fillRect(W.lroom.x * TS + 6, W.lroom.y * TS + 6, W.lroom.w * TS - 12, W.lroom.h * TS - 12);
     c.fillStyle = G.M.S.roster && G.M.S.roster.ko ? COL.ko : COL.steel; c.fillRect(W.aroom.x * TS + 6, W.aroom.y * TS + 6, W.aroom.w * TS - 12, W.aroom.h * TS - 12);
+    c.fillStyle = docDebts(G.M).some(d => d.owed) ? COL.ko : COL.desk; c.fillRect(W.droom.x * TS + 6, W.droom.y * TS + 6, W.droom.w * TS - 12, W.droom.h * TS - 12);
+    c.fillStyle = COL.blue; c.fillRect(W.uroom.x * TS + 6, W.uroom.y * TS + 6, W.uroom.w * TS - 12, W.uroom.h * TS - 12);
     const { vw, vh } = view();
     c.strokeStyle = '#fff'; c.lineWidth = 2 / s; c.strokeRect(Math.max(G.cam.x, 0), Math.max(G.cam.y, 0), Math.min(vw, W.w * TS - Math.max(G.cam.x, 0)), Math.min(vh, W.h * TS - Math.max(G.cam.y, 0)));
   }
@@ -937,6 +1031,8 @@
     if (inR(W.vroom)) return { kind: 'silo' };
     if (inR(W.lroom)) return { kind: 'skills' };
     if (inR(W.aroom)) return { kind: 'roster' };
+    if (inR(W.droom)) return { kind: 'docs' };
+    if (inR(W.uroom)) return { kind: 'unreal' };
     if (W.fillers.some(f => f.free === 'feature' && inR(f))) return { kind: 'newfeature' };
     return null;
   }
@@ -955,6 +1051,8 @@
     if (s.kind === 'ko') return ['Coffre des échecs', T.plural(M.builds.filter(b => !b.ok).length, 'build', 'builds')];
     if (s.kind === 'skills') { const L = M.S.skills; return ['Bibliothèque des skills', L ? `${T.plural(L.total, 'skill', 'skills')}, ${L.ko} à réparer, ${L.unused} jamais utilisés` : 'Lecture en cours']; }
     if (s.kind === 'roster') { const A = M.S.roster; if (!A) return ['Quartier des agents', 'Lecture en cours']; const n = A.agents.filter(ag => rosterBusy(M, ag).length).length; return ['Quartier des agents', `${T.plural(A.total, 'agent', 'agents')}, ${n} au travail, ${A.ko + A.warn} à revoir`]; }
+    if (s.kind === 'docs') { const D = docsOf(M), late = docDebts(M).filter(d => d.owed).length; return ['Documentation', D ? `${T.plural(D.total, 'page', 'pages')} à lire${late ? `, ${late} doc${late > 1 ? 's' : ''} en retard` : ''}` : 'Lecture en cours']; }
+    if (s.kind === 'unreal') return ['Rayon Unreal Engine', 'La doc officielle par thème, que les sessions ouvrent quand elles ont une question'];
     if (s.kind === 'newfeature') return ['Nouvelle feature', 'Une session pour mettre en place une nouvelle idée : clique pour la créer'];
     if (s.kind === 'silo') return ['Salle de lancement', M.campaign ? `${M.campaign.name} : ${M.campaign.proven} sur ${M.campaign.total}` : 'Aucune version'];
     return null;
@@ -1047,6 +1145,7 @@
       else if (e.key === 'v' || e.key === 'V') select({ kind: 'silo' }, true);
       else if (e.key === 'b' || e.key === 'B') select({ kind: 'skills' }, true);
       else if (e.key === 'a' || e.key === 'A') select({ kind: 'roster' }, true);
+      else if (e.key === 'd' || e.key === 'D') select({ kind: 'docs' }, true);
       else if (e.key === 's' || e.key === 'S') sideToggle('sujets');
       else if (e.key === 'n' || e.key === 'N') { e.preventDefault(); if (!G.M.demo) featureDialog(G.M); }
       else if (e.key === 'j' || e.key === 'J') select({ kind: G.M.builds.some(b => !b.ok) ? 'ko' : 'ok' }, true);
@@ -1188,6 +1287,12 @@
     } else if (s.kind === 'roster') {
       title = 'Quartier des agents';
       body = rosterBody(M);
+    } else if (s.kind === 'docs') {
+      title = 'Documentation';
+      body = docsBody(M);
+    } else if (s.kind === 'unreal') {
+      title = 'Rayon Unreal Engine';
+      body = unrealBody(M);
     } else if (s.kind === 'silo') {
       const c = M.campaign;
       title = c ? `Lancement : ${c.name}` : 'Salle de lancement';
@@ -1746,6 +1851,156 @@
     ];
   }
 
+  // ---------- la documentation : la fiche ----------
+  // Toute la doc « humaine » du projet, par etageres (lib/docs.js) ; une recherche ; les sessions qui doivent
+  // encore leur doc ; ce qu'elles ont ecrit. Un clic ouvre la page, lue dans la tour.
+  async function docSearch(M) {
+    const D = docsOf(M); if (!D || !docUi.q.trim()) { docUi.results = null; renderHud(); return; }
+    docUi.busy = true; renderHud();
+    try { docUi.results = await fetch(`/api/docs/search?project=${encodeURIComponent(D.project)}&q=${encodeURIComponent(docUi.q)}`).then(r => r.json()); }
+    catch { docUi.results = { ok: false, hits: [] }; }
+    docUi.busy = false; renderHud();
+  }
+  function docsBody(M) {
+    const D = docsOf(M);
+    if (!D) return [h('p', { class: 'us-dim' }, M.projects.length ? 'La tour lit la doc du projet…' : 'Connecte ton projet Unreal : sa doc (le dossier docs/, les carnets, les rapports) s\'affiche ici.')];
+    const read = (rel, title) => docView(D.project, rel, title, M);
+    const all = Object.keys((M.S && M.S.docs) || {});
+    const debts = docDebts(M), late = debts.filter(d => d.owed), busy = debts.filter(d => !d.owed);
+    const written = M.agents.filter(a => a.raw && a.raw.docTrack).flatMap(a => a.raw.docTrack.written.map(w => ({ ...w, a }))).sort((x, y) => y.at - x.at).slice(0, 8);
+    const input = h('input', { type: 'search', class: 'us-docq', name: 'docq', 'data-keep': 'docq', value: docUi.q, placeholder: 'Chercher (ex. porte, réplication)', 'aria-label': 'Chercher dans la doc',
+      oninput: (e) => { docUi.q = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); docSearch(M); } } });
+    const R = docUi.results;
+    return [
+      all.length > 1 ? h('div', { class: 'us-filters', role: 'group', 'aria-label': 'Projet' }, all.map(n => h('button', { type: 'button', class: 'us-chip2' + (n === D.project ? ' on' : ''), 'aria-pressed': String(n === D.project), onclick: () => { docUi.project = n; docUi.results = null; renderHud(); } }, n))) : null,
+      h('p', null, `${T.plural(D.total, 'page', 'pages')} à lire sur ${D.project}. Les sessions et leurs agents y écrivent leur doc : c'est obligatoire, la tour les fait continuer tant qu'elles ont modifié le jeu sans rien écrire dans docs/.`),
+      h('div', { class: 'us-row' }, input, btn(docUi.busy ? 'Recherche…' : 'Chercher', () => docSearch(M), 'us-go', { disabled: docUi.busy || !!M.demo })),
+      R ? [h('div', { class: 'us-sub' }, R.hits.length ? `${R.total > R.hits.length ? `${R.hits.length} premiers sur ${R.total}` : T.plural(R.hits.length, 'page trouvée', 'pages trouvées')} pour « ${R.q} »` : `Rien pour « ${R.q || docUi.q} »`),
+        h('ul', { class: 'us-tuto-list' }, R.hits.map(x => h('li', { class: 'us-task us-doc' }, h('button', { type: 'button', class: 'us-runbtn', onclick: () => read(x.rel, x.title) }, h('b', null, x.title), h('span', { class: 'us-dim us-scope' }, x.shelf)),
+          x.line ? h('small', { class: 'us-dim' }, x.line) : null))),
+        h('div', { class: 'us-actions' }, btn('Effacer la recherche', () => { docUi.results = null; docUi.q = ''; renderHud(); }))] : null,
+      late.length ? [h('div', { class: 'us-sub' }, 'Doc en retard'),
+        h('ul', { class: 'us-tuto-list' }, late.map(d => h('li', { class: 'us-task us-doc us-sk-ko' },
+          h('button', { type: 'button', class: 'us-runbtn', onclick: () => select({ kind: 'agent', id: d.a.id }, true) }, h('span', { class: 'us-dot us-d-ko' }), h('b', null, d.a.salle), h('span', { class: 'us-skst us-t-ko' }, d.owed.asked ? 'la tour lui fait écrire' : 'a fini sans l\'écrire')),
+          h('small', { class: 'us-dim' }, `${T.plural(d.files.length, 'fichier modifié', 'fichiers modifiés')} : ${d.files.slice(-3).map(f => f.split('/').pop()).join(', ')}`))))] : null,
+      busy.length ? h('p', { class: 'us-dim' }, `En cours : ${busy.map(d => d.a.salle).join(', ')} ${busy.length > 1 ? 'ont' : 'a'} modifié le jeu ; la doc vient avant la fin de leur tour.`) : null,
+      written.length ? [h('div', { class: 'us-sub' }, 'Écrit par les sessions'),
+        h('ul', { class: 'us-list' }, written.map(w => h('li', null, h('button', { type: 'button', class: 'us-link', onclick: () => read(w.rel, w.rel.split('/').pop()) }, w.rel), ' ', h('span', { class: 'us-dim' }, `par ${w.by || w.a.name} (« ${w.a.salle} »), `, T.agoEl(w.at)))))] : null,
+      D.shelves.map(sh => {
+        const open = docUi.open.has(sh.id);
+        return h('div', { class: 'us-shelf' },
+          h('button', { type: 'button', class: 'us-runbtn us-shelfhead', 'aria-expanded': String(open), onclick: () => { if (open) docUi.open.delete(sh.id); else docUi.open.add(sh.id); renderHud(); } },
+            h('i', { class: 'us-shelfcol', style: `background:${shelfCol(sh.id)}`, 'aria-hidden': 'true' }), h('b', null, sh.title), h('span', { class: 'us-skst us-dim' }, String(sh.files.length))),
+          open ? [sh.why ? h('small', { class: 'us-dim' }, sh.why) : null,
+            h('ul', { class: 'us-doclist' }, sh.files.slice(0, 200).map(f => h('li', null, h('button', { type: 'button', class: 'us-link', onclick: () => read(f.rel, f.title) }, f.title), ' ', h('span', { class: 'us-dim' }, T.agoEl(f.mtime))))),
+            sh.files.length > 200 ? h('small', { class: 'us-dim' }, `… et ${sh.files.length - 200} autres : cherche-les.`) : null] : null);
+      }),
+      h('div', { class: 'us-actions' }, btn('Rayon Unreal Engine', () => select({ kind: 'unreal' }, true)), btn('Relire', async () => { const r = await T.api('/api/docs/refresh'); if (r) T.toast('Doc relue.'); }),
+        h('span', { class: 'us-dim' }, D.hasReadme ? 'docs/README.md dit où écrire quoi.' : '')),
+    ];
+  }
+  function unrealBody(M) {
+    const D = docsOf(M), mode = (M.S && M.S.docRules && M.S.docRules.unreal) || 'question';
+    const set = async (m) => { if (m === mode) return; const r = await T.api('/api/docs/unreal', { mode: m }); if (r && r.ok) T.toast(m === 'modif' ? 'Les sessions liront la doc Unreal avant chaque modification.' : 'Les sessions liront la doc Unreal quand elles ont une question.'); };
+    const MODES = [['question', 'Quand elles ont une question', 'Sur la façon de créer ou d\'utiliser quelque chose. Moins de tokens.'], ['modif', 'Avant chaque modification', 'L\'ancienne règle : vérifier chaque API avant d\'écrire.']];
+    return [
+      h('p', null, `La doc officielle d'Unreal Engine ${D && D.version ? D.version : '5'}, rangée par thème. Les sessions et leurs agents l'ouvrent eux-mêmes ; elle est aussi écrite pour eux dans `, h('code', null, D ? D.ueFile : 'Saved/Tour/doc-unreal.md'), '.'),
+      h('div', { class: 'us-sub' }, 'Quand les sessions la lisent'),
+      h('div', { class: 'us-filters', role: 'group', 'aria-label': 'Quand les sessions lisent la doc Unreal' }, MODES.map(([id, text, hint]) =>
+        h('button', { type: 'button', class: 'us-chip2' + (mode === id ? ' on' : ''), 'aria-pressed': String(mode === id), title: hint, disabled: !!M.demo, onclick: () => set(id) }, text))),
+      h('small', { class: 'us-dim' }, MODES.find(x => x[0] === mode)[2], ' Vaut pour les sessions qui démarrent ensuite.'),
+      D ? D.ue.map(th => [h('div', { class: 'us-sub' }, th.theme), h('ul', { class: 'us-doclist' }, th.pages.map(pg => h('li', null, h('a', { href: pg.url, target: '_blank', rel: 'noopener', class: 'us-link' }, pg.title))))]) : h('p', { class: 'us-dim' }, 'Lecture en cours…'),
+      D && D.tiers.length ? [h('div', { class: 'us-sub' }, 'Docs des packs, copiées dans le projet'), D.tiers.map(sh => [h('small', { class: 'us-dim' }, sh.why),
+        h('ul', { class: 'us-doclist' }, sh.files.slice(0, 60).map(f => h('li', null, h('button', { type: 'button', class: 'us-link', onclick: () => docView(D.project, f.rel, f.title, M) }, f.title))))])] : null,
+      D && D.engineDir ? [h('div', { class: 'us-sub' }, 'Signatures exactes'), h('p', { class: 'us-dim' }, 'Les en-têtes du moteur installé font foi : ', h('code', { class: 'us-path' }, `${D.engineDir}\\Engine\\Source`), '.')] : null,
+      h('div', { class: 'us-actions' }, btn('Doc du jeu', () => select({ kind: 'docs' }, true))),
+    ];
+  }
+
+  // Lecteur de doc : le Markdown mis en page (titres, listes, tableaux, code, liens). Un lien vers une autre
+  // page de la doc l'ouvre ici ; un lien web s'ouvre dans un onglet.
+  function mdInline(text, base, open) {
+    const out = [];
+    const re = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\[[^\]]+\]\([^)\s]+\))|(\*[^*\s][^*]*\*)/g;
+    let last = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) out.push(text.slice(last, m.index));
+      const tk = m[0];
+      if (m[1]) out.push(h('code', null, tk.slice(1, -1)));
+      else if (m[2]) out.push(h('b', null, tk.slice(2, -2)));
+      else if (m[4]) out.push(h('i', null, tk.slice(1, -1)));
+      else {
+        const lm = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(tk), label = lm[1], href = lm[2];
+        if (/^https?:\/\//i.test(href)) out.push(h('a', { href, target: '_blank', rel: 'noopener', class: 'us-link' }, label));
+        else if (/\.(md|markdown|txt)(#.*)?$/i.test(href) && open) {
+          const parts = (base ? base.split('/').slice(0, -1) : []);
+          for (const seg of href.split('#')[0].split('/')) { if (seg === '..') parts.pop(); else if (seg && seg !== '.') parts.push(seg); }
+          out.push(h('button', { type: 'button', class: 'us-link', onclick: () => open(parts.join('/'), label) }, label));
+        } else out.push(label);
+      }
+      last = m.index + tk.length;
+    }
+    if (last < text.length) out.push(text.slice(last));
+    return out;
+  }
+  function mdNodes(text, base, open) {
+    const lines = String(text || '').replace(/\r/g, '').replace(/^---\n[\s\S]*?\n---\n/, '').split('\n');
+    const out = [];
+    let para = [], list = null;
+    const flush = () => { if (para.length) { out.push(h('p', null, mdInline(para.join(' '), base, open))); para = []; } if (list) { out.push(list); list = null; } };
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (/^\s*```/.test(l)) { flush(); const code = []; for (i++; i < lines.length && !/^\s*```/.test(lines[i]); i++) code.push(lines[i]); out.push(h('pre', { class: 'us-code' }, code.join('\n'))); continue; }
+      const hd = /^(#{1,6})\s+(.*?)\s*#*$/.exec(l);
+      if (hd) { flush(); out.push(h(`h${Math.min(6, hd[1].length + 2)}`, null, mdInline(hd[2], base, open))); continue; }
+      if (/^\s*\|/.test(l)) {
+        flush(); const rows = [];
+        for (; i < lines.length && /^\s*\|/.test(lines[i]); i++) if (!/^\s*\|[\s:|-]+\|?\s*$/.test(lines[i])) rows.push(lines[i].trim().replace(/^\||\|$/g, '').split('|').map(x => x.trim()));
+        i--;
+        out.push(h('div', { class: 'us-mdtable' }, h('table', null, rows.map((r, k) => h('tr', null, r.map(cell => h(k ? 'td' : 'th', null, mdInline(cell, base, open))))))));
+        continue;
+      }
+      const li = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/.exec(l);
+      if (li) { if (para.length) { out.push(h('p', null, mdInline(para.join(' '), base, open))); para = []; } if (!list) list = h(/^\s*\d/.test(l) ? 'ol' : 'ul', null); list.append(h('li', null, mdInline(li[1], base, open))); continue; }
+      if (/^\s*>/.test(l)) { flush(); out.push(h('blockquote', null, mdInline(l.replace(/^\s*>\s?/, ''), base, open))); continue; }
+      if (/^\s*([-*_])\s*\1\s*\1[\s\1]*$/.test(l)) { flush(); out.push(h('hr')); continue; }
+      if (!l.trim()) { flush(); continue; }
+      if (list && /^\s{2,}\S/.test(l)) { list.lastChild.append(' ', ...mdInline(l.trim(), base, open)); continue; }
+      if (list) flush();
+      para.push(l.trim());
+    }
+    flush();
+    return out;
+  }
+  let docDlg = null;
+  async function docView(project, rel, title, M) {
+    if (!docDlg) {
+      const f = {};
+      docDlg = h('dialog', { class: 'us-dialog us-wide us-docdlg', 'aria-label': 'Page de la doc' },
+        h('form', { method: 'dialog' }, f.h2 = h('h2', null), f.path = h('p', { class: 'us-dim us-path' }), f.body = h('div', { class: 'us-md' }),
+          h('div', { class: 'us-actions' }, h('button', { type: 'submit', class: 'us-btn' }, 'Fermer'))));
+      docDlg.f = f;
+      document.body.append(docDlg);
+    }
+    const f = docDlg.f;
+    const open = (r2, t2) => docView(project, r2, t2, M);
+    f.h2.textContent = title || rel;
+    f.path.textContent = rel;
+    f.body.replaceChildren(h('p', { class: 'us-dim' }, 'Lecture…'));
+    if (!docDlg.open) docDlg.showModal();
+    if (M && M.demo) { f.body.replaceChildren(h('p', { class: 'us-dim' }, 'Démo : les pages se lisent sur ta tour.')); return; }
+    try {
+      const r = await fetch(`/api/docs/file?project=${encodeURIComponent(project)}&path=${encodeURIComponent(rel)}`).then(res => res.json());
+      if (!r || !r.ok) { f.body.replaceChildren(h('p', { class: 'us-t-ko' }, (r && r.error) || 'Lecture impossible.')); return; }
+      // le premier titre de la page devient le titre du lecteur
+      let text = r.text;
+      const first = /^\s*(?:---\n[\s\S]*?\n---\n\s*)?#\s+(.+?)\s*#*\s*$/m.exec(text);
+      if (first && !/\.txt$/i.test(rel) && text.slice(0, first.index).replace(/^---\n[\s\S]*?\n---\n/, '').trim() === '') { f.h2.textContent = first[1].replace(/[*_`]/g, ''); text = text.replace(/^(\s*(?:---\n[\s\S]*?\n---\n\s*)?)#\s+.+$/m, '$1'); }
+      f.body.replaceChildren(...(/\.txt$/i.test(rel) ? [h('pre', { class: 'us-code us-pre' }, text)] : mdNodes(text, r.path, open)), h('p', { class: 'us-dim' }, 'Modifiée ', T.agoEl(r.mtime), '.'));
+      f.body.scrollTop = 0; docDlg.scrollTop = 0;
+    } catch { f.body.replaceChildren(h('p', { class: 'us-t-ko' }, 'Tour injoignable.')); }
+  }
+
   let fileDlg = null, fileDlg_h2, fileDlg_path, fileDlg_pre;
   function skillFile(x) { return fileView(x.call, x.file, '/api/skills/file?id=' + encodeURIComponent(x.id)); }
   async function fileView(title, file, url) {
@@ -2262,7 +2517,11 @@
     const ent = G.side === 'tuto' ? tutoPanel(M) : G.side === 'taches' ? tachesPanel(M) : G.side === 'sujets' ? sujetsPanel(M) : G.side === 'features' ? featuresPanel(M) : G.side === 'equipe' ? equipePanel(M) : entityPanel(M);
     // La fiche est refaite a chaque nouvelle donnee : on garde l'endroit ou on l'avait fait defiler.
     const was = G.hud.entity.firstChild, oldBody = was && was.querySelector('.us-ebody');
+    // un champ de la fiche en cours de saisie (la recherche de la doc) garde le focus et le curseur
+    const typing = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.keep && G.hud.entity.contains(document.activeElement) ? document.activeElement : null;
+    const caret = typing ? [typing.dataset.keep, typing.selectionStart, typing.selectionEnd] : null;
     G.hud.entity.replaceChildren(...(ent ? [ent] : []));
+    if (caret) { const el = G.hud.entity.querySelector(`[data-keep="${caret[0]}"]`); if (el) { el.focus(); try { el.setSelectionRange(caret[1], caret[2]); } catch { /* champ sans curseur */ } } }
     if (oldBody && ent && ent.getAttribute('aria-label') === was.getAttribute('aria-label')) ent.querySelector('.us-ebody').scrollTop = oldBody.scrollTop;
     G.hud.entity.hidden = !ent;
     G.app.classList.toggle('us-has-sel', !!ent);
@@ -2284,6 +2543,8 @@
     G.hud.skillBtn.classList.toggle('alert', !!(M.S.skills && M.S.skills.ko));
     G.hud.agentBtn.classList.toggle('on', !G.side && !!G.sel && G.sel.kind === 'roster');
     G.hud.agentBtn.classList.toggle('alert', !!(M.S.roster && M.S.roster.ko));
+    G.hud.docBtn.classList.toggle('on', !G.side && !!G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal'));
+    G.hud.docBtn.classList.toggle('alert', docDebts(M).some(d => d.owed));
     G.hud.tutoBtn.classList.toggle('run', !!(M.S.tuto && M.S.tuto.running));
   }
 
@@ -2298,7 +2559,7 @@
     };
     G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
-      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions core : une par sujet du jeu (animation, interface, menus, armes...), sa mémoire, ses règles, et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Core'), G.hud.featBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions feature : une par nouvelle idée, à créer ici (touche N pour une nouvelle)', onclick: () => sideToggle('features') }, 'Features'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
+      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions core : une par sujet du jeu (animation, interface, menus, armes...), sa mémoire, ses règles, et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Core'), G.hud.featBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions feature : une par nouvelle idée, à créer ici (touche N pour une nouvelle)', onclick: () => sideToggle('features') }, 'Features'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.docBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La documentation du jeu : à lire, à chercher ; les sessions y écrivent la leur. Et la doc Unreal Engine par thème (touche D)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal') ? null : { kind: 'docs' }, true); } }, 'Doc'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
       G.hud.mode,
       G.hud.entity);
     root.replaceChildren(G.app);

@@ -26,8 +26,9 @@ function towerHooks() {
   // laisse la question s'afficher dans la fenetre. Le delai du hook couvre cette attente.
   const ask = { type: 'command', command: `node "${ASK}"`, timeout: 660 };
   return {
-    // Synchrones : PreToolUse sur Bash/PowerShell (il emballe les builds) et SessionStart (il donne
-    // a l'agent la consigne de lire la doc Unreal). Tout le reste part en arriere-plan.
+    // Synchrones : PreToolUse sur Bash/PowerShell (il emballe les builds), SessionStart et SubagentStart
+    // (les regles de la doc : obligatoire, et quand lire la doc Unreal), Stop et SubagentStop (la tour fait
+    // continuer qui a modifie le jeu sans ecrire sa doc). Tout le reste part en arriere-plan.
     PreToolUse: [{ matcher: 'Bash|PowerShell', hooks: [sync] }, { matcher: 'AskUserQuestion', hooks: [ask] }],
     PermissionRequest: [{ matcher: '*', hooks: [ask] }],
     PostToolUse: [{ matcher: '*', hooks: [bg] }],
@@ -35,9 +36,9 @@ function towerHooks() {
     SessionStart: [{ hooks: [sync] }],
     UserPromptSubmit: [{ hooks: [bg] }],
     Notification: [{ hooks: [bg] }],
-    Stop: [{ hooks: [bg] }],
-    SubagentStart: [{ hooks: [bg] }],
-    SubagentStop: [{ hooks: [bg] }],
+    Stop: [{ hooks: [sync] }],
+    SubagentStart: [{ hooks: [sync] }],
+    SubagentStop: [{ hooks: [sync] }],
     SessionEnd: [{ hooks: [bg] }],
   };
 }
