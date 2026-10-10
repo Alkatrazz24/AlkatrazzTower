@@ -282,6 +282,10 @@ h1, h2, h3, p { margin: 0; }
 .us-dot.us-d-warn { background: var(--us-warn); }
 .us-dot.us-d-ok { background: var(--us-ok); }
 .us-dot.us-d-blue { background: var(--us-blue); }
+.us-dot.us-d-ko { background: var(--us-ko); }
+.us-s-ko { color: var(--us-ko); }
+.us-verif { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 13px; }
+.us-verif li { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
 .us-ctx { display: grid; grid-template-columns: minmax(60px, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; }
 .us-ctx .us-bar { height: 9px; }
 .us-ctx .us-bar > i.warn { background: var(--us-warn); }

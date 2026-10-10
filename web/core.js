@@ -205,8 +205,9 @@
     for (const x of live.filter(x => x.st === 'idle')) {
       // Une tache lancee depuis la tour : son suivi dit ce qui reste et s'il y a des questions.
       const sv = x.task && x.task.suivi;
-      const sum = sv ? [sv.afaire.length && plural(sv.afaire.length, 'chose à faire', 'choses à faire'), sv.questions.length && plural(sv.questions.length, 'question pour toi', 'questions pour toi'), sv.rapport && 'un rapport à lire'].filter(Boolean).join(', ') : '';
-      attention.push({ tone: 'ok', kind: 'idle', agent: x, title: x.task ? `${x.name} a fini « ${x.task.title} »` : `${x.name} a fini`,
+      const vf = x.task && x.task.verif ? { fail: 'la vérification de la tour a échoué', waiting: 'les tests attendent que tu fermes l\'éditeur', running: 'la tour vérifie', ok: 'vérifiée par la tour' }[x.task.verif.state] : '';
+      const sum = sv ? [vf, sv.afaire.length && plural(sv.afaire.length, 'chose à faire', 'choses à faire'), sv.questions.length && plural(sv.questions.length, 'question pour toi', 'questions pour toi'), sv.rapport && 'un rapport à lire'].filter(Boolean).join(', ') : '';
+      attention.push({ tone: vf && x.task.verif.state === 'fail' ? 'ko' : 'ok', kind: 'idle', agent: x, title: x.task ? `${x.name} a fini « ${x.task.title} »` : `${x.name} a fini`,
         text: x.task ? `${sum ? sum[0].toUpperCase() + sum.slice(1) : 'Son suivi est prêt'} : clique « Voir » pour le suivi.` : x.said || 'Sa tâche est terminée, il attend la suite.' });
     }
     if (editor.plugin && editor.dirty) attention.push({ tone: 'info', kind: 'dirty', title: `${plural(editor.dirty, 'asset non sauvegardé', 'assets non sauvegardés')} dans l'éditeur`, text: editor.dirtyNames.join(', ') });

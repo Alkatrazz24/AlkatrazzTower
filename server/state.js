@@ -60,7 +60,9 @@ class TowerState {
     this.editors = {};     // nom du projet -> ce que dit le plugin Unreal de l'editeur ouvert
     this.skills = null;    // la bibliotheque des skills installes et leur usage (lib/skills.js), relue par le serveur
     this.tasks = [];       // taches ajoutees par l'utilisateur (lib/taches.js), en plus des taches de base
+    this.redTests = {};    // projet -> chemins des tests rouges a leur dernier passage
     this.onVictory = null; // (campagne) => void, branche par le serveur
+    this.onTaskDone = null; // (agent) => void : une tache vient de rendre son suivi (lib/verif.js)
     this.seq = 0;
     this.listeners = new Set();
   }
@@ -204,7 +206,13 @@ class TowerState {
       default:
         break;
     }
-    if (a.task) suivi.track(a.task, ev, t); // les sous-agents de la tache comptent aussi
+    if (a.task) {
+      suivi.track(a.task, ev, t); // les sous-agents de la tache comptent aussi
+      // Fin de tache (son bloc « Suivi » est arrive) : la tour la verifie elle-meme.
+      if (ev.hook_event_name === 'Stop' && !sub && a.task.suivi && this.onTaskDone) {
+        try { this.onTaskDone(a); } catch { /* la verification est un bonus */ }
+      }
+    }
     // Un sous-agent muet depuis 10 minutes est considere comme fini.
     for (const [k, v] of Object.entries(a.subagents)) if (t - v.lastSeen > 600_000) delete a.subagents[k];
     this.changed();
@@ -236,6 +244,7 @@ class TowerState {
 
   label(sessionId) {
     if (String(sessionId).startsWith('editor:')) return `Editeur Unreal (${String(sessionId).slice(7)})`;
+    if (String(sessionId).startsWith('verif:')) return `verif de fin de tache, ${this.label(String(sessionId).slice(6))}`;
     const a = this.agents[sessionId];
     if (!a) return sessionId ? `agent ${String(sessionId).slice(0, 8)}` : 'inconnu';
     const where = a.project ? a.project.name : (a.cwd || '').split(/[\\/]/).filter(Boolean).pop();
@@ -383,10 +392,13 @@ class TowerState {
     if (!isTuto(b.sessionId)) this.noteTestGroups(b);
     // Un verrou perdu ou libere a la main ne dit rien de la qualite du code.
     if (how !== 'expired' && how !== 'forced' && !isTuto(b.sessionId)) this.feedCampaigns(b);
-    // Les chemins de tests ne servent qu'aux campagnes : on ne les garde pas dans l'historique.
+    if (!isTuto(b.sessionId)) this.noteRedTests(b);
+    // Les chemins de tests ne servent qu'aux campagnes : on ne les garde pas dans l'historique,
+    // sauf les rouges d'une verification de fin de tache (lib/verif.js les compare a ceux d'avant).
     if (b.tests) {
       const { passedPaths, failedPaths, ...rest } = b.tests;
       b.tests = rest;
+      if (String(b.sessionId).startsWith('verif:') && failedPaths) b.tests.failedPaths = failedPaths.slice(0, 50);
     }
     this.builds.unshift(b);
     if (this.builds.length > MAX_BUILDS) this.builds.length = MAX_BUILDS;
@@ -396,6 +408,16 @@ class TowerState {
       if (b.kind === 'test' || b.tests) a.lastTest = b; else a.lastBuild = b;
     }
     return b;
+  }
+
+  // Tests rouges a leur dernier passage : un test qui passe sort de la liste, un qui echoue y entre.
+  noteRedTests(b) {
+    const t = b.tests;
+    if (!t || !b.project || !(t.passedPaths || t.failedPaths)) return;
+    const red = new Set(this.redTests[b.project] || []);
+    for (const p of t.passedPaths || []) red.delete(p);
+    for (const p of t.failedPaths || []) red.add(p);
+    this.redTests[b.project] = [...red].slice(-500);
   }
 
   // Groupes de tests vus (CTB.Munitions...) : proposes dans le formulaire de version.
@@ -683,7 +705,7 @@ class TowerState {
     return {
       agents: keep(this.agents, a => !isTuto(a.sessionId)), builds: this.builds.filter(b => !isTuto(b.sessionId)), seq: this.seq,
       campaigns: this.campaigns, testGroups: this.testGroups, characters: keep(this.characters, c => !c.tuto), projects: this.projects,
-      tasks: this.tasks,
+      tasks: this.tasks, redTests: this.redTests,
     };
   }
 
@@ -699,6 +721,7 @@ class TowerState {
     for (const c of Object.values(this.characters)) if (c && c.name === 'Forge') c.name = Object.values(this.characters).some(x => x.name === 'Quartz') ? 'Quartz 2' : 'Quartz';
     if (Array.isArray(saved.projects)) this.projects = saved.projects;
     if (Array.isArray(saved.tasks)) this.tasks = saved.tasks;
+    if (saved.redTests && typeof saved.redTests === 'object') this.redTests = saved.redTests;
     for (const a of Object.values(this.agents)) delete a.building; // aucun verrou ne survit a un redemarrage
     // Tache lancee avant le suivi : on la complete, et son dernier fichier ecrit dans Saved/Tour (son rapport) se lit.
     for (const a of Object.values(this.agents)) {
