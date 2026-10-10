@@ -224,6 +224,38 @@ function usageSoon(sid, ms = 2500) {
 // Au demarrage, on relit les journaux des sessions encore ouvertes.
 for (const a of Object.values(state.agents)) if (a.status !== 'ended') usageSoon(a.sessionId, 4000);
 
+// La bibliotheque des skills (lib/skills.js) : perso, compte, projets connus, plugins, et leur usage
+// lu dans les journaux de Claude Code. Relue toutes les 2 minutes, et tout de suite apres un ajout.
+const skillsLib = require('../lib/skills');
+let skillsInv = null;
+let skillsBusy = null;
+function skillProjects() {
+  const out = knownProjects().map(p => ({ name: p.name, root: p.root }));
+  out.push({ name: 'Alkatrazz Tower', root: ROOT });
+  // sessions ouvertes hors d'un projet Unreal, dans un dossier qui a sa config Claude Code
+  for (const a of Object.values(state.agents)) {
+    if (a.project || !a.cwd || a.status === 'ended') continue;
+    try { if (fs.existsSync(path.join(a.cwd, '.claude'))) out.push({ name: path.basename(a.cwd), root: a.cwd }); } catch { /* chemin invalide */ }
+  }
+  return out;
+}
+function refreshSkills() {
+  if (skillsBusy) return skillsBusy;
+  skillsBusy = (async () => {
+    const inv = skillsLib.scan({ projects: skillProjects() });
+    const calls = await skillsLib.readUsage();
+    const next = skillsLib.withUsage(inv, calls);
+    skillsInv = inv;
+    const strip = (v) => v && JSON.stringify({ ...v, scannedAt: 0 });
+    if (strip(next) !== strip(state.skills)) { state.skills = next; state.changed(); }
+    else state.skills.scannedAt = next.scannedAt;
+    return next;
+  })().catch(e => { console.error('[tower] skills illisibles :', e.message); return null; }).finally(() => { skillsBusy = null; });
+  return skillsBusy;
+}
+setInterval(refreshSkills, 120_000).unref();
+setTimeout(refreshSkills, 2500).unref();
+
 function projectFor(name) {
   const all = knownProjects();
   return (name && all.find(p => p.name.toLowerCase() === String(name).toLowerCase())) || all.find(p => /ctb|conquer/i.test(p.name)) || all[0] || null;
@@ -293,6 +325,21 @@ const routes = {
   'POST /api/tasks/save': (b) => taches.save(b),
   'POST /api/tasks/delete': (b) => ({ ok: taches.remove(b.id) }),
   'GET /api/tasks/file': (b, url) => require('../lib/suivi').readFile(state.agents[url.searchParams.get('session')], url.searchParams.get('path')),
+
+  'POST /api/skills/refresh': async () => ({ ok: !!(await refreshSkills()) }),
+  'GET /api/skills/file': (b, url) => skillsLib.readFileOf(skillsInv, url.searchParams.get('id')),
+  'POST /api/skills/fetch': (b) => skillsLib.fetchSkill(b.url),
+  'POST /api/skills/create': async (b) => {
+    let root;
+    if (b.scope === 'projet') {
+      const p = skillProjects().find(x => x.name.toLowerCase() === String(b.project || '').toLowerCase());
+      if (!p) return { ok: false, error: `Projet inconnu : ${b.project}` };
+      root = p.root;
+    }
+    const r = skillsLib.create({ scope: b.scope, root, name: b.name, description: b.description, body: b.body, text: b.text });
+    if (r.ok) await refreshSkills();
+    return r;
+  },
 
   'GET /api/tuto': () => tuto.info(),
   'POST /api/tuto/start': (b) => tuto.start(b),
@@ -366,7 +413,7 @@ const server = http.createServer(async (req, res) => {
   if (route) {
     const b = req.method === 'POST' ? await readBody(req) : {};
     if (b === null) return send(res, 400, { error: 'JSON invalide' });
-    try { return send(res, 200, route(b, url)); } catch (e) { return send(res, 500, { error: e.message }); }
+    try { return send(res, 200, await route(b, url)); } catch (e) { return send(res, 500, { error: e.message }); }
   }
 
   if (req.method === 'GET') {
