@@ -315,3 +315,17 @@ h1, h2, h3, p { margin: 0; }
 .us-mem small { flex-basis: 100%; padding-left: 15px; }
 .us-link { background: none; border: 0; padding: 0; color: var(--us-blue); font: inherit; cursor: pointer; text-decoration: underline; }
 .us-link:focus-visible { outline: 2px solid var(--us-blue); outline-offset: 2px; }
+
+/* question posee a ali, avec ses options (hooks/tower-ask.js) */
+.us-askq { display: grid; gap: 8px; }
+.us-askq p { margin: 0; }
+.us-askset { border: 0; margin: 0; padding: 0; display: grid; gap: 6px; min-width: 0; }
+.us-askset legend { font-weight: 600; padding: 0; margin-bottom: 4px; }
+.us-askopts { display: grid; gap: 4px; }
+.us-askopt { all: unset; box-sizing: border-box; cursor: pointer; display: grid; gap: 1px; padding: 6px 8px; background: var(--us-panel); border: 2px solid var(--us-hi); font-size: 14px; }
+.us-askopt small { color: var(--us-muted); font-size: 12px; }
+.us-askopt:hover { border-color: var(--us-orange); }
+.us-askopt:focus-visible { outline: 2px solid var(--us-orange); outline-offset: 1px; }
+.us-askopt.on { border-color: var(--us-orange); background: var(--us-inset); }
+.us-askother { display: flex; gap: 6px; }
+.us-askother input { flex: 1; min-width: 0; }

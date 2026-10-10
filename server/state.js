@@ -59,6 +59,7 @@ class TowerState {
     this.inventories = {}; // nom du projet -> inventaire (lib/inventory.js), recalcule par le serveur
     this.editors = {};     // nom du projet -> ce que dit le plugin Unreal de l'editeur ouvert
     this.tasks = [];       // taches ajoutees par l'utilisateur (lib/taches.js), en plus des taches de base
+    this.answers = {};     // id de question -> reponse donnee dans la tour, en attente du hook
     this.redTests = {};    // projet -> chemins des tests rouges a leur dernier passage
     this.onVictory = null; // (campagne) => void, branche par le serveur
     this.onTaskDone = null; // (agent) => void : une tache vient de rendre son suivi (lib/verif.js)
@@ -205,6 +206,9 @@ class TowerState {
       default:
         break;
     }
+    // Une question ouverte dans la tour (hooks/tower-ask.js) que la session a depassee : elle a eu sa
+    // reponse dans sa fenetre, ou s'est arretee.
+    if (a.ask && !sub && /^(UserPromptSubmit|PostToolUse|Stop|SessionEnd)$/.test(ev.hook_event_name || '')) delete a.ask;
     if (a.task) {
       suivi.track(a.task, ev, t); // les sous-agents de la tache comptent aussi
       // Fin de tache (son bloc « Suivi » est arrive) : la tour la verifie elle-meme.
@@ -647,6 +651,77 @@ class TowerState {
   }
 
   // Le nom de salle choisi par l'utilisateur ; vide = le nom automatique revient.
+  // ---- questions et permissions auxquelles ali repond depuis la tour (hooks/tower-ask.js) ------------
+
+  // Le hook ouvre une question : la salle passe « attend ta reponse » avec ses options.
+  openAsk(req) {
+    if (!req || !req.sessionId) return null;
+    const a = this.agent(String(req.sessionId), req.cwd);
+    const t = this.now();
+    const id = `Q${++this.seq}-${t.toString(36)}`;
+    const qs = (Array.isArray(req.questions) ? req.questions : []).slice(0, 4).map(q => ({
+      question: snip(q && q.question, 300),
+      header: snip(q && q.header, 30),
+      multiSelect: !!(q && q.multiSelect),
+      options: (Array.isArray(q && q.options) ? q.options : []).slice(0, 6).map(o => ({ label: snip(o && o.label, 80), description: snip(o && o.description, 200) })).filter(o => o.label),
+    })).filter(q => q.question);
+    const kind = req.kind === 'permission' ? 'permission' : 'question';
+    if (kind === 'question' && !qs.length) return null;
+    a.ask = { id, kind, at: t, questions: qs, tool: snip(req.tool, 60), summary: snip(req.summary, 300), window: false };
+    a.status = 'waiting';
+    a.lastSeen = t;
+    a.message = kind === 'permission' ? snip(`Autorisation : ${req.tool || 'outil'} ${req.summary || ''}`, 200) : snip(qs[0].question, 200);
+    this.changed();
+    return id;
+  }
+
+  // Reponse d'ali dans la tour : { answers: { question: reponse } } ou { decision: 'allow' | 'deny' },
+  // ou { decision: 'window' } pour repondre dans la fenetre de la session.
+  answerAsk(id, body = {}) {
+    const a = Object.values(this.agents).find(x => x.ask && x.ask.id === id);
+    if (!a) return { ok: false, error: 'Cette question n\'attend plus de réponse.' };
+    const ask = a.ask;
+    let answer;
+    if (body.decision === 'window') answer = { decision: 'window' };
+    else if (ask.kind === 'permission') {
+      if (body.decision !== 'allow' && body.decision !== 'deny') return { ok: false, error: 'Autoriser ou refuser ?' };
+      answer = { decision: body.decision };
+    } else {
+      const answers = {};
+      for (const q of ask.questions) {
+        const v = body.answers && body.answers[q.question];
+        const txt = Array.isArray(v) ? v.map(x => snip(x, 200)).filter(Boolean).join(', ') : snip(v, 500);
+        if (!txt) return { ok: false, error: `Il manque ta réponse à « ${q.question} ».` };
+        answers[q.question] = txt;
+      }
+      answer = { answers };
+    }
+    this.answers[id] = { ...answer, at: this.now() };
+    if (answer.decision === 'window') { ask.window = true; this.changed(); return { ok: true }; }
+    delete a.ask;
+    a.status = 'working';
+    a.message = '';
+    this.changed();
+    return { ok: true };
+  }
+
+  // Ce que le hook lit en attendant : la reponse, rien encore, ou question perdue (tour redemarree).
+  askStatus(id) {
+    const ans = this.answers[id];
+    if (ans) { delete this.answers[id]; return { answered: true, ...ans }; }
+    const a = Object.values(this.agents).find(x => x.ask && x.ask.id === id);
+    return a ? { pending: true } : { lost: true };
+  }
+
+  // Le hook rend la main sans reponse (delai depasse) : la question reste posee, dans la fenetre.
+  closeAsk(id) {
+    const a = Object.values(this.agents).find(x => x.ask && x.ask.id === id);
+    if (!a) return false;
+    a.ask.window = true;
+    this.changed();
+    return true;
+  }
+
   renameRoom(sessionId, label) {
     const a = this.agents[sessionId];
     if (!a) return false;

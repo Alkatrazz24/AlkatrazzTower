@@ -145,6 +145,8 @@
         name: ch ? ch.name : agentName(a), salle: a.salle || agentName(a), label: a.label || '', role: a.salle || (ch ? agentName(a) : ''), char: ch, look: ch ? ch.look : {},
         holds: !!(S.lock && S.lock.sessionId === a.sessionId), queuePos,
         ask: st === 'waiting' ? a.message : '', said: st === 'idle' ? a.message : '',
+        // question ouverte dans la tour (hooks/tower-ask.js) : ali y repond d'un clic
+        pending: st === 'waiting' && a.ask && !a.ask.window ? a.ask : null,
         prompt: a.prompt, tool: a.tool, subs: Object.keys(a.subagents || {}).length,
         subList: Object.entries(a.subagents || {}).map(([id, v]) => ({ id, type: v.type || 'agent', section: v.section || '', lastSeen: v.lastSeen })),
         lastBuild: a.lastBuild, lastTest: a.lastTest, docs: docsOf(a), error: a.lastError,
