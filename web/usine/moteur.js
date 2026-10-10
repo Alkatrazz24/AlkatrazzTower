@@ -859,14 +859,14 @@
         a.said ? h('p', { class: 'us-said' }, h('b', null, 'Il a fini : '), a.said) : null,
         rowsOf([
           a.prompt && ['Demande', a.prompt],
-          a.tool && ['Fait', [h('b', null, a.tool.name), ' ', a.tool.summary, ', ', T.agoEl(a.tool.at)]],
+          a.tool && ['Dernière action', [h('b', null, a.tool.name), ' ', a.tool.summary, ', ', T.agoEl(a.tool.at)]],
           a.roomName && ['Gisement', a.roomName],
           a.subs && ['Aides', T.plural(a.subs, 'sous-agent', 'sous-agents')],
           a.lastBuild && ['Compilation', resultTxt(a.lastBuild)],
           a.lastTest && ['Tests', resultTxt(a.lastTest)],
           a.docs && ['Doc UE', h('span', { class: a.docs.tone === 'warn' ? 'us-t-warn' : a.docs.tone === 'ok' ? 'us-t-ok' : 'us-dim' }, a.docs.text)],
-          a.task && ['Tâche', a.task.title],
         ]),
+        a.task ? [h('div', { class: 'us-sub' }, `Suivi : ${a.task.title}`), suiviBlock(a)] : null,
         usageBlock(a),
         h('div', { class: 'us-actions' }, btn('Personnage', () => T.act.openChar(a.id)), a.st === 'ended' || a.st === 'silent' ? btn('Retirer', () => { T.act.forget(a.id); select(null); }, 'us-danger') : null),
       ];
@@ -1096,6 +1096,100 @@
     );
   }
 
+  // ---------- suivi d'une tache lancee (lib/suivi.js) : ou il en est, ce qu'il a fait, ce qu'il reste ----------
+  const shortPath = (p) => { const m = /(?:^|[\\/])Saved[\\/]Tour[\\/](.*)$/i.exec(p || ''); return (m ? m[1] : String(p || '').split(/[\\/]/).slice(-2).join('/')).replace(/\\/g, '/'); };
+  function suiviState(a) {
+    const k = a.task;
+    if (a.st === 'waiting') return { tone: 'warn', text: 'Attend ta réponse dans sa fenêtre Claude Code', detail: a.ask };
+    if (a.st === 'working') return { tone: 'blue', text: 'En cours', detail: a.tool ? `${a.tool.name} ${a.tool.summary}` : '' };
+    if (a.st === 'ended' && !k.doneAt) return { tone: 'grey', text: 'Session fermée avant la fin' };
+    if (k.doneAt || a.st === 'idle') {
+      const q = k.suivi && k.suivi.questions.length;
+      return { tone: 'ok', text: q ? 'Fini : il a des questions pour toi' : k.suivi && k.suivi.rapport ? 'Fini : à toi de lire le rapport' : 'Fini, à toi' };
+    }
+    return { tone: 'grey', text: a.stText };
+  }
+  // Ce que la tour a vu faire, quand l'agent n'a pas (encore) ecrit son bloc « Suivi ».
+  function seenDone(a) {
+    const k = a.task, c = k.counts || {};
+    return [
+      c.reads ? `A lu ${T.plural(c.reads, 'fichier ou recherche', 'fichiers ou recherches')}` : null,
+      ...(k.files || []).filter(f => f.tower).map(f => `A écrit ${shortPath(f.path)}`),
+      c.edits ? `A modifié le projet (${T.plural(c.edits, 'modification', 'modifications')})` : null,
+      c.cmds ? `A lancé ${T.plural(c.cmds, 'commande', 'commandes')}` : null,
+      a.lastBuild && a.lastBuild.endedAt > k.at ? `Compilation : ${a.lastBuild.ok ? 'réussie' : 'en échec'}` : null,
+      a.lastTest && a.lastTest.endedAt > k.at ? `Tests : ${a.lastTest.summary || (a.lastTest.ok ? 'verts' : 'en échec')}` : null,
+    ].filter(Boolean);
+  }
+  const bullets = (items) => h('ul', { class: 'us-suivi-list' }, items.map(x => h('li', null, x)));
+  function suiviBlock(a) {
+    const k = a.task;
+    if (!k) return null;
+    const st = suiviState(a), sv = k.suivi;
+    const done = !!k.doneAt && a.st !== 'working' && a.st !== 'waiting';
+    const fait = sv && sv.fait.length ? sv.fait : seenDone(a);
+    const questions = [...(sv ? sv.questions : [])];
+    if (a.st === 'waiting' && a.ask && !questions.includes(a.ask)) questions.unshift(a.ask);
+    const files = (k.files || []).slice().reverse();
+    if (sv && sv.rapport && !files.some(f => shortPath(f.path) === shortPath(sv.rapport))) files.unshift({ path: sv.rapport, tower: true });
+    return h('div', { class: 'us-suivi' },
+      h('div', { class: `us-state us-s-${st.tone}` }, st.text),
+      h('div', { class: 'us-dim' }, `Lancée à ${T.clock(k.at)}, `, done ? `finie en ${T.dur(k.doneAt - k.at)}` : ['depuis ', T.forEl(k.at)]),
+      st.detail && a.st !== 'waiting' ? h('p', { class: 'us-dim' }, st.detail) : null, // une question s'affiche plus bas
+      h('div', { class: 'us-sub' }, 'Ce qu\'il a fait'),
+      fait.length ? bullets(fait) : h('p', { class: 'us-dim' }, 'Rien encore : il commence.'),
+      h('div', { class: 'us-sub' }, 'Ce qu\'il reste à faire'),
+      sv && sv.afaire.length ? bullets(sv.afaire)
+        : h('p', { class: 'us-dim' }, done ? 'Il n\'a pas laissé de liste : lis son dernier message ci-dessous.' : 'Il le dira en finissant.'),
+      questions.length ? [h('div', { class: 'us-sub' }, 'Ses questions pour toi'), bullets(questions), h('p', { class: 'us-dim' }, 'Réponds dans sa fenêtre Claude Code : il reprend là où il en était.')] : null,
+      files.length ? [h('div', { class: 'us-sub' }, 'Fichiers écrits'),
+        h('ul', { class: 'us-suivi-files' }, files.map(f => h('li', null,
+          h('span', null, shortPath(f.path)),
+          f.tower ? btn('Lire', () => readFile(a, f.path), 'us-go', { title: 'Ouvre le fichier ici, dans la page' }) : h('span', { class: 'us-dim' }, 'dans le projet'))))] : null,
+      done && !sv && k.last ? [h('div', { class: 'us-sub' }, 'Son dernier message'), h('p', { class: 'us-suivi-last' }, k.last)] : null);
+  }
+
+  let readerDlg = null;
+  function mdInline(s) {
+    return s.split(/(\*\*[^*]+\*\*|`[^`]+`)/).map(p => p.length > 4 && p.startsWith('**') && p.endsWith('**') ? h('b', null, p.slice(2, -2))
+      : p.length > 2 && p.startsWith('`') && p.endsWith('`') ? h('code', null, p.slice(1, -1)) : p);
+  }
+  // Markdown simple (titres, listes, code, tableaux en bloc), construit en noeuds : aucun HTML du fichier n'est interprete.
+  function mdView(text) {
+    const out = [];
+    let list = null, code = null, table = null;
+    for (const line of String(text).split(/\r?\n/)) {
+      if (/^\s*```/.test(line)) { if (code) { out.push(h('pre', null, code.join('\n'))); code = null; } else code = []; continue; }
+      if (code) { code.push(line); continue; }
+      if (/^\s*\|/.test(line)) { if (!table) { table = []; out.push(table); } if (!/^\s*\|[\s:|-]+\|\s*$/.test(line)) table.push(line.trim()); continue; }
+      table = null;
+      const li = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/.exec(line);
+      if (li) { if (!list) { list = h('ul'); out.push(list); } list.append(h('li', null, mdInline(li[1]))); continue; }
+      list = null;
+      const hd = /^(#{1,6})\s+(.*)$/.exec(line);
+      if (hd) out.push(h(hd[1].length <= 2 ? 'h3' : 'h4', null, mdInline(hd[2])));
+      else if (line.trim()) out.push(h('p', null, mdInline(line)));
+    }
+    if (code) out.push(h('pre', null, code.join('\n')));
+    return h('div', { class: 'us-md' }, out.map(x => Array.isArray(x) ? h('pre', { class: 'us-md-table' }, x.join('\n')) : x));
+  }
+  async function readFile(a, rel) {
+    if ((G.M || {}).demo) { T.toast('Mode démo : le fichier se lit sur la vraie tour.'); return; }
+    let r = null;
+    try { r = await fetch(`/api/tasks/file?session=${encodeURIComponent(a.id)}&path=${encodeURIComponent(rel)}`).then(x => x.json()); } catch { /* r reste null */ }
+    if (!r || !r.ok) { T.toast(r && r.error ? r.error : 'Lecture impossible.'); return; }
+    if (!readerDlg) {
+      readerDlg = h('dialog', { class: 'us-dialog us-reader', 'aria-label': 'Fichier de la tâche' });
+      document.body.append(readerDlg);
+    }
+    readerDlg.replaceChildren(
+      h('div', { class: 'us-ehead' }, h('h2', null, shortPath(r.path)), btn('Fermer', () => readerDlg.close(), 'us-x')),
+      h('p', { class: 'us-dim' }, `${a.name}, « ${a.task.title} »${r.cut ? ' (début du fichier seulement)' : ''}`),
+      mdView(r.text));
+    readerDlg.showModal();
+  }
+
+  const suiviOpen = new Map();
   let taskDlg = null;
   function taskDialog(task) {
     if (!taskDlg) {
@@ -1130,7 +1224,8 @@
 
   function promptText(t, proj) {
     const d = todayKey();
-    return `Tache de la tour [${t.id}] : ${t.title}\n\n${t.prompt.replace(/\{projet\}/g, proj || 'en cours').replace(/\{date\}/g, d)}\n`;
+    const S = (G.M && G.M.S) || {};
+    return `Tache de la tour [${t.id}] : ${t.title}\n\n${t.prompt.replace(/\{projet\}/g, proj || 'en cours').replace(/\{date\}/g, d)}\n${S.taskSuivi ? `\n${S.taskSuivi}\n` : ''}`;
   }
   async function copyPrompt(t, proj) {
     try { await navigator.clipboard.writeText(promptText(t, proj)); T.toast('Consigne copiée : colle-la dans une session Claude Code ouverte sur le projet.'); }
@@ -1138,7 +1233,7 @@
   }
   async function launchTask(t, proj, background = false) {
     const r = await T.api('/api/tasks/launch', { id: t.id, project: proj, background });
-    if (r && r.ok) T.toast(background ? `« ${t.title} » tourne en fond : son agent arrive dans l'usine, son journal est dans ${r.log}.` : `Claude Code s'ouvre dans une nouvelle fenêtre avec « ${t.title} ».`);
+    if (r && r.ok) { suiviOpen.clear(); T.toast(background ? `« ${t.title} » tourne en fond : suis-la ici, dans « Suivi des tâches ».` : `Claude Code s'ouvre dans une nouvelle fenêtre avec « ${t.title} ». Suis-la ici, dans « Suivi des tâches ».`); }
     // Sans la commande claude (Claude Code utilise depuis l'application de bureau), on copie la consigne.
     else if (r && (r.code === 'noclaude' || /Windows/.test(r.error || ''))) {
       try { await navigator.clipboard.writeText(promptText(t, proj)); T.toast(`Consigne copiée : colle-la dans une session Claude Code ouverte sur ${proj || 'le projet'}.`); }
@@ -1173,12 +1268,17 @@
           : 'Connecte d\'abord ton projet Unreal (bouton du projet en haut) : les tâches se lancent dans son dossier.'),
         h('ul', { class: 'us-tuto-list' }, tasks.map(card)),
         btn('Nouvelle tâche', () => taskDialog(null), 'us-go', M.demo ? { disabled: true } : {}),
-        h('div', { class: 'us-sub' }, 'Dernières tâches lancées'),
-        runs.length ? h('ul', { class: 'us-runs' }, runs.map(a => h('li', null,
-          h('button', { type: 'button', class: 'us-runbtn', onclick: () => open(a) },
-            h('span', { class: `us-dot us-d-${dotFor(a.st)}` }), h('b', null, a.task.title), h('span', { class: 'us-dim' }, ` ${a.name}, ${T.lower(a.stText)}`)),
-          a.usage ? [h('span', null, tok(a.usage.total)), ctxBar(a.usage)] : h('span', { class: 'us-dim' }, 'tokens à venir'))))
-          : h('p', { class: 'us-dim' }, 'Aucune pour l\'instant. Une session dont la première demande vient d\'ici apparaît dans cette liste.'),
+        h('div', { class: 'us-sub' }, 'Suivi des tâches'),
+        runs.length ? h('ul', { class: 'us-runs' }, runs.map((a, i) => {
+          // La plus recente est ouverte d'office ; un clic ouvre ou ferme les autres.
+          const isOpen = suiviOpen.has(a.id) ? suiviOpen.get(a.id) : i === 0;
+          return h('li', { class: isOpen ? 'on' : '' },
+            h('button', { type: 'button', class: 'us-runbtn', 'aria-expanded': String(isOpen), onclick: () => { suiviOpen.set(a.id, !isOpen); renderHud(); } },
+              h('span', { class: `us-dot us-d-${dotFor(a.st)}` }), h('b', null, a.task.title), h('span', { class: 'us-dim' }, isOpen ? ` ${a.name}` : ` ${a.name}, ${T.lower(suiviState(a).text)}`)),
+            a.usage ? h('span', null, tok(a.usage.total)) : null,
+            isOpen ? [suiviBlock(a), h('div', { class: 'us-actions' }, btn('Voir l\'agent', () => open(a)))] : null);
+        }))
+          : h('p', { class: 'us-dim' }, 'Aucune pour l\'instant. Lance une tâche : son suivi s\'affiche ici et se met à jour tout seul.'),
         h('div', { class: 'us-sub' }, 'Tokens aujourd\'hui'),
         sum ? [h('p', null, h('b', null, tok(sum)), ` pour ${T.plural(today.length, 'session', 'sessions')}`),
           h('ul', { class: 'us-tools' }, today.slice(0, 6).map(x => h('li', null, h('b', null, x.a.name), h('span', { class: 'us-dim' }, x.a.task ? x.a.task.title : x.a.role || x.a.where),

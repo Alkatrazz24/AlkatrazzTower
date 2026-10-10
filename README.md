@@ -81,10 +81,18 @@ Le bouton **Tâches** de la barre du haut propose des consignes prêtes à lance
 - **Nouvelle tâche** en ajoute une à toi (`{projet}` et `{date}` sont remplacés) ; « Copier en perso »
   part d'une tâche de base. Elles sont gardées par la tour.
 
+**Suivi des tâches** : chaque tâche lancée a son suivi, dans le panneau Tâches et dans la fiche de son
+agent, mis à jour en direct. Il dit où elle en est (en cours, attend ta réponse, finie), **ce qu'il a
+fait**, **ce qu'il reste à faire**, **ses questions pour toi**, et les fichiers écrits : un rapport ou un
+plan de `Saved/Tour/` s'ouvre dans la page avec « Lire ». Pendant le travail, la tour remplit le suivi
+avec ce qu'elle voit passer (lectures, fichiers écrits, commandes, builds) ; à la fin, l'agent termine
+par un bloc `## Suivi` (Fait, À faire, Questions pour ali, Rapport), demandé par toute consigne de tâche,
+que la tour affiche tel quel. Quand une tâche finit, « À traiter » le dit avec ce qui reste.
+
 La tour compte les **tokens** de chaque session en lisant son journal Claude Code (le `transcript_path`
 que le hook lui passe ; lecture seule) : le total (entrée, sortie, cache), le **contexte** rempli par
 rapport à la fenêtre (200 k, ou 1 M), et ce que coûte chaque **action** (Read, Bash, Edit...). On les
-voit dans la fiche de chaque agent, et dans le panneau Tâches : dernières tâches lancées et tokens du
+voit dans la fiche de chaque agent, et dans le panneau Tâches : suivi des tâches et tokens du
 jour par session. Au clavier, « tâche » liste les tâches à lancer.
 
 ## La carte du projet
@@ -247,6 +255,7 @@ chaque changement de `web/` au lieu de deviner.
 | `scripts/setup.js`, `setup.cmd`, `uninstall.cmd` | installation et retrait sur un PC |
 | `lib/characters.js`, `web/avatar.js` | personnages : allure, validation, dessin en pixels |
 | `lib/projects.js` | recherche et connexion des projets Unreal |
+| `lib/taches.js`, `lib/suivi.js` | tâches prêtes à lancer, et leur suivi (fait, à faire, questions, rapport) |
 | `lib/inventory.js`, `web/map.js` | carte du projet : comptage des assets et dessin de la ville |
 | `unreal/AlkatrazzTower`, `scripts/install-plugin.js` | plugin d'éditeur Unreal et son installation dans un projet |
 | `skills/alkatrazz-tower-personnages` | skill qui apprend aux agents à modifier un personnage |
