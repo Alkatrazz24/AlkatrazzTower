@@ -75,6 +75,8 @@ class TowerState {
     this.regles = {};      // id de sujet ou de feature -> { action: 'oui' | 'demander' | 'non' } (lib/regles.js)
     this.docs = {};        // projet -> sa documentation : etageres, rayon Unreal (lib/docs.js), relue par le serveur
     this.docRules = { unreal: 'question' }; // quand les sessions lisent la doc Unreal : 'question' ou 'modif'
+    this.git = null;       // le batiment des depots : git installe ?, l'etat de chaque depot suivi (lib/git.js)
+    this.gitFollow = [];   // dossiers ajoutes au suivi par ali, en plus de la tour et des projets connectes : [{ name, root }]
     this.answers = {};     // id de question -> reponse donnee dans la tour, en attente du hook
     this.redTests = {};    // projet -> chemins des tests rouges a leur dernier passage
     this.onVictory = null; // (campagne) => void, branche par le serveur
@@ -353,6 +355,27 @@ class TowerState {
       this.changed();
     }
     return out;
+  }
+
+  // Le batiment des depots (lib/git.js) : relu par le serveur, publie seulement s'il a change.
+  setGit(v) {
+    const strip = (x) => x && JSON.stringify({ ...x, repos: (x.repos || []).map(r => ({ ...r, checkedAt: 0, remote: r.remote && { ...r.remote, checkedAt: 0, left: 0 } })) });
+    if (strip(v) === strip(this.git)) return false;
+    this.git = v;
+    this.changed();
+    return true;
+  }
+  followRepo(root, name) {
+    if (!root || this.gitFollow.some(x => x.root.toLowerCase() === root.toLowerCase())) return false;
+    this.gitFollow.push({ name: String(name || root).slice(0, 80), root });
+    this.changed();
+    return true;
+  }
+  unfollowRepo(root) {
+    const n = this.gitFollow.length;
+    this.gitFollow = this.gitFollow.filter(x => x.root.toLowerCase() !== String(root || '').toLowerCase());
+    if (n !== this.gitFollow.length) this.changed();
+    return n !== this.gitFollow.length;
   }
 
   setSujets(project, v) {
@@ -914,6 +937,7 @@ class TowerState {
       sujets: this.sujets,
       docs: this.docs,
       docRules: this.docRules,
+      git: this.git,
       features: this.features.map(f => ({ ...f, notes: this.featureNotes[f.id] || null })),
       regles: Object.fromEntries([...Object.values(this.sujets).flatMap(v => (v && v.topics) || []), ...this.features].map(x => [x.id, regles.rulesOf(this.regles[x.id])])),
       actions: regles.ACTIONS,
@@ -926,7 +950,7 @@ class TowerState {
     return {
       agents: keep(this.agents, a => !isTuto(a.sessionId)), builds: this.builds.filter(b => !isTuto(b.sessionId)), seq: this.seq,
       campaigns: this.campaigns, testGroups: this.testGroups, characters: keep(this.characters, c => !c.tuto), projects: this.projects,
-      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles, misePlace: this.misePlace, docRules: this.docRules,
+      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles, misePlace: this.misePlace, docRules: this.docRules, gitFollow: this.gitFollow,
     };
   }
 
@@ -945,6 +969,7 @@ class TowerState {
     if (saved.redTests && typeof saved.redTests === 'object') this.redTests = saved.redTests;
     if (Array.isArray(saved.features)) this.features = saved.features;
     if (saved.regles && typeof saved.regles === 'object') this.regles = saved.regles;
+    if (Array.isArray(saved.gitFollow)) this.gitFollow = saved.gitFollow.filter(x => x && typeof x.root === 'string');
     if (saved.docRules && docsLib.UNREAL_MODES.includes(saved.docRules.unreal)) this.docRules = { unreal: saved.docRules.unreal };
     // une mise en place en cours ou en file est partie avec l'ancienne tour
     if (saved.misePlace && typeof saved.misePlace === 'object') {
