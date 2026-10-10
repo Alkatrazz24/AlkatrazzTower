@@ -9,6 +9,10 @@
 //   - « Dans sa fenetre », delai depasse, tour eteinte ou erreur : le hook sort sans rien dire et la
 //     question s'affiche dans la fenetre comme d'habitude.
 // Il sort toujours avec le code 0 et n'ecrit sur stdout que la reponse d'ali.
+//
+// Seules les sessions lancees par la tour (panneau Taches) passent par lui : elles portent TOWER_ASK=1
+// (lib/taches.js). Une session ouverte a la main, ou celle du fil PC, garde ses questions dans sa
+// fenetre, sans attente. Pour l'activer ailleurs, lancer claude avec TOWER_ASK=1.
 
 const { post } = require('../lib/client');
 
@@ -51,7 +55,7 @@ async function main() {
   for await (const chunk of process.stdin) raw += chunk;
   let ev;
   try { ev = JSON.parse(raw.replace(/^﻿/, '')); } catch { return quit(); }
-  if (!ev || !ev.session_id || process.env.TOWER_OFF === '1') return quit();
+  if (!ev || !ev.session_id || process.env.TOWER_OFF === '1' || process.env.TOWER_ASK !== '1') return quit();
   const isPerm = ev.hook_event_name === 'PermissionRequest';
   if (!isPerm && !(ev.hook_event_name === 'PreToolUse' && ev.tool_name === 'AskUserQuestion')) return quit();
   // AskUserQuestion passe par sa propre permission : on n'ouvre pas deux fois la meme question.
