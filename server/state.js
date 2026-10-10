@@ -11,10 +11,12 @@ const taches = require('../lib/taches');
 const suivi = require('../lib/suivi');
 const { salleOf } = require('../lib/salles');
 const equipe = require('../lib/equipe');
+const sujets = require('../lib/sujets');
 
 // Agents des tutos (lib/tuto.js) : jamais sauvegardes, jamais comptes pour une version.
 const isTuto = (id) => String(id || '').startsWith('tuto-');
 
+const SUB_SILENT_MS = 600_000; // sous-agent sans nouvelle depuis 10 min : il a fini
 const LEASE_MS = 30_000;      // sans signe de vie, le verrou ou la place en file est rendu
 const MAX_BUILDS = 50;
 const SNIP = 160;
@@ -61,6 +63,7 @@ class TowerState {
     this.roster = null;    // le quartier des agents : tous les agents appelables et leur usage (lib/agents.js)
     this.skills = null;    // la bibliotheque des skills installes et leur usage (lib/skills.js), relue par le serveur
     this.tasks = [];       // taches ajoutees par l'utilisateur (lib/taches.js), en plus des taches de base
+    this.sujets = {};      // projet -> { topics, board } : les sujets du jeu, leur carnet, le tableau (lib/sujets.js)
     this.answers = {};     // id de question -> reponse donnee dans la tour, en attente du hook
     this.redTests = {};    // projet -> chemins des tests rouges a leur dernier passage
     this.onVictory = null; // (campagne) => void, branche par le serveur
@@ -130,11 +133,13 @@ class TowerState {
     switch (ev.hook_event_name) {
       case 'SessionStart':
         a.status = 'ready';
+        a.subagents = {}; // session neuve ou reprise : personne n'est encore a la table
         if (ev.model) a.model = snip(typeof ev.model === 'string' ? ev.model : ev.model.id || '', 40);
         a.message = ev.source && ev.source !== 'startup' ? `reprise (${ev.source})` : '';
         break;
       case 'UserPromptSubmit':
         a.status = 'working';
+        delete a.hidden; // une salle rangee qui reprend du service revient dans le batiment
         // Les messages injectes par Claude Code (fin de tache de fond...) ne sont pas une demande.
         if (ev.prompt && !/^\s*<[a-z_-]+[\s>]/i.test(ev.prompt)) {
           a.prompt = snip(ev.prompt, 240);
@@ -143,7 +148,7 @@ class TowerState {
         // Une session lancee depuis le panneau Taches (ou avec sa consigne collee) porte sa marque.
         const tid = taches.taskIdIn(ev.prompt);
         if (tid && (!a.task || a.task.id !== tid)) {
-          const def = this.taskList().find(x => x.id === tid);
+          const def = this.taskList().find(x => x.id === tid) || this.sujetTask(tid);
           a.task = suivi.start(tid, def ? def.title : tid, t);
         }
         a.message = '';
@@ -151,7 +156,9 @@ class TowerState {
         break;
       case 'PreToolUse':
       case 'PostToolUse':
-        a.status = 'working';
+        // Un sous-agent de fond peut encore travailler apres la fin du tour de la session : il reste a la
+        // table, mais la session garde son etat (a fini, attend ta reponse).
+        if (!sub) a.status = 'working';
         a.tool = { name: ev.tool_name || '?', summary: toolSummary(ev.tool_name, ev.tool_input), at: t, sub: !!sub };
         // Sur la carte, le personnage se tient devant l'extension du fichier qu'il touche.
         const touched = ev.tool_input && (ev.tool_input.file_path || ev.tool_input.path);
@@ -172,7 +179,7 @@ class TowerState {
           // Un rapport ecrit dans Saved/Tour ne compte pas comme une modification du jeu.
           if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(ev.tool_name || '') && !suivi.isTowerFile(touched)) a.edits = (a.edits || 0) + 1;
         }
-        if (ev.hook_event_name === 'PreToolUse') a.message = '';
+        if (ev.hook_event_name === 'PreToolUse' && !sub) a.message = '';
         // L'agent pose une question a l'humain dans sa fenetre : il attend sa reponse.
         if (ev.tool_name === 'AskUserQuestion' && ev.hook_event_name === 'PreToolUse' && !sub) {
           a.status = 'waiting';
@@ -180,7 +187,7 @@ class TowerState {
         }
         break;
       case 'PostToolUseFailure':
-        a.status = 'working';
+        if (!sub) a.status = 'working';
         a.lastError = snip(ev.error, 200);
         break;
       case 'Notification':
@@ -201,9 +208,12 @@ class TowerState {
         a.subagents = {};
         break;
       case 'SessionEnd':
+        a.subagents = {};
+        // Une session de discussion (lib/discussion.js) se termine a chaque message : elle reste
+        // ouverte pour la tour, et attend le suivant.
+        if (a.chat && a.chat.mode === 'tour') { if (a.status === 'working') a.status = 'idle'; break; }
         a.status = 'ended';
         a.message = ev.reason ? `fin : ${ev.reason}` : '';
-        a.subagents = {};
         break;
       default:
         break;
@@ -218,10 +228,17 @@ class TowerState {
         try { this.onTaskDone(a); } catch { /* la verification est un bonus */ }
       }
     }
-    // Un sous-agent muet depuis 10 minutes est considere comme fini.
-    for (const [k, v] of Object.entries(a.subagents)) if (t - v.lastSeen > 600_000) delete a.subagents[k];
+    this.pruneSubagents(a, t);
     this.changed();
     return true;
+  }
+
+  // Un sous-agent muet depuis 10 minutes est considere comme fini. Verifie aussi sans nouvel evenement
+  // (expire, toutes les 2 s) : une session fermee d'un coup ne laisse pas sa table occupee.
+  pruneSubagents(a, t = this.now()) {
+    let n = 0;
+    for (const [k, v] of Object.entries(a.subagents || {})) if (t - v.lastSeen > SUB_SILENT_MS) { delete a.subagents[k]; n++; }
+    return n;
   }
 
   // Tokens lus dans le journal de la session (lib/usage.js, appele par le serveur).
@@ -232,6 +249,33 @@ class TowerState {
     if (usage.title) a.sessionName = snip(usage.title, 80);
     delete usage.title;
     a.usage = usage;
+    this.changed();
+    return true;
+  }
+
+  // Un sujet sous forme de tache, pour le lancer et nommer sa salle.
+  sujetTask(id) {
+    if (!sujets.isSujet(id)) return null;
+    for (const v of Object.values(this.sujets)) {
+      const t = v && v.topics && v.topics.find(x => x.id === id);
+      if (t) return sujets.taskOf(t);
+    }
+    return null;
+  }
+
+  setSujets(project, v) {
+    if (!project || !v) return false;
+    if (JSON.stringify(this.sujets[project]) === JSON.stringify(v)) return false;
+    this.sujets[project] = v;
+    this.changed();
+    return true;
+  }
+
+  // Ranger une salle : elle quitte le batiment, rien n'est efface ; « Anciennes sessions » la remontre.
+  hide(sessionId, hidden = true) {
+    const a = this.agents[sessionId];
+    if (!a) return false;
+    if (hidden) a.hidden = this.now(); else delete a.hidden;
     this.changed();
     return true;
   }
@@ -328,6 +372,7 @@ class TowerState {
     this.queue = this.queue.filter(e => t - e.lastSeen <= LEASE_MS);
     if (this.queue.length !== before) dirty = true;
     if (this.promote()) dirty = true;
+    for (const a of Object.values(this.agents)) if (this.pruneSubagents(a, t)) dirty = true;
     if (dirty) this.changed();
     return dirty;
   }
@@ -774,6 +819,7 @@ class TowerState {
       taskSuivi: suivi.CONSIGNE,
       skills: this.skills,
       roster: this.roster,
+      sujets: this.sujets,
     };
   }
 
@@ -800,6 +846,8 @@ class TowerState {
     if (Array.isArray(saved.tasks)) this.tasks = saved.tasks;
     if (saved.redTests && typeof saved.redTests === 'object') this.redTests = saved.redTests;
     for (const a of Object.values(this.agents)) delete a.building; // aucun verrou ne survit a un redemarrage
+    // ni un message de discussion en cours : son processus est parti avec l'ancienne tour
+    for (const a of Object.values(this.agents)) if (a.chat) { if (a.chat.busy) { a.chat.error = 'Interrompu : la tour a redémarré.'; if (a.status === 'working') a.status = 'idle'; } a.chat.busy = false; a.chat.queued = 0; }
     // Tache lancee avant le suivi : on la complete, et son dernier fichier ecrit dans Saved/Tour (son rapport) se lit.
     for (const a of Object.values(this.agents)) {
       if (!a.task || a.task.counts) continue;

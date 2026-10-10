@@ -9,7 +9,9 @@
   const TEMPLATES = window.TOWER_TEMPLATES;
   const DEFAULT = window.TOWER_DEFAULT;
   const SILENT_MS = 15 * 60 * 1000;
-  const STATUS = { working: 'travaille', waiting: 'attend ta réponse', idle: 'a fini, à toi', ready: 'prêt', ended: 'terminé', silent: 'silencieux' };
+  // Une session qui ne fait plus rien depuis une heure est rangee : « Anciennes sessions » la remontre.
+  const OLD_MS = 60 * 60 * 1000;
+  const STATUS = { working: 'travaille', waiting: 'attend ta réponse', idle: 'a fini, à toi', ready: 'prêt', ended: 'terminé', silent: 'silencieux', sujet: 'en sommeil' };
   const KIND = { build: 'Compilation', test: 'Tests', package: 'Package', commandlet: 'Commandlet', livecoding: 'Live Coding' };
   const FEAT = { proven: 'Prête', progress: 'En cours', failing: 'En échec', broken: 'Cassée', todo: 'À vérifier' };
   // Reglages par l'adresse : ?demo&t=nuit, ou #demo.nuit (le # passe la ou ?... est retire).
@@ -153,8 +155,20 @@
         where: folder(a.cwd), project: a.project ? a.project.name : '', lastSeen: a.lastSeen,
         room: a.room || null, roomName: a.room && R[a.room] ? R[a.room][0] : '',
         usage: a.usage || null, task: a.task || null,
+        sujet: a.task && String(a.task.id).startsWith('sujet-') ? a.task.id : '', hidden: !!a.hidden,
       };
     });
+    // Sujets du jeu (lib/sujets.js) : la session la plus recente de chaque sujet occupe sa salle ; les
+    // precedentes, et les sessions sans rien de neuf depuis une heure, sont des anciennes sessions.
+    const sujetSession = {};
+    for (const x of agents) if (x.sujet && x.st !== 'ended' && !x.hidden && (!sujetSession[x.sujet] || x.lastSeen > sujetSession[x.sujet].lastSeen)) sujetSession[x.sujet] = x;
+    for (const x of agents) {
+      const current = x.sujet && sujetSession[x.sujet] === x;
+      x.old = x.st === 'ended' || x.hidden || (x.sujet ? !current : x.st !== 'working' && x.st !== 'waiting' && !x.holds && !x.queuePos && now() - x.lastSeen > OLD_MS);
+    }
+    const proj0 = (S.projects || [])[0];
+    const sv = (S.sujets || {})[proj0 ? proj0.name : ''] || Object.values(S.sujets || {})[0] || null;
+    const sujets = sv ? sv.topics.map(t => ({ ...t, project: sv.project, session: sujetSession[t.id] || null })) : [];
     const live = agents.filter(x => x.st !== 'ended');
     const count = (s) => agents.filter(x => x.st === s).length;
     const byId = Object.fromEntries(agents.map(x => [x.id, x]));
@@ -234,7 +248,8 @@
     return {
       S, demo: DEMO, connected, now: now(),
       template: current, templates: TEMPLATES,
-      agents, liveAgents: live, visibleAgents: agents.filter(x => ui.showEnded || x.st !== 'ended'), endedCount: agents.length - live.length,
+      agents, liveAgents: live, visibleAgents: agents.filter(x => ui.showEnded || !x.old), endedCount: agents.filter(x => x.old).length,
+      sujets, board: sv ? sv.board.entries : [], sujetsProject: sv ? sv.project : '',
       counts: { working: count('working'), waiting, idle: count('idle'), ready: count('ready'), silent: count('silent'), live: live.length },
       editor, projects: S.projects || [], campaign, past, attention, lock, queue, chantiers, builds,
       inventories: invs, inv, testGroups: S.testGroups || {},
@@ -287,6 +302,7 @@
     next: () => { act.archive(); openBuilder(); },
     release: () => { if (confirm('Libérer la compilation ? Le build en cours continue, mais un autre pourra démarrer en même temps.')) api('/api/lock/force-release'); },
     forget: (id) => api('/api/agents/forget', { sessionId: id }),
+    hide: (id, hidden = true) => api('/api/agents/hide', { sessionId: id, hidden }),
     disconnect: (p) => { if (confirm(`Déconnecter ${p.name} ?`)) api('/api/projects/disconnect', { uproject: p.uproject }); },
     refreshMap: () => { api('/api/inventory/refresh'); toast('La tour recompte le projet.'); },
     toggleEnded: (v) => { ui.showEnded = v === undefined ? !ui.showEnded : v; rerender(); },

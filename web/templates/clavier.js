@@ -34,7 +34,7 @@
     add('Tutos', 'voir la tour marcher', 'tuto aide demo', () => api.side('tuto', true));
     add('Connecter un projet', 'Unreal', 'projet uproject ajouter', T.act.openProjects);
     add('Recompter le projet', 'met à jour les domaines', 'rafraichir inventaire', T.act.refreshMap);
-    add(T.ui.showEnded ? 'Masquer les sessions terminées' : 'Montrer les sessions terminées', `${M.endedCount}`, 'fini ended', () => T.act.toggleEnded());
+    add(T.ui.showEnded ? 'Masquer les anciennes sessions' : 'Montrer les anciennes sessions', `${M.endedCount}`, 'fini ended anciennes rangees', () => T.act.toggleEnded());
     add('Recadrer la tour', 'touche 0', 'vue zoom centre', api.refit);
     return out;
   }

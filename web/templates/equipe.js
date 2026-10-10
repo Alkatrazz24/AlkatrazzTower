@@ -30,7 +30,7 @@
       };
       return [h('section', { class: 'us-panel us-roster', 'aria-label': 'L\'équipe' },
         h('header', { class: 'us-rhead' }, h('h2', null, 'L\'équipe'), h('span', { class: 'us-dim' }, ms.length ? 'Choisis un agent : la caméra le suit.' : ''), h('span', { class: 'us-grow' }),
-          btn(T.ui.showEnded ? 'Masquer les terminées' : `Sessions terminées (${M.endedCount})`, () => T.act.toggleEnded(), '', { disabled: !M.endedCount && !T.ui.showEnded }),
+          btn(T.ui.showEnded ? 'Masquer les anciennes' : `Anciennes sessions (${M.endedCount})`, () => T.act.toggleEnded(), '', { disabled: !M.endedCount && !T.ui.showEnded }),
           btn('Forge', () => api.select({ kind: 'forge' }, true), '', { title: 'Touche F' }), btn('Version', () => api.select({ kind: 'silo' }, true), '', { title: 'Touche V' })),
         ms.length ? h('ul', { class: 'us-mates' }, ms.map(card))
           : h('div', { class: 'us-empty' }, h('strong', null, 'Personne pour l\'instant.'), h('p', null, 'Lance une session Claude Code dans ton projet : sa salle s\'ouvre dans la tour et son personnage s\'y installe.')))];

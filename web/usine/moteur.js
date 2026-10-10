@@ -88,13 +88,20 @@
   const ROOM_H = 7, CY = 9, CH = 3; // hauteur des salles, haut du couloir, hauteur du couloir
   const TOP = CY - ROOM_H, BOT = CY + CH; // y des salles du haut et du bas
   const MAX_SUBS = 6; // sous-agents dessines par salle ; au-dela, « +n »
-  const ORDER = { waiting: 0, idle: 1, working: 2, ready: 3, silent: 4, ended: 5 };
+  const ORDER = { waiting: 0, idle: 1, working: 2, ready: 3, silent: 4, sujet: 5, ended: 6 };
+  // La salle d'un sujet en sommeil : pas d'agent, pas de sous-agents, son carnet sur le bureau.
+  function sujetRoom(s) {
+    return { id: 'sujet:' + s.id, sujet: s.id, def: s, st: 'sujet', stText: 'en sommeil', name: s.title, salle: s.title, role: s.title, look: {},
+      subs: 0, subList: [], project: s.project, where: '', lastSeen: s.notes ? s.notes.at : 0, holds: false, queuePos: 0, asleep: true };
+  }
   function roomW(a) {
     const n = Math.min(MAX_SUBS, (a.subList || []).length);
     return n ? Math.max(7, Math.round(6.2 + Math.ceil(n / 2) * 1.7)) : 6;
   }
   function layout(M) {
-    const shown = M.agents.filter(a => a.st !== 'ended' || T.ui.showEnded);
+    const shown = M.agents.filter(a => !a.old || T.ui.showEnded);
+    // Un sujet sans session ouverte garde sa salle, en sommeil : on y relance une session d'un clic.
+    for (const s of M.sujets || []) if (!s.session) shown.push(sujetRoom(s));
     // Ailes : un projet Unreal, sinon le dossier de la session. L'aile qui a le plus urgent passe en premier.
     const wings = new Map();
     for (const a of shown) {
@@ -328,6 +335,7 @@
       c.strokeStyle = COL.ghost; c.setLineDash([4, 3]); c.lineWidth = 2; c.strokeRect(x + 2, y + 2, w - 4, hh - 4); c.setLineDash([]);
       return;
     }
+    if (a.asleep) return drawSujetRoom(c, m);
     const on = a.st === 'working' || a.holds;
     planks(c, x, y, w, hh, a.st === 'silent' ? shade(COL.floor, -.18) : COL.floor);
     const subs = subsOf(a), shown = subs.slice(0, MAX_SUBS);
@@ -375,6 +383,28 @@
     light(lx + 3, ly + 2, 26, lamp, .8);
   }
   const poseOf = (a) => (a.holds ? 'working' : a.st);
+  // Sujet en sommeil : lumiere eteinte, chaise vide, et sur le bureau le carnet s'il en a un.
+  function drawSujetRoom(c, m) {
+    const a = m.a, x = m.x * TS, y = m.y * TS, w = m.w * TS, hh = m.h * TS;
+    planks(c, x, y, w, hh, shade(COL.floor, -.24));
+    walls(c, m, Object.assign(roomDoor(m), { open: false }));
+    const dx = x + .6 * TS, dy = y + 2.5 * TS, dw = 3.7 * TS, dh = 1.1 * TS;
+    if (!SC) { c.fillStyle = shade(COL.desk, -.3); c.fillRect(x + 1.5 * TS, y + 1.3 * TS, .9 * TS, .9 * TS); } // la chaise vide
+    box(c, dx, dy, dw, dh, COL.desk, COL.deskLight, COL.deskDark);
+    const sx = dx + 2.4 * TS, sy = dy - .95 * TS, sw = 1.1 * TS, sh = .85 * TS;
+    if (SC) { c.strokeStyle = COL.steelLight; c.lineWidth = 1; c.strokeRect(sx + .5, sy + .5, sw - 1, sh - 1); }
+    else { c.fillStyle = '#26282b'; c.fillRect(sx - 1, sy - 1, sw + 2, sh + 2); c.fillStyle = COL.screen; c.fillRect(sx, sy, sw, sh); }
+    if (a.def && a.def.notes && !SC) { // le carnet, ouvert sur le bureau
+      const nx = dx + .5 * TS, ny = dy + .2 * TS;
+      c.fillStyle = '#7a3b2e'; c.fillRect(nx - 2, ny - 2, 26, 18);
+      c.fillStyle = '#efe8d6'; c.fillRect(nx, ny, 10, 14); c.fillRect(nx + 12, ny, 10, 14);
+      c.fillStyle = '#9aa0a6'; for (let k = 0; k < 4; k++) { c.fillRect(nx + 2, ny + 3 + k * 3, 6, 1); c.fillRect(nx + 14, ny + 3 + k * 3, 6, 1); }
+    }
+    const D = roomDoor(m), lx = (D.x + D.w) * TS + 3, ly = m.top ? y + hh - WALL : y;
+    c.fillStyle = '#1e1f22'; c.fillRect(lx, ly - .5, 6, 6);
+    c.fillStyle = '#4a4e54'; c.fillRect(lx + 1, ly + .5, 4, 4);
+    light(x + w / 2, y + hh / 2, 34, '#ffe3a8', .35);
+  }
 
   function drawForge(c, W, t) {
     const f = W.forge, x = f.x * TS, y = f.y * TS, w = f.w * TS, hh = f.h * TS;
@@ -729,7 +759,7 @@
       const sel = G.sel && G.sel.kind === 'agent' && G.sel.id === a.id;
       label(c, a.salle || a.name, sx, sy, { edge: edgeOf(a), color: sel ? COL.select : COL.text, size: small ? 11 : 14, weight: 700, max: Math.max(70, (m.w - .3) * TS * z) });
       // le personnage, sous son bureau
-      if (z >= 1.4 && a.st !== 'ended' && !a.holds && !a.queuePos) { const [nx, ny] = S(m.x + 2.45, m.y + 4.05); label(c, a.name, nx, ny, { size: 10, weight: 600, max: 3.6 * TS * z, bg: 'rgba(20,20,22,.6)' }); }
+      if (z >= 1.4 && a.st !== 'ended' && !a.asleep && !a.holds && !a.queuePos) { const [nx, ny] = S(m.x + 2.45, m.y + 4.05); label(c, a.name, nx, ny, { size: 10, weight: 600, max: 3.6 * TS * z, bg: 'rgba(20,20,22,.6)' }); }
       const subs = subsOf(a);
       if (a.st === 'ended' || !subs.length) continue;
       // chaque sous-agent porte sa section (Animation, Interface...) ; sans section, son type
@@ -873,6 +903,8 @@
   function tipOf(s) {
     const M = G.M;
     if (s.kind === 'agent') {
+      const z = sujetOf(s.id);
+      if (z) return [z.title, `Sujet en sommeil${z.notes ? ', carnet tenu' : ', pas encore de carnet'} : clique pour lancer sa session`];
       const a = M.agents.find(x => x.id === s.id);
       return a && [a.salle || a.name, [a.name, a.holds ? `${a.stText}, à la forge` : a.queuePos ? `${a.stText}, ${a.queuePos}e devant la forge` : a.stText,
         a.subs ? T.plural(a.subs, 'sous-agent', 'sous-agents') : ''].filter(Boolean).join(', ')];
@@ -884,6 +916,11 @@
     if (s.kind === 'roster') { const A = M.S.roster; if (!A) return ['Quartier des agents', 'Lecture en cours']; const n = A.agents.filter(ag => rosterBusy(M, ag).length).length; return ['Quartier des agents', `${T.plural(A.total, 'agent', 'agents')}, ${n} au travail, ${A.ko + A.warn} à revoir`]; }
     if (s.kind === 'silo') return ['Salle de lancement', M.campaign ? `${M.campaign.name} : ${M.campaign.proven} sur ${M.campaign.total}` : 'Aucune version'];
     return null;
+  }
+  // Le sujet d'une salle en sommeil (id « sujet:<id> »), ou null.
+  function sujetOf(id) {
+    if (!String(id || '').startsWith('sujet:')) return null;
+    return ((G.M && G.M.sujets) || []).find(z => z.id === String(id).slice(6)) || null;
   }
   function showTip(e, s) {
     const tip = G.hud.tip, info = s && tipOf(s);
@@ -964,6 +1001,7 @@
       else if (e.key === 'v' || e.key === 'V') select({ kind: 'silo' }, true);
       else if (e.key === 'b' || e.key === 'B') select({ kind: 'skills' }, true);
       else if (e.key === 'a' || e.key === 'A') select({ kind: 'roster' }, true);
+      else if (e.key === 's' || e.key === 'S') sideToggle('sujets');
       else if (e.key === 'j' || e.key === 'J') select({ kind: G.M.builds.some(b => !b.ok) ? 'ko' : 'ok' }, true);
       else if (e.key === 'Home' || e.key === '0') { G.userMoved = false; fit(); G.dirty = true; }
       else if (e.key.startsWith('Arrow')) {
@@ -1034,7 +1072,11 @@
     if (!s || (MODE.noFiche && MODE.noFiche.includes(s.kind))) return null;
     const close = btn('Fermer', () => select(null), 'us-x', { 'aria-label': 'Fermer la fiche', title: 'Échap' });
     let title, body;
-    if (s.kind === 'agent') {
+    if (s.kind === 'agent' && sujetOf(s.id)) {
+      const z = sujetOf(s.id);
+      title = z.title;
+      body = sujetBody(M, z);
+    } else if (s.kind === 'agent') {
       const a = M.agents.find(x => x.id === s.id);
       if (!a) return null;
       title = a.salle || a.name;
@@ -1055,8 +1097,14 @@
           a.docs && ['Doc UE', h('span', { class: a.docs.tone === 'warn' ? 'us-t-warn' : a.docs.tone === 'ok' ? 'us-t-ok' : 'us-dim' }, a.docs.text)],
         ]),
         a.task ? [h('div', { class: 'us-sub' }, `Suivi : ${a.task.title}`), suiviBlock(a)] : null,
+        a.sujet && (M.sujets || []).some(z => z.id === a.sujet) ? [h('div', { class: 'us-sub' }, 'Son sujet'), sujetBody(M, M.sujets.find(z => z.id === a.sujet), a)] : null,
         usageBlock(a),
-        h('div', { class: 'us-actions' }, btn('Renommer la salle', () => renameDialog(a), '', M.demo ? { disabled: true } : {}), btn('Personnage', () => T.act.openChar(a.id)), a.st === 'ended' || a.st === 'silent' ? btn('Retirer', () => { T.act.forget(a.id); select(null); }, 'us-danger') : null),
+        a.old ? h('p', { class: 'us-dim' }, a.hidden ? 'Salle rangée : elle n\'apparaît qu\'avec les anciennes sessions.' : 'Ancienne session : elle n\'apparaît qu\'avec les anciennes sessions.') : null,
+        h('div', { class: 'us-actions' }, btn(canChat(a) ? 'Discuter' : 'Lire la discussion', () => chatDialog(a.id), canChat(a) ? 'us-go' : '', { title: canChat(a) ? 'Lui écrire depuis la tour, sans fenêtre' : 'Elle tourne dans sa fenêtre : tu lis ici, tu lui écris là-bas' }),
+          btn('Renommer la salle', () => renameDialog(a), '', M.demo ? { disabled: true } : {}), btn('Personnage', () => T.act.openChar(a.id)),
+          a.hidden ? btn('Remettre dans le bâtiment', () => T.act.hide(a.id, false), '', M.demo ? { disabled: true } : {})
+            : btn('Ranger la salle', () => { T.act.hide(a.id, true); select(null); }, '', M.demo ? { disabled: true } : { title: 'Elle quitte le bâtiment, rien n\'est effacé : « Anciennes sessions » la remontre' }),
+          a.st === 'ended' || a.st === 'silent' ? btn('Retirer', () => { T.act.forget(a.id); select(null); }, 'us-danger') : null),
       ];
     } else if (s.kind === 'patch') {
       const r = M.inv && T.room(M.inv, s.id);
@@ -1300,7 +1348,8 @@
   }
   function askBox(a) {
     const k = a.pending;
-    const later = btn('Dans sa fenêtre', () => sendAsk(a, { decision: 'window' }), '', { title: 'La question s\'affiche dans sa fenêtre Claude Code, tu y réponds là-bas' });
+    const inTower = !!(a.raw && a.raw.chat && a.raw.chat.mode === 'tour'); // discussion sans fenetre : la reponse ne peut venir que d'ici
+    const later = inTower ? null : btn('Dans sa fenêtre', () => sendAsk(a, { decision: 'window' }), '', { title: 'La question s\'affiche dans sa fenêtre Claude Code, tu y réponds là-bas' });
     if (k.kind === 'permission') {
       return h('div', { class: 'us-ask us-askq' },
         h('b', null, 'Il demande l\'autorisation'), h('p', null, h('code', null, k.tool), ' ', k.summary),
@@ -1331,7 +1380,7 @@
         })),
         other(q))),
       h('div', { class: 'us-actions' }, one ? null : btn('Envoyer mes réponses', () => sendAsk(a, { answers: Object.fromEntries(k.questions.map(q => [q.question, sel[q.question] || []])) }), 'us-go', ready ? {} : { disabled: true }), later),
-      h('small', { class: 'us-dim' }, 'La session reprend dès que tu réponds. Sans réponse ici, la question passe dans sa fenêtre au bout de 10 minutes.'));
+      h('small', { class: 'us-dim' }, inTower ? 'La session reprend dès que tu réponds. Sans réponse ici en 10 minutes, c\'est refusé.' : 'La session reprend dès que tu réponds. Sans réponse ici, la question passe dans sa fenêtre au bout de 10 minutes.'));
   }
 
   // ---------- suivi d'une tache lancee (lib/suivi.js) : ou il en est, ce qu'il a fait, ce qu'il reste ----------
@@ -1794,6 +1843,191 @@
     } else if (r && r.error) T.toast(r.error);
   }
 
+  // ---------- discuter avec une session (lib/discussion.js) ----------
+  // Une fenetre de discussion : la conversation lue dans le journal de la session, ses demandes
+  // d'autorisation, et ta reponse. Chaque message relance la session sans fenetre ; une session ouverte
+  // dans sa fenetre se lit seulement (on lui ecrit la-bas).
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const chatMode = (a) => !!(a && a.raw && a.raw.chat && a.raw.chat.mode === 'tour');
+  const canChat = (a) => !!a && UUID.test(a.id) && (chatMode(a) || a.st === 'ended');
+  let chatDlg = null;
+  function chatDialog(id) {
+    if (!chatDlg) {
+      const f = {};
+      const send = async () => {
+        const text = f.text.value.trim();
+        if (!text || f.send.disabled) return;
+        f.send.disabled = true;
+        const r = await T.api('/api/chat/send', { sessionId: chatDlg.dataset.id, text });
+        f.send.disabled = false;
+        if (r && r.ok) { f.text.value = ''; f.mine = text; refreshChat(true); } else if (r && r.error) f.err.textContent = r.error;
+      };
+      chatDlg = h('dialog', { class: 'us-dialog us-wide us-chat', 'aria-label': 'Discussion' },
+        h('form', { method: 'dialog', onsubmit: (e) => { e.preventDefault(); send(); } },
+          h('div', { class: 'us-ehead' }, f.head = h('h2', null), btn('Fermer', () => chatDlg.close(), 'us-x', { 'aria-label': 'Fermer la discussion' })),
+          f.log = h('div', { class: 'us-chatlog', role: 'log', 'aria-live': 'polite' }),
+          f.ask = h('div'),
+          f.state = h('p', { class: 'us-dim us-chatstate' }),
+          f.text = h('textarea', { name: 'message', rows: 3, maxlength: 20000, 'aria-label': 'Ton message', placeholder: 'Ton message… (Ctrl+Entrée pour envoyer)',
+            onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } } }),
+          f.err = h('p', { class: 'us-t-ko' }),
+          h('div', { class: 'us-actions' }, f.send = h('button', { type: 'submit', class: 'us-btn us-go' }, 'Envoyer'),
+            f.stop = btn('Arrêter', async () => { const r = await T.api('/api/chat/stop', { sessionId: chatDlg.dataset.id }); if (r && r.error) T.toast(r.error); }, 'us-danger', { title: 'Arrête ce qu\'il fait : la session garde son historique' }))));
+      chatDlg.f = f;
+      chatDlg.addEventListener('close', () => { chatDlg.dataset.id = ''; });
+      document.body.append(chatDlg);
+    }
+    const f = chatDlg.f;
+    chatDlg.dataset.id = id;
+    f.sig = ''; f.mine = ''; f.text.value = ''; f.err.textContent = ''; f.log.replaceChildren(h('p', { class: 'us-dim' }, 'Lecture…'));
+    chatDlg.showModal();
+    refreshChat(true);
+    f.text.focus();
+  }
+  // La discussion : toi, le chef (la session), ses missions aux agents, ce que les agents disent et font,
+  // et leurs rapports. Les actions qui se suivent sont regroupees sur une ligne.
+  function chatItems(msgs, a, M) {
+    const team = (M.S.team || {})[a && a.project] || [];
+    const who = (ag) => { const m = team.find(x => x.name.toLowerCase() === String(ag).toLowerCase()); return m ? `${ag} (${m.section})` : ag; };
+    const chef = a ? `${a.name}, le chef` : 'Le chef';
+    const head = (txt, m) => h('small', { class: 'us-dim' }, txt, m.at ? ` · ${T.clock(m.at)}` : '');
+    const long = (text) => {
+      const [first, ...rest] = String(text).split('\n');
+      return rest.join('\n').trim() ? h('details', null, h('summary', null, first), h('div', { class: 'us-pre' }, rest.join('\n').trim())) : h('div', { class: 'us-pre' }, first);
+    };
+    const out = [];
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i];
+      if (m.kind === 'action') {
+        const run = [m];
+        while (msgs[i + 1] && msgs[i + 1].kind === 'action' && msgs[i + 1].who === m.who && msgs[i + 1].agent === m.agent) run.push(msgs[++i]);
+        const shown = run.slice(-3).map(x => x.text);
+        out.push(h('div', { class: `us-act us-act-${m.who}` }, h('b', null, m.who === 'chef' ? chef : who(m.agent)), ' ',
+          run.length > 3 ? `${run.length} actions, dont ` : '', shown.join(' · ')));
+        continue;
+      }
+      if (m.who === 'toi') out.push(h('div', { class: 'us-msg us-msg-toi' }, head('Toi', m), h('div', { class: 'us-pre' }, m.text)));
+      else if (m.who === 'chef') out.push(h('div', { class: 'us-msg us-msg-chef' }, head(chef, m), h('div', { class: 'us-pre' }, m.text)));
+      else if (m.kind === 'mission') out.push(h('div', { class: 'us-msg us-msg-mission' }, head(`Mission pour ${who(m.agent)}`, m), long(m.text)));
+      else if (m.kind === 'rapport') out.push(h('div', { class: 'us-msg us-msg-rapport' }, head(`Rapport de ${who(m.agent)}`, m), long(m.text)));
+      else out.push(h('div', { class: 'us-msg us-msg-agent' }, head(who(m.agent), m), h('div', { class: 'us-pre' }, m.text)));
+    }
+    return out;
+  }
+  // Remis a jour a chaque changement de l'etat de la tour, quand la discussion est ouverte.
+  async function refreshChat(force) {
+    if (!chatDlg || !chatDlg.open || !chatDlg.dataset.id) return;
+    const f = chatDlg.f, id = chatDlg.dataset.id, M = G.M;
+    const a = M && M.agents.find(x => x.id === id);
+    const c = a && a.raw.chat;
+    f.head.textContent = a ? (a.salle || a.name) : 'Discussion';
+    const can = canChat(a), busy = !!(c && c.busy);
+    f.text.disabled = !can || M.demo; f.send.disabled = !can || M.demo;
+    f.stop.hidden = !busy;
+    f.state.textContent = !a ? 'La session démarre…'
+      : !can ? 'Elle tourne dans sa fenêtre : tu lis la discussion ici, et tu lui écris là-bas. Une fois la fenêtre fermée, tu peux la reprendre ici.'
+        : busy ? `${a.name} travaille${a.tool ? ` (${a.tool.name} ${a.tool.summary})` : ''}${c.queued ? `, ${T.plural(c.queued, 'message attend', 'messages attendent')} son tour` : ''}…`
+          : c && c.error ? `Dernier message : ${c.error}` : a.st === 'ended' ? 'Session fermée : ton message la reprend ici, sans fenêtre.' : 'À toi.';
+    f.ask.replaceChildren(...(a && a.pending ? [askBox(a)] : []));
+    const sig = a ? `${a.lastSeen}|${busy}|${a.raw.transcript || ''}` : '';
+    if (!force && sig === f.sig) return;
+    f.sig = sig;
+    if (M.demo) { f.log.replaceChildren(h('p', { class: 'us-dim' }, 'Mode démo : la discussion se lit sur la vraie tour.')); return; }
+    let r = null;
+    const seq = f.seq = (f.seq || 0) + 1; // une lecture plus ancienne qui revient apres ne recouvre pas la derniere
+    try { r = await fetch(`/api/chat?session=${encodeURIComponent(id)}&n=80`).then(x => x.json()); } catch { /* tour injoignable */ }
+    if (!chatDlg.open || chatDlg.dataset.id !== id || seq !== f.seq) return;
+    const msgs = (r && r.messages) || [];
+    // Ton dernier message s'affiche tout de suite, avant que la session l'ait ecrit dans son journal.
+    if (f.mine && !msgs.some(m => m.who === 'toi' && m.text === f.mine)) msgs.push({ who: 'toi', text: f.mine, at: Date.now() });
+    else f.mine = '';
+    const near = f.log.scrollHeight - f.log.scrollTop - f.log.clientHeight < 60;
+    f.log.replaceChildren(...(msgs.length ? chatItems(msgs, a, M) : [h('p', { class: 'us-dim' }, r && r.ok === false ? r.error : 'Pas encore de message.')]));
+    if (near || force) f.log.scrollTop = f.log.scrollHeight;
+  }
+
+  // ---------- sujets du jeu (lib/sujets.js) ----------
+  // Un sujet = une salle qui existe meme sans session, son carnet (ou on en est) et le tableau partage
+  // ou les sujets se laissent des messages. Une session de sujet se lance a la demande et reprend le carnet.
+  const forSujet = (z, e) => { const t = e.to.toLowerCase(); return t === z.title.toLowerCase() || /^(tous|toutes|all)$/.test(t); };
+  const boardLine = (e) => h('li', null, h('span', { class: 'us-time' }, e.when ? e.when.slice(5).replace(/^(\d\d)-(\d\d)/, '$2/$1') : ''),
+    h('span', null, h('b', null, `${e.from} → ${e.to}`), ' ', e.text));
+  // Par defaut, la session d'un sujet se lance dans la tour : tu lui parles dans sa discussion.
+  async function sujetLaunch(M, z, window) {
+    if (window) return launchTask({ id: z.id, title: z.title }, M.sujetsProject);
+    const r = await T.api('/api/chat/start', { id: z.id, project: M.sujetsProject });
+    if (r && r.ok) { sideToggle('sujets', false); select({ kind: 'agent', id: r.sessionId }, true); chatDialog(r.sessionId); }
+    else if (r && r.error) T.toast(r.error);
+  }
+  function sujetBody(M, z, live) {
+    const n = z.notes, mail = (M.board || []).filter(e => forSujet(z, e)).slice(-4);
+    const proj = encodeURIComponent(M.sujetsProject || '');
+    return [
+      live ? null : h('p', { class: 'us-dim' }, 'En sommeil : aucune session ne tourne. « Discuter » en lance une ici, qui lit d\'abord le carnet et le tableau, puis te demande quoi faire.'),
+      z.text ? h('p', null, z.text) : null,
+      rowsOf([
+        ['Ses agents', z.agents.length ? z.agents.join(', ') : 'aucun attitré'],
+        z.reviewers && z.reviewers.length && ['Relecture', z.reviewers.join(', ')],
+        ['Carnet', n ? ['mis à jour ', T.agoEl(n.at)] : h('span', { class: 'us-dim' }, 'pas encore : la première session le crée')],
+      ]),
+      n && n.where ? h('div', { class: 'us-said' }, h('b', null, 'Où on en est : '), h('span', { class: 'us-pre' }, n.where)) : null,
+      n && n.next ? h('div', { class: 'us-said' }, h('b', null, 'Prochaines étapes : '), h('span', { class: 'us-pre' }, n.next)) : null,
+      mail.length ? [h('div', { class: 'us-sub' }, 'Pour lui au tableau'), h('ul', { class: 'us-board' }, mail.map(boardLine))] : null,
+      h('div', { class: 'us-actions' },
+        live ? null : btn('Discuter', () => sujetLaunch(M, z), 'us-go', M.demo || !M.sujetsProject ? { disabled: true } : { title: 'Lance la session de ce sujet dans la tour : tu lui parles ici, sans fenêtre' }),
+        live ? null : btn('Dans une fenêtre', () => sujetLaunch(M, z, true), '', M.demo || !M.sujetsProject ? { disabled: true } : { title: 'Ouvre Claude Code dans une fenêtre, dans le dossier du projet, sur ce sujet' }),
+        btn('Lire le carnet', () => fileView(`Carnet : ${z.title}`, `Saved/Tour/sujets/${z.id.slice(6)}.md`, `/api/sujets/file?project=${proj}&id=${encodeURIComponent(z.id)}`), '', M.demo || !n ? { disabled: true } : {}),
+        btn('Écrire au tableau', () => boardDialog(M, z.title), '', M.demo ? { disabled: true } : {})),
+    ];
+  }
+  function sujetsPanel(M) {
+    const close = btn('Fermer', () => sideToggle('sujets', false), 'us-x', { 'aria-label': 'Fermer les sujets', title: 'Échap' });
+    const zs = M.sujets || [];
+    const proj = encodeURIComponent(M.sujetsProject || '');
+    const open = (z) => { sideToggle('sujets', false); select({ kind: 'agent', id: z.session ? z.session.id : 'sujet:' + z.id }, true); };
+    return h('section', { class: 'us-panel us-entity us-taches', 'aria-label': 'Sujets' },
+      h('div', { class: 'us-ehead' }, h('h2', null, M.sujetsProject ? `Sujets de ${M.sujetsProject}` : 'Sujets'), close),
+      h('div', { class: 'us-ebody' },
+        zs.length ? h('p', null, 'Une salle par sujet du jeu. Une session de sujet ne tourne pas en permanence : elle tient un carnet, et la suivante reprend là où elle s\'est arrêtée. Les sujets se parlent par le tableau, et chaque session passe à ses agents ce qui les concerne.')
+          : h('p', null, 'Connecte ton projet Unreal : ses sujets viennent des sections de ses agents (.claude/agents).'),
+        h('ul', { class: 'us-runs' }, zs.map(z => {
+          const a = z.session, mail = (M.board || []).filter(e => forSujet(z, e)).length;
+          return h('li', null,
+            h('button', { type: 'button', class: 'us-runbtn', onclick: () => open(z) },
+              h('span', { class: `us-dot us-d-${a ? dotFor(a.st) : 'grey'}` }), h('b', null, z.title),
+              h('span', { class: 'us-dim' }, ` ${a ? `${a.name}, ${a.stText}` : 'en sommeil'}${z.notes ? '' : ', sans carnet'}${mail ? `, ${T.plural(mail, 'message', 'messages')}` : ''}`)),
+            a ? btn('Discuter', () => { sideToggle('sujets', false); select({ kind: 'agent', id: a.id }, true); chatDialog(a.id); }) : btn('Discuter', () => sujetLaunch(M, z), 'us-go', M.demo || !M.sujetsProject ? { disabled: true } : {}));
+        })),
+        h('div', { class: 'us-sub' }, 'Tableau'),
+        (M.board || []).length ? h('ul', { class: 'us-board' }, M.board.slice(-12).reverse().map(boardLine)) : h('p', { class: 'us-dim' }, 'Vide pour l\'instant. Les sessions de sujet y écrivent ce que les autres doivent savoir.'),
+        h('div', { class: 'us-actions' }, btn('Écrire au tableau', () => boardDialog(M, 'tous'), 'us-go', M.demo ? { disabled: true } : {}),
+          btn('Lire tout le tableau', () => fileView('Tableau des sujets', 'Saved/Tour/tableau.md', `/api/sujets/file?project=${proj}&id=tableau`), '', M.demo || !(M.board || []).length ? { disabled: true } : {}))));
+  }
+  let boardDlg = null;
+  function boardDialog(M, to) {
+    if (!boardDlg) {
+      const f = {};
+      boardDlg = h('dialog', { class: 'us-dialog', 'aria-label': 'Écrire au tableau' },
+        h('form', { method: 'dialog', onsubmit: async (e) => {
+          e.preventDefault();
+          const r = await T.api('/api/sujets/post', { project: G.M.sujetsProject, to: f.to.value, text: f.text.value });
+          if (r && r.ok) { boardDlg.close(); T.toast('Message ajouté au tableau : la prochaine session du sujet le lira.'); } else if (r) f.err.textContent = r.error || 'Écriture impossible.';
+        } },
+          h('h2', null, 'Écrire au tableau'),
+          h('label', null, 'Pour', f.to = h('select', { name: 'to' })),
+          h('label', null, 'Message', f.text = h('textarea', { name: 'text', rows: 4, maxlength: 400, required: true, placeholder: 'ex. On garde la touche K pour le coup de pied.' })),
+          f.err = h('p', { class: 'us-t-ko' }),
+          h('div', { class: 'us-actions' }, btn('Annuler', () => boardDlg.close()), h('button', { type: 'submit', class: 'us-btn us-go' }, 'Ajouter'))));
+      boardDlg.f = f;
+      document.body.append(boardDlg);
+    }
+    const f = boardDlg.f;
+    f.to.replaceChildren(h('option', { value: 'tous' }, 'Tous les sujets'), ...(M.sujets || []).map(z => h('option', { value: z.title, selected: z.title === to }, z.title)));
+    f.text.value = ''; f.err.textContent = '';
+    boardDlg.showModal();
+    f.text.focus();
+  }
+
   function tachesPanel(M) {
     const tasks = M.S.tasks || [];
     const proj = M.projects[0] ? M.projects[0].name : '';
@@ -1856,7 +2090,7 @@
     const M = G.M; if (!M) return;
     G.hud.chips.replaceChildren(...chips(M).filter(Boolean));
     G.hud.res.replaceChildren(...(MODE.counters ? counters(M) : []));
-    const ent = G.side === 'tuto' ? tutoPanel(M) : G.side === 'taches' ? tachesPanel(M) : G.side === 'equipe' ? equipePanel(M) : entityPanel(M);
+    const ent = G.side === 'tuto' ? tutoPanel(M) : G.side === 'taches' ? tachesPanel(M) : G.side === 'sujets' ? sujetsPanel(M) : G.side === 'equipe' ? equipePanel(M) : entityPanel(M);
     // La fiche est refaite a chaque nouvelle donnee : on garde l'endroit ou on l'avait fait defiler.
     const was = G.hud.entity.firstChild, oldBody = was && was.querySelector('.us-ebody');
     G.hud.entity.replaceChildren(...(ent ? [ent] : []));
@@ -1871,6 +2105,10 @@
     G.hud.empty.hidden = !none;
     G.hud.tutoBtn.classList.toggle('on', G.side === 'tuto');
     G.hud.taskBtn.classList.toggle('on', G.side === 'taches');
+    G.hud.sujetBtn.classList.toggle('on', G.side === 'sujets');
+    G.hud.oldBtn.textContent = T.ui.showEnded ? 'Masquer les anciennes' : `Anciennes (${M.endedCount})`;
+    G.hud.oldBtn.classList.toggle('on', T.ui.showEnded);
+    G.hud.oldBtn.disabled = !M.endedCount && !T.ui.showEnded;
     G.hud.teamBtn.classList.toggle('on', G.side === 'equipe');
     G.hud.skillBtn.classList.toggle('on', !G.side && !!G.sel && G.sel.kind === 'skills');
     G.hud.skillBtn.classList.toggle('alert', !!(M.S.skills && M.S.skills.ko));
@@ -1890,7 +2128,7 @@
     };
     G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
-      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
+      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Une salle par sujet du jeu (animation, interface, menus, armes...), son carnet et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Sujets'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
       G.hud.mode,
       G.hud.entity);
     root.replaceChildren(G.app);
@@ -1905,11 +2143,15 @@
     if (!G.built || !root.contains(G.canvas)) build(root);
     const prev = G.world;
     G.world = layout(M);
-    if (G.sel && G.sel.kind === 'agent' && !M.agents.some(a => a.id === G.sel.id)) G.sel = null;
+    // Le sujet en sommeil qu'on regardait vient d'avoir sa session : on suit la session.
+    const zs = G.sel && G.sel.kind === 'agent' && sujetOf(G.sel.id);
+    if (zs && zs.session) G.sel = { kind: 'agent', id: zs.session.id };
+    if (G.sel && G.sel.kind === 'agent' && !M.agents.some(a => a.id === G.sel.id) && !sujetOf(G.sel.id)) G.sel = null;
     if (!G.userMoved && (!prev || prev.w !== G.world.w)) fit();
     if (MODE.follow && G.sel && !G.drag) center(G.sel);
     G.dirty = true;
     renderHud();
+    refreshChat(false);
   }
 
   // web/usine/mondes/<id>.js appelle Usine.world({...}) ; web/templates/<id>.js appelle Usine.mode({...}).
