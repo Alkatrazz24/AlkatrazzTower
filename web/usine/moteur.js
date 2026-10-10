@@ -1137,7 +1137,11 @@
   async function launchTask(t, proj) {
     const r = await T.api('/api/tasks/launch', { id: t.id, project: proj });
     if (r && r.ok) T.toast(`Claude Code s'ouvre dans une nouvelle fenêtre avec « ${t.title} ».`);
-    else if (r && r.error) T.toast(r.error);
+    // Sans la commande claude (Claude Code utilise depuis l'application de bureau), on copie la consigne.
+    else if (r && (r.code === 'noclaude' || /Windows/.test(r.error || ''))) {
+      try { await navigator.clipboard.writeText(promptText(t, proj)); T.toast(`Consigne copiée : colle-la dans une session Claude Code ouverte sur ${proj || 'le projet'}.`); }
+      catch { T.toast(r.error); }
+    } else if (r && r.error) T.toast(r.error);
   }
 
   function tachesPanel(M) {
