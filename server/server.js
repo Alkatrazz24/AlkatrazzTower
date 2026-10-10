@@ -252,6 +252,7 @@ const routes = {
   'POST /api/lock/force-release': () => ({ ok: state.forceRelease() }),
   'POST /api/report': (b) => { state.report(b.entry || {}, b.result || {}); return { ok: true }; },
   'POST /api/agents/forget': (b) => ({ ok: state.forget(b.sessionId) }),
+  'POST /api/agents/rename': (b) => ({ ok: state.renameRoom(String(b.sessionId || ''), b.label) }),
 
   // Personnages
   'GET /api/characters': () => Object.values(state.characters).map(c => ({

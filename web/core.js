@@ -141,11 +141,12 @@
       const queuePos = S.queue.findIndex(e => e.sessionId === a.sessionId) + 1;
       return {
         id: a.sessionId, raw: a, st, stText: STATUS[st] || st,
-        name: ch ? ch.name : agentName(a), role: ch ? agentName(a) : '', char: ch, look: ch ? ch.look : {},
+        // salle : ce que fait la session (son nom choisi, sa tache, son titre ou sa premiere demande)
+        name: ch ? ch.name : agentName(a), salle: a.salle || agentName(a), label: a.label || '', role: a.salle || (ch ? agentName(a) : ''), char: ch, look: ch ? ch.look : {},
         holds: !!(S.lock && S.lock.sessionId === a.sessionId), queuePos,
         ask: st === 'waiting' ? a.message : '', said: st === 'idle' ? a.message : '',
         prompt: a.prompt, tool: a.tool, subs: Object.keys(a.subagents || {}).length,
-        subList: Object.entries(a.subagents || {}).map(([id, v]) => ({ id, type: v.type || 'agent', lastSeen: v.lastSeen })),
+        subList: Object.entries(a.subagents || {}).map(([id, v]) => ({ id, type: v.type || 'agent', section: v.section || '', lastSeen: v.lastSeen })),
         lastBuild: a.lastBuild, lastTest: a.lastTest, docs: docsOf(a), error: a.lastError,
         where: folder(a.cwd), project: a.project ? a.project.name : '', lastSeen: a.lastSeen,
         room: a.room || null, roomName: a.room && R[a.room] ? R[a.room][0] : '',
