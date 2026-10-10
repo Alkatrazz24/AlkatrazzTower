@@ -211,6 +211,24 @@ En face, la salle **Unreal Engine** : la doc officielle de la version du projet 
 (création, Blueprints, C++, réseau, UI, animation, rendu…), aussi écrite dans `Saved/Tour/doc-unreal.md`
 pour les sessions.
 
+## Les dépôts : git et GitHub
+
+Encore à droite, le bâtiment **Dépôts** (bouton **Git**, ou touche G) suit la tour elle-même, chaque
+projet connu et les dossiers que tu ajoutes (« Suivre un autre dossier ») :
+
+- **sur le PC** : la branche, les derniers commits, les fichiers pas encore commités. Une baie par dépôt,
+  dont les voyants prennent la couleur de son état ;
+- **sur GitHub** (si le dépôt y est relié) : le dernier push, les PR ouvertes (une caisse par PR sur le
+  quai), les derniers commits de la branche principale, et si le PC est à jour, en retard ou en avance,
+  sans même lancer de `git fetch`. Sans jeton, la tour voit les dépôts publics ; une variable
+  `GITHUB_TOKEN` (ou `GH_TOKEN`) ouvre aussi les privés.
+
+La tour ne fait que lire : `git --no-optional-locks` ne touche même pas l'index. Trois gestes changent un
+dépôt, chacun sur ton clic et après confirmation : **Initialiser git** (`git init -b main`, plus un
+`.gitignore` Unreal s'il n'y en a pas, sans rien commiter), **Relier** à une adresse GitHub
+(`git remote add origin`, sans rien pousser) et **Récupérer de GitHub** (`git fetch`). Rien ne pousse.
+Si git n'est pas installé, la tour le dit (bâtiment et « À traiter ») avec le lien de téléchargement.
+
 ## La carte du projet
 
 Sur la page, le projet est une petite ville. La maison au centre, c'est le jeu, avec son nom,
@@ -362,6 +380,7 @@ chaque changement de `web/` au lieu de deviner.
 | `lib/results.js` | lecture des verdicts UBT et des tests |
 | `lib/campaign.js` | versions à sortir : features, épreuve finale, victoire |
 | `lib/unreal.js` | version du moteur, liens de la doc Unreal, consigne de début de session |
+| `lib/git.js` | bâtiment Dépôts : état git de chaque dossier suivi, GitHub, initialiser et relier |
 | `lib/docs.js` | bâtiment Documentation : rayons, recherche, doc obligatoire, rayon Unreal par thème |
 | `web/index.html`, `web/core.js`, `web/core.css` | la page : flux en direct, données, actions et dialogues communs |
 | `web/templates/` | les cinq façons de se servir de la page (`list.js` les déclare et fixe celui par défaut) et leurs captures ; `web/usine/` : le moteur du jeu, son HUD et les ambiances (`mondes/`) |

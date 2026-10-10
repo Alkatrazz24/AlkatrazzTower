@@ -15,6 +15,9 @@
   function items(M, api) {
     const { T } = api, out = [];
     if (!M.projects.length) out.push({ key: 'projet', tone: 'you', title: 'Connecte ton projet Unreal', text: 'Les tâches se lancent dans son dossier, et chaque session ouverte dessus a sa salle dans son aile.', go: ['Connecter', T.act.openProjects] });
+    // git absent : la tour le demande, avec le lien officiel (batiment des depots, lib/git.js)
+    const Gt = M.S && M.S.git;
+    if (Gt && !Gt.git) out.push({ key: 'git', tone: 'you', title: 'Git n\'est pas installé', text: 'La tour en a besoin pour suivre tes projets et leur dépôt GitHub. Installe-le en gardant les choix par défaut, puis clique « Revérifier » dans le bâtiment des dépôts.', sel: { kind: 'git' }, go: ['Installer Git', () => window.open(Gt.download, '_blank', 'noopener')], alt: ['Revérifier', () => T.api('/api/git/refresh')] });
     for (const x of M.attention) {
       const key = `${x.kind}:${x.agent ? x.agent.id : x.feature ? x.feature.id : ''}:${x.text}`;
       if (seen[key]) continue;

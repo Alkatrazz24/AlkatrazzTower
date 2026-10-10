@@ -166,6 +166,20 @@ function probeDocs() {
 }
 function docRoot(name) { const p = projectFor(name); return p ? p.root : null; }
 
+// Le batiment des depots (lib/git.js) : la tour elle-meme, chaque projet connu et les dossiers ajoutes
+// par ali. Git local relu toutes les minutes ; GitHub toutes les 5 minutes (et sur « Relire »).
+const gitLib = require('../lib/git');
+function gitList() {
+  const out = [{ name: 'Alkatrazz Tower', root: ROOT, kind: 'tour' }];
+  const seen = new Set([ROOT.toLowerCase()]);
+  const add = (it) => { const k = path.resolve(it.root).toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push(it); } };
+  for (const p of knownProjects()) add({ name: p.name, root: p.root, kind: 'projet' });
+  for (const f of state.gitFollow) add({ name: f.name, root: f.root, kind: 'suivi' });
+  return out;
+}
+const gitTrack = gitLib.create({ list: gitList, publish: (v) => state.setGit(v) });
+const gitSafe = (p) => p.catch(e => { console.error('[tower] git illisible :', e.message); return null; });
+
 // ---- inventaire des projets pour la carte ----------------------------------------------------
 
 const scanning = new Set();
@@ -209,6 +223,9 @@ setInterval(probeChantiers, 10_000).unref();
 setInterval(probeSujets, 10_000).unref();
 setInterval(probeDocs, 60_000).unref();
 setTimeout(probeDocs, 3000).unref();
+setInterval(() => gitSafe(gitTrack.refresh()), 60_000).unref();
+setInterval(() => gitSafe(gitTrack.refresh({ withGithub: true })), 5 * 60_000).unref();
+setTimeout(() => gitSafe(gitTrack.refresh({ withGithub: true })), 2000).unref();
 probeEditor();
 probeChantiers();
 probeSujets();
@@ -333,6 +350,25 @@ const routes = {
   'POST /api/docs/refresh': () => { probeDocs(); return { ok: true }; },
   'POST /api/docs/unreal': (b) => ({ ok: state.setDocRule(String(b.mode || '')) }),
 
+  // Le batiment des depots : relire, suivre un dossier, et les trois gestes qui changent un depot,
+  // chacun sur un clic d'ali (git init, git remote add origin, git fetch). Rien ne pousse.
+  'POST /api/git/refresh': async () => ({ ok: !!(await gitSafe(gitTrack.refresh({ withGithub: true }))) }),
+  'POST /api/git/follow': async (b) => {
+    const p = String(b.path || '').trim().replace(/^["']|["']$/g, '');
+    let dir = false;
+    try { dir = path.isAbsolute(p) && fs.statSync(p).isDirectory(); } catch { /* introuvable */ }
+    if (!dir) return { ok: false, error: 'Dossier introuvable : colle son chemin complet (ex. C:\\Users\\toi\\Documents\\MonProjet).' };
+    const root = path.resolve(p);
+    if (gitTrack.find(root)) return { ok: false, error: 'Ce dossier est déjà suivi.' };
+    state.followRepo(root, path.basename(root) || root);
+    await gitSafe(gitTrack.refresh({ withGithub: true }));
+    return { ok: true, root };
+  },
+  'POST /api/git/unfollow': async (b) => { const ok = state.unfollowRepo(String(b.root || '')); if (ok) await gitSafe(gitTrack.refresh()); return { ok }; },
+  'POST /api/git/init': (b) => gitTrack.init(String(b.root || '')),
+  'POST /api/git/fetch': (b) => gitTrack.fetchRemote(String(b.root || '')),
+  'POST /api/git/remote': (b) => gitTrack.addRemote(String(b.root || ''), String(b.url || '')),
+
   'POST /api/lock/acquire': (b) => {
     const st = state.acquire({
       sessionId: b.sessionId, kind: b.kind, command: b.command, cwd: b.cwd, pid: b.pid,
@@ -409,6 +445,7 @@ const routes = {
     state.connectProject(p);
     inventoryOf(p);
     setTimeout(probeDocs, 500);
+    setTimeout(() => gitSafe(gitTrack.refresh({ withGithub: true })), 500);
     return { ok: true, project: p };
   },
   'POST /api/projects/disconnect': (b) => ({ ok: state.disconnectProject(b.uproject) }),

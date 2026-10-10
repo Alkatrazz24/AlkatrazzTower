@@ -340,6 +340,8 @@ h1, h2, h3, p { margin: 0; }
 .us-skill > .us-runbtn:hover code { text-decoration: underline; }
 .us-skst { margin-left: auto; padding-left: 8px; font-variant-numeric: tabular-nums; font-size: 13px; }
 .us-skst.us-t-unused { color: var(--us-muted); }
+.us-t-blue { color: var(--us-blue); }
+.us-dot.us-d-off { background: var(--us-grey); }
 .us-sk-ko { border-color: var(--us-ko); }
 .us-skissues { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 13px; }
 .us-skill p { font-size: 13px; }

@@ -344,10 +344,52 @@ function demoDocs() {
   state.event(stop); state.hookReply(stop);
 }
 
+// Les depots : CTB en git sur le PC seulement (avec LFS et du travail pas commite), la tour reliee a
+// GitHub avec une PR ouverte, et un dossier ajoute qui n'a pas encore git (lib/git.js).
+async function demoGit() {
+  const gitLib = require('../lib/git');
+  const { execFileSync } = require('child_process');
+  const who = { GIT_AUTHOR_NAME: 'ali', GIT_COMMITTER_NAME: 'ali', GIT_AUTHOR_EMAIL: 'ali@example.com', GIT_COMMITTER_EMAIL: 'ali@example.com' };
+  const g = (args, env = {}) => execFileSync('git', ['-C', PROJ, ...args], { stdio: 'ignore', env: { ...process.env, ...who, ...env } });
+  const commit = (msg, min) => { const d = new Date(T0 + min * 60_000).toISOString(); g(['commit', '-q', '-m', msg], { GIT_AUTHOR_DATE: d, GIT_COMMITTER_DATE: d }); };
+  fs.writeFileSync(P('.gitattributes'), '*.uasset filter=lfs diff=lfs merge=lfs -text\n');
+  fs.writeFileSync(P('.gitignore'), 'Binaries/\nIntermediate/\nSaved/\nDerivedDataCache/\n');
+  g(['init', '-q', '-b', 'main']); g(['add', '-A']);
+  commit('Portes : six coups de pied les cassent', -240);
+  touch('Source/ConquerTheBackrooms/Portes/CTBPorte.h', 1, '// porte\n'); g(['add', '-A']); commit('ADR 0081 : le coup de pied dans les portes', -95);
+  touch('Source/ConquerTheBackrooms/Items/CTBLampe.h', 0, '// lampe\n');
+  touch('Content/Blueprints/BP_Door.uasset', 0, 'modifie');
+  const ctb = await gitLib.local(PROJ);
+  delete ctb.shas;
+  ctb.fetchedAt = 0;
+  const TOWER = path.join(ROOT, 'Alkatrazz Tower');
+  const ago = (min) => T0 + min * 60_000;
+  const tower = {
+    name: 'Alkatrazz Tower', root: TOWER, kind: 'tour', exists: true, isRepo: true, checkedAt: ago(0),
+    branch: 'main', upstream: 'origin/main', ahead: 0, behind: 0, empty: false, detached: false,
+    dirty: { staged: 0, modified: 0, untracked: 0, conflicts: 0, total: 0, files: [] },
+    commits: [{ sha: 'c09e2525f0', short: 'c09e252', subject: 'Merge pull request #27 from Alkatrazz24/claude/batiment-documentation', author: 'ali', at: ago(-12) }],
+    remotes: [{ name: 'origin', url: 'https://github.com/Alkatrazz24/AlkatrazzTower.git' }],
+    github: { owner: 'Alkatrazz24', repo: 'AlkatrazzTower', url: 'https://github.com/Alkatrazz24/AlkatrazzTower' }, fetchedAt: ago(-12), lfs: false,
+    remote: { ok: true, url: 'https://github.com/Alkatrazz24/AlkatrazzTower', private: false, defaultBranch: 'main', pushedAt: ago(-2), left: 57, checkedAt: ago(0),
+      prs: [{ number: 28, title: 'Bâtiment des dépôts : git et GitHub', user: 'Alkatrazz24', url: 'https://github.com/Alkatrazz24/AlkatrazzTower/pull/28', draft: false, at: ago(-2) }],
+      commits: [
+        { sha: 'd1e2f3a4b5', short: 'd1e2f3a', subject: 'Merge pull request #26 : la mise en place', author: 'Alkatrazz24', at: ago(-2) },
+        { sha: 'c09e2525f0', short: 'c09e252', subject: 'Merge pull request #27 from Alkatrazz24/claude/batiment-documentation', author: 'Alkatrazz24', at: ago(-12) },
+      ] },
+    sync: { state: 'behind', n: 1 },
+  };
+  const proto = { name: 'Prototype', root: path.join(ROOT, 'Prototype'), kind: 'suivi', exists: true, isRepo: false, uproject: true, checkedAt: ago(0), remote: null, sync: null };
+  state.followRepo(proto.root, proto.name);
+  state.setGit({ git: { version: '2.55.0.windows.5' }, download: gitLib.GIT_DOWNLOAD, token: false,
+    repos: [tower, { name: 'ConquerTheBackrooms', kind: 'projet', ...ctb, remote: null, sync: null }, proto] });
+}
+
 (async () => {
 await demoSkills();
 demoSujets();
 demoDocs();
+await demoGit();
 
 // Les chemins du dossier temporaire deviennent des chemins Windows plausibles.
 const WIN = 'C:\\Users\\Alkatrazz\\Documents\\Unreal Projects';

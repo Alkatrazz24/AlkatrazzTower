@@ -15,7 +15,9 @@
 //   - en face, le quartier des agents : un casier par agent que Claude Code peut appeler, range par
 //     section ; ouvert quand l'agent est parti travailler dans une salle ;
 //   - a cote, le batiment de la documentation : la doc du jeu sur les etageres (les sessions et leurs
-//     agents y ecrivent la leur, c'est obligatoire), et en face le rayon Unreal Engine.
+//     agents y ecrivent la leur, c'est obligatoire), et en face le rayon Unreal Engine ;
+//   - encore a droite, les depots : une baie par dossier suivi (git sur le PC) et en face le quai
+//     GitHub, une caisse par PR ouverte.
 // Par-dessus, un HUD : compteurs en haut, version a gauche, mini-carte et alertes a droite, barre
 // rapide en bas, et la fiche de ce qu'on a selectionne (clic sur le jeu, ou touches 1 a 9).
 
@@ -171,7 +173,11 @@
     const dx0 = right + GAP;
     const droom = { x: dx0 + 1, y: TOP, w: 10, h: ROOM_H }, uroom = { x: dx0 + 1, y: BOT, w: 10, h: ROOM_H };
     hallOf(B, dx0, dx0 + 11, 0, 'doc');
-    right = dx0 + 11;
+    // Les depots, encore a droite : git sur le PC en haut, le quai GitHub en bas.
+    const gx0 = dx0 + 11 + GAP;
+    const groom = { x: gx0 + 1, y: TOP, w: 10, h: ROOM_H }, hroom = { x: gx0 + 1, y: BOT, w: 10, h: ROOM_H };
+    hallOf(B, gx0, gx0 + 11, 0, 'git');
+    right = gx0 + 11;
     let h = BOT + ROOM_H + 2;
     // Les batiments core et feature, des qu'un projet a des sujets (ou qu'une session core ou feature existe).
     const core = shown.filter(a => kindOf(a) === 'core'), feat = shown.filter(a => kindOf(a) === 'feature');
@@ -186,7 +192,7 @@
       h = oy + BOT + ROOM_H + 2;
     }
     const you = { x: 1.2, y: CY + .1 };
-    return { ...B, forge, froom, okChest, koChest, silo, vroom, lroom, aroom, droom, uroom, hall: B.halls[0], you, w: right + 2, h, x0: 3 };
+    return { ...B, forge, froom, okChest, koChest, silo, vroom, lroom, aroom, droom, uroom, groom, hroom, hall: B.halls[0], you, w: right + 2, h, x0: 3 };
   }
 
   // ---------- terrain : calcule une fois par taille de batiment, hors de la boucle ----------
@@ -728,6 +734,77 @@
     light(x + w / 2, y + hh / 2, 60, '#ffe3a8', .6);
   }
 
+  // ---------- les depots : git sur le PC, le quai GitHub ----------
+  const gitUi = { open: new Set(), url: {}, path: '', busy: '' };
+  const gitOf = (M) => (M.S && M.S.git) || null;
+  const TONE_COL = () => ({ ok: COL.ok, warn: COL.warn, ko: COL.ko, blue: COL.blue, off: '#777' });
+  const nCommits = (n) => T.plural(n, 'commit', 'commits');
+  // L'etat d'un depot en un mot et une couleur : la baie s'allume de cette couleur, la fiche l'ecrit.
+  function repoTone(r, Gt) {
+    if (Gt && !Gt.git) return ['ko', 'git pas installé'];
+    if (!r.exists) return ['ko', 'dossier introuvable'];
+    if (r.error) return ['ko', 'illisible'];
+    if (!r.isRepo) return ['off', r.inside ? 'dans un autre dépôt' : 'pas de git'];
+    if (r.dirty && r.dirty.conflicts) return ['ko', 'conflits à régler'];
+    if (r.sync && r.sync.state === 'behind') return ['blue', `${nCommits(r.sync.n)} à récupérer`];
+    if (r.sync && r.sync.state === 'diverged') return ['warn', 'différent de GitHub'];
+    if (r.dirty && r.dirty.total) return ['warn', T.plural(r.dirty.total, 'fichier pas commité', 'fichiers pas commités')];
+    if (r.sync && r.sync.state === 'ahead') return ['blue', `${nCommits(r.sync.n)} à pousser`];
+    if (!r.github) return ['ok', 'propre, pas sur GitHub'];
+    return ['ok', 'à jour'];
+  }
+  function gitAlert(M) { const Gt = gitOf(M); return !!Gt && (!Gt.git || Gt.repos.some(r => repoTone(r, Gt)[0] === 'ko')); }
+  function prsOf(M) { const Gt = gitOf(M), seen = new Set(), out = []; for (const r of (Gt && Gt.repos) || []) if (r.remote && r.remote.ok && !seen.has(r.remote.url)) { seen.add(r.remote.url); out.push(...r.remote.prs); } return out; }
+  // Une baie par depot contre le mur du fond : ses voyants prennent la couleur de son etat.
+  function drawGitRoom(c, W, t) {
+    const R = W.groom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS, Gt = gitOf(G.M), tc = TONE_COL();
+    planks(c, x, y, w, hh, shade(COL.floor, -.12));
+    walls(c, R, { side: 'bottom', x: R.x + .6, w: 1.6, open: true });
+    const repos = Gt ? Gt.repos.slice(0, 6) : [];
+    const bw = 20, gap = 4, sx = x + WALL + 4, by = y + WALL + 3;
+    repos.forEach((r, i) => {
+      const bx = sx + i * (bw + gap), [tone] = repoTone(r, Gt), col = tc[tone];
+      box(c, bx, by, bw, 34, COL.steelDark, COL.steel, shade(COL.steelDark, -.35));
+      if (SC) return;
+      const blink = tone === 'ko' && !reduced && Math.floor(t * 2 + i) % 2;
+      for (let k = 0; k < 4; k++) {
+        c.fillStyle = '#1b1d20'; c.fillRect(bx + 3, by + 5 + k * 7, bw - 6, 5);
+        c.fillStyle = blink ? '#3a1d18' : k === 0 || (r.dirty && k <= Math.min(3, Math.ceil(r.dirty.total / 20))) ? col : shade(col, -.55);
+        c.fillRect(bx + 5, by + 6 + k * 7, 3, 3);
+        c.fillStyle = '#4a4e54'; c.fillRect(bx + 10, by + 7 + k * 7, bw - 15, 1);
+      }
+      light(bx + bw / 2, by + 16, 22, col, .5);
+    });
+    if (Gt && !Gt.git) { box(c, sx, by, 5 * TS, 2 * TS, '#2b2722', '#3a3530', '#1b1814'); if (!SC) { c.fillStyle = COL.ko; c.fillRect(sx + 6, by + 6, 4 * TS, 3); } }
+    // le pupitre au milieu, d'ou on initialise un depot
+    const dx = x + w / 2 - 1.6 * TS, dy = y + 4.4 * TS;
+    box(c, dx, dy, 3.2 * TS, .9 * TS, COL.desk, COL.deskLight, COL.deskDark);
+    G.emit.push(() => { c.fillStyle = COL.screen; c.fillRect(dx + 1.1 * TS, dy - .7 * TS, 1 * TS, .7 * TS); c.fillStyle = COL.ok; c.fillRect(dx + 1.1 * TS + 3, dy - .7 * TS + 3, 6, 1); c.fillRect(dx + 1.1 * TS + 3, dy - .7 * TS + 6, 9, 1); });
+    light(x + w / 2, dy + 4, 70, '#ffe3a8', .8);
+  }
+  // Le quai GitHub : une caisse par PR ouverte, le long de la bande jaune et noire du quai.
+  function drawGithubRoom(c, W, t) {
+    const R = W.hroom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS;
+    planks(c, x, y, w, hh, shade(COL.concrete || COL.floor, -.04));
+    walls(c, R, { side: 'top', x: R.x + .6, w: 1.6, open: true });
+    const qy = y + hh - WALL - 10;
+    if (!SC) for (let k = 0; x + WALL + k * 8 < x + w - WALL; k++) { c.fillStyle = k % 2 ? COL.stripeB : COL.stripeA; c.fillRect(x + WALL + k * 8, qy, 8, 4); }
+    const prs = prsOf(G.M).slice(0, 10);
+    prs.forEach((p, i) => {
+      const cx = x + WALL + 6 + (i % 5) * 18, cy = qy - 16 - Math.floor(i / 5) * 15;
+      box(c, cx, cy, 14, 13, p.draft ? '#6b6b6b' : '#8a6234', p.draft ? '#8a8a8a' : '#a97b46', p.draft ? '#444' : '#4f371c');
+      if (!SC) { c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(cx + 2, cy + 6, 10, 1); c.fillRect(cx + 6, cy + 2, 1, 9); }
+    });
+    // le poste du quai : l'ecran montre le dernier commit arrive sur GitHub
+    const dx = x + w - 4.4 * TS, dy = y + 1.8 * TS;
+    box(c, dx, dy, 3.2 * TS, .9 * TS, COL.desk, COL.deskLight, COL.deskDark);
+    const ex = dx + 1 * TS, ey = dy - .8 * TS;
+    if (!SC) { c.fillStyle = '#26282b'; c.fillRect(ex - 1, ey - 1, 1.2 * TS + 2, .8 * TS + 2); }
+    G.emit.push(() => { c.fillStyle = '#1f2a1f'; c.fillRect(ex, ey, 1.2 * TS, .8 * TS); c.fillStyle = COL.ok; c.fillRect(ex + 3, ey + 3, 9, 1); c.fillRect(ex + 3, ey + 6, 5, 1); c.fillRect(ex + 3, ey + 9, 11, 1); });
+    light(ex + .6 * TS, ey + 6, 40, COL.ok, .6);
+    light(x + w / 2, y + hh / 2, 64, '#ffe3a8', .6);
+  }
+
   // Coins de selection facon jeu : quatre equerres qui respirent autour de l'element choisi.
   function brackets(c, b, t) {
     const pad = 4 + (reduced ? 0 : Math.sin(t * 5) * 1.5), x = b.x * TS - pad, y = b.y * TS - pad, w = b.w * TS + pad * 2, hh = b.h * TS + pad * 2, k = 8;
@@ -751,6 +828,8 @@
     if (sel.kind === 'skills') return W.lroom;
     if (sel.kind === 'roster') return W.aroom;
     if (sel.kind === 'docs') return W.droom;
+    if (sel.kind === 'git') return W.groom;
+    if (sel.kind === 'github') return W.hroom;
     if (sel.kind === 'unreal') return W.uroom;
     if (sel.kind === 'ok') return W.okChest;
     if (sel.kind === 'ko') return W.koChest;
@@ -786,6 +865,8 @@
     drawAgentsRoom(c, W, t);
     drawDocRoom(c, W, t);
     drawUnrealRoom(c, W, t);
+    drawGitRoom(c, W, t);
+    drawGithubRoom(c, W, t);
     drawLamps(c, W);
     // dans le couloir : la file devant la forge, et toi a l'entree
     const people = queueSpots(W).map(p => ({ look: p.q.agent ? p.q.agent.look : {}, st: 'ready', x: p.x * TS, y: p.y * TS }));
@@ -875,8 +956,8 @@
     // les batiments core et feature : leur enseigne au-dessus de l'entree, et la salle libre des features
     for (const b of W.blds) {
       if (!b.name) continue;
-      const [bx, by] = S(b.x + b.w / 2, b.y - (b.name === 'doc' ? 1.5 : 1.1));
-      const sign = { core: ['Core · la mémoire du jeu', COL.ok], feature: ['Features · les nouvelles idées', COL.warn], doc: ['Documentation', COL.blue] }[b.name];
+      const [bx, by] = S(b.x + b.w / 2, b.y - (b.name === 'doc' || b.name === 'git' ? 1.5 : 1.1));
+      const sign = { core: ['Core · la mémoire du jeu', COL.ok], feature: ['Features · les nouvelles idées', COL.warn], doc: ['Documentation', COL.blue], git: ['Dépôts', COL.ok] }[b.name];
       if (sign) label(c, sign[0], bx, by, { edge: sign[1], size: small ? 12 : 14, weight: 700 });
     }
     if (z >= .6) for (const f of W.fillers) if (f.free === 'feature' && f.top) { const [fx, fy] = S(f.x + f.w / 2, f.y + f.h / 2); label(c, '+ Nouvelle feature', fx, fy, { edge: COL.warn, weight: 700, size: small ? 11 : 13 }); }
@@ -919,6 +1000,11 @@
     const DC = docsOf(G.M), late = docDebts(G.M).filter(d => d.owed).length;
     const [dlx, dly] = S(W.droom.x + W.droom.w / 2, W.droom.y - .55);
     label(c, !DC ? 'Doc : lecture…' : late ? `Doc : ${late} en retard` : `Doc : ${T.plural(DC.total, 'page', 'pages')}`, dlx, dly, { edge: !DC ? '#777' : late ? COL.ko : COL.ok, weight: 700, max: Math.max(90, W.droom.w * TS * z) });
+    const GT = gitOf(G.M), gko = GT ? GT.repos.filter(r => repoTone(r, GT)[0] === 'ko').length : 0, npr = prsOf(G.M).length;
+    const [glx, gly] = S(W.groom.x + W.groom.w / 2, W.groom.y - .55);
+    label(c, !GT ? 'Git : lecture…' : !GT.git ? 'Git pas installé' : gko ? `Git : ${gko} à voir` : `Git : ${T.plural(GT.repos.length, 'dépôt', 'dépôts')}`, glx, gly, { edge: !GT ? '#777' : !GT.git || gko ? COL.ko : COL.ok, weight: 700, max: Math.max(90, W.groom.w * TS * z) });
+    const [hlx, hly] = S(W.hroom.x + W.hroom.w / 2, W.hroom.y + W.hroom.h + .55);
+    label(c, npr ? `GitHub : ${T.plural(npr, 'PR ouverte', 'PR ouvertes')}` : 'GitHub', hlx, hly, { edge: COL.ok, weight: 700, max: Math.max(90, W.hroom.w * TS * z) });
     const [ulx, uly] = S(W.uroom.x + W.uroom.w / 2, W.uroom.y + W.uroom.h + .55);
     label(c, `Unreal Engine ${DC && DC.version ? DC.version : '5'}`, ulx, uly, { edge: COL.blue, weight: 700, max: Math.max(90, W.uroom.w * TS * z) });
     const [yx, yy] = S(W.you.x + .9, CY + 2.75);
@@ -1009,6 +1095,8 @@
     c.fillStyle = G.M.S.skills && G.M.S.skills.ko ? COL.ko : COL.desk; c.fillRect(W.lroom.x * TS + 6, W.lroom.y * TS + 6, W.lroom.w * TS - 12, W.lroom.h * TS - 12);
     c.fillStyle = G.M.S.roster && G.M.S.roster.ko ? COL.ko : COL.steel; c.fillRect(W.aroom.x * TS + 6, W.aroom.y * TS + 6, W.aroom.w * TS - 12, W.aroom.h * TS - 12);
     c.fillStyle = docDebts(G.M).some(d => d.owed) ? COL.ko : COL.desk; c.fillRect(W.droom.x * TS + 6, W.droom.y * TS + 6, W.droom.w * TS - 12, W.droom.h * TS - 12);
+    c.fillStyle = gitAlert(G.M) ? COL.ko : COL.steel; c.fillRect(W.groom.x * TS + 6, W.groom.y * TS + 6, W.groom.w * TS - 12, W.groom.h * TS - 12);
+    c.fillStyle = COL.ok; c.fillRect(W.hroom.x * TS + 6, W.hroom.y * TS + 6, W.hroom.w * TS - 12, W.hroom.h * TS - 12);
     c.fillStyle = COL.blue; c.fillRect(W.uroom.x * TS + 6, W.uroom.y * TS + 6, W.uroom.w * TS - 12, W.uroom.h * TS - 12);
     const { vw, vh } = view();
     c.strokeStyle = '#fff'; c.lineWidth = 2 / s; c.strokeRect(Math.max(G.cam.x, 0), Math.max(G.cam.y, 0), Math.min(vw, W.w * TS - Math.max(G.cam.x, 0)), Math.min(vh, W.h * TS - Math.max(G.cam.y, 0)));
@@ -1032,6 +1120,8 @@
     if (inR(W.lroom)) return { kind: 'skills' };
     if (inR(W.aroom)) return { kind: 'roster' };
     if (inR(W.droom)) return { kind: 'docs' };
+    if (inR(W.groom)) return { kind: 'git' };
+    if (inR(W.hroom)) return { kind: 'github' };
     if (inR(W.uroom)) return { kind: 'unreal' };
     if (W.fillers.some(f => f.free === 'feature' && inR(f))) return { kind: 'newfeature' };
     return null;
@@ -1052,6 +1142,8 @@
     if (s.kind === 'skills') { const L = M.S.skills; return ['Bibliothèque des skills', L ? `${T.plural(L.total, 'skill', 'skills')}, ${L.ko} à réparer, ${L.unused} jamais utilisés` : 'Lecture en cours']; }
     if (s.kind === 'roster') { const A = M.S.roster; if (!A) return ['Quartier des agents', 'Lecture en cours']; const n = A.agents.filter(ag => rosterBusy(M, ag).length).length; return ['Quartier des agents', `${T.plural(A.total, 'agent', 'agents')}, ${n} au travail, ${A.ko + A.warn} à revoir`]; }
     if (s.kind === 'docs') { const D = docsOf(M), late = docDebts(M).filter(d => d.owed).length; return ['Documentation', D ? `${T.plural(D.total, 'page', 'pages')} à lire${late ? `, ${late} doc${late > 1 ? 's' : ''} en retard` : ''}` : 'Lecture en cours']; }
+    if (s.kind === 'git') { const Gt = gitOf(M); return ['Dépôts git', !Gt ? 'Lecture en cours' : !Gt.git ? 'Git n\'est pas installé : clique pour l\'installer' : Gt.repos.map(r => `${r.name} : ${repoTone(r, Gt)[1]}`).join(' · ')]; }
+    if (s.kind === 'github') { const n = prsOf(M).length; return ['Quai GitHub', n ? `${T.plural(n, 'PR ouverte', 'PR ouvertes')} ; clique pour les voir` : 'Ce qui arrive sur GitHub : commits poussés, PR ouvertes']; }
     if (s.kind === 'unreal') return ['Rayon Unreal Engine', 'La doc officielle par thème, que les sessions ouvrent quand elles ont une question'];
     if (s.kind === 'newfeature') return ['Nouvelle feature', 'Une session pour mettre en place une nouvelle idée : clique pour la créer'];
     if (s.kind === 'silo') return ['Salle de lancement', M.campaign ? `${M.campaign.name} : ${M.campaign.proven} sur ${M.campaign.total}` : 'Aucune version'];
@@ -1146,6 +1238,7 @@
       else if (e.key === 'b' || e.key === 'B') select({ kind: 'skills' }, true);
       else if (e.key === 'a' || e.key === 'A') select({ kind: 'roster' }, true);
       else if (e.key === 'd' || e.key === 'D') select({ kind: 'docs' }, true);
+      else if (e.key === 'g' || e.key === 'G') select({ kind: 'git' }, true);
       else if (e.key === 's' || e.key === 'S') sideToggle('sujets');
       else if (e.key === 'n' || e.key === 'N') { e.preventDefault(); if (!G.M.demo) featureDialog(G.M); }
       else if (e.key === 'j' || e.key === 'J') select({ kind: G.M.builds.some(b => !b.ok) ? 'ko' : 'ok' }, true);
@@ -1290,6 +1383,9 @@
     } else if (s.kind === 'docs') {
       title = 'Documentation';
       body = docsBody(M);
+    } else if (s.kind === 'git' || s.kind === 'github') {
+      title = 'Dépôts git et GitHub';
+      body = gitBody(M, s.kind);
     } else if (s.kind === 'unreal') {
       title = 'Rayon Unreal Engine';
       body = unrealBody(M);
@@ -1924,6 +2020,135 @@
     ];
   }
 
+  // ---------- les depots : la fiche ----------
+  // Un depot par dossier suivi (la tour, chaque projet connu, les dossiers ajoutes) : son etat git sur
+  // le PC et, s'il est relie a GitHub, ce qui s'y passe. La tour lit ; les trois gestes qui changent un
+  // depot (initialiser git, le relier a GitHub, recuperer) attendent un clic et une confirmation.
+  async function gitDo(key, path, body, done) {
+    gitUi.busy = key; renderHud();
+    const r = await T.api(path, body);
+    gitUi.busy = ''; renderHud();
+    if (!r) return null;
+    if (r.nogit) { gitMissing(r.download); return r; }
+    if (!r.ok) { T.toast(r.error || 'Échec.'); return r; }
+    if (done) T.toast(typeof done === 'function' ? done(r) : done);
+    return r;
+  }
+  // Git absent : la tour le demande clairement, avec le lien officiel.
+  let gitDlg = null;
+  function gitMissing(url) {
+    if (!gitDlg) {
+      gitDlg = h('dialog', { class: 'us-dialog', 'aria-label': 'Git n\'est pas installé' },
+        h('form', { method: 'dialog' }, h('h2', null, 'Git n\'est pas installé'),
+          h('p', null, 'La tour a besoin de Git pour suivre tes projets et leurs dépôts GitHub. Installe-le depuis le site officiel en gardant les choix par défaut, puis reviens ici et clique « Revérifier ».'),
+          h('div', { class: 'us-actions' },
+            gitDlg_link = h('a', { class: 'us-btn us-go', target: '_blank', rel: 'noopener' }, 'Télécharger Git'),
+            h('button', { type: 'submit', class: 'us-btn', onclick: () => T.api('/api/git/refresh') }, 'Revérifier'),
+            h('button', { type: 'submit', class: 'us-btn' }, 'Plus tard'))));
+      document.body.append(gitDlg);
+    }
+    gitDlg_link.href = url || 'https://git-scm.com/downloads/win';
+    if (!gitDlg.open) gitDlg.showModal();
+  }
+  let gitDlg_link = null;
+  function gitInit(r, M) {
+    if (M.demo) return T.api('/api/git/init');
+    const Gt = gitOf(M);
+    if (Gt && !Gt.git) return gitMissing(Gt.download);
+    const msg = `Initialiser git dans ${r.root} ?\n\nLa tour lance « git init » (branche main)${r.uproject ? ' et ajoute un .gitignore Unreal (Binaries, Intermediate, Saved, DerivedDataCache) s\'il n\'y en a pas' : ''}. Aucun fichier n'est commité ni envoyé sur GitHub.`;
+    if (!confirm(msg)) return;
+    gitDo('init:' + r.root, '/api/git/init', { root: r.root }, (x) => x.gitignore ? 'Git initialisé, avec un .gitignore Unreal.' : 'Git initialisé.');
+  }
+  function gitRemote(r, M) {
+    const url = String(gitUi.url[r.root] || '').trim();
+    if (!url) return T.toast('Colle l\'adresse du dépôt GitHub.');
+    if (!M.demo && !confirm(`Relier ${r.name} à ${url} ?\n\nLa tour lance « git remote add origin ». Rien n'est envoyé : pousser reste ton geste.`)) return;
+    gitDo('remote:' + r.root, '/api/git/remote', { root: r.root, url }, 'Dépôt relié à GitHub.');
+  }
+  function repoCard(r, M, Gt) {
+    const [tone, text] = repoTone(r, Gt), open = gitUi.open.has(r.root), busy = (k) => gitUi.busy === k + ':' + r.root;
+    const kind = { tour: 'la tour', projet: 'projet', suivi: 'dossier ajouté' }[r.kind] || '';
+    const head = h('button', { type: 'button', class: 'us-runbtn', 'aria-expanded': String(open), onclick: () => { if (open) gitUi.open.delete(r.root); else gitUi.open.add(r.root); renderHud(); } },
+      h('span', { class: `us-dot us-d-${tone}` }), h('b', null, r.name), h('span', { class: 'us-dim' }, kind), h('span', { class: `us-skst us-t-${tone === 'off' ? 'unused' : tone}` }, text));
+    if (!open) return h('li', { class: 'us-task us-doc' }, head);
+    const D = r.dirty, R = r.remote, sync = r.sync;
+    const part = [];
+    part.push(h('small', { class: 'us-dim us-path' }, r.root));
+    if (Gt && !Gt.git) part.push(h('p', null, 'Git n\'est pas installé : la tour ne peut pas lire ce dossier.'), h('div', { class: 'us-actions' }, btn('Installer Git', () => gitMissing(Gt.download), 'us-go')));
+    else if (!r.exists) part.push(h('p', { class: 'us-t-ko' }, 'Ce dossier n\'existe plus.'));
+    else if (r.error) part.push(h('p', { class: 'us-t-ko' }, r.error));
+    else if (!r.isRepo) {
+      if (r.inside) part.push(h('p', null, 'Ce dossier fait déjà partie du dépôt ', h('code', { class: 'us-path' }, r.inside), '.'));
+      else part.push(h('p', null, 'Pas encore de git ici : rien n\'est versionné, rien ne peut aller sur GitHub.'),
+        h('div', { class: 'us-actions' }, btn(busy('init') ? 'Initialisation…' : 'Initialiser git', () => gitInit(r, M), 'us-go', { disabled: !!gitUi.busy })));
+    } else {
+      // le PC
+      part.push(h('div', { class: 'us-sub' }, 'Sur le PC'));
+      part.push(h('p', null, r.detached ? 'Pas sur une branche (HEAD détaché).' : ['Branche ', h('b', null, r.branch || '?'), r.empty ? ', encore aucun commit.' : r.upstream ? ` (suit ${r.upstream}).` : '.']));
+      if (D && D.total) {
+        const bits = [D.modified && `${D.modified} modifié${D.modified > 1 ? 's' : ''}`, D.untracked && `${D.untracked} nouveau${D.untracked > 1 ? 'x' : ''}`, D.staged && `${D.staged} prêt${D.staged > 1 ? 's' : ''} à commiter`, D.conflicts && `${D.conflicts} en conflit`].filter(Boolean);
+        part.push(h('p', { class: D.conflicts ? 'us-t-ko' : 'us-t-warn' }, `${T.plural(D.total, 'fichier pas commité', 'fichiers pas commités')} : ${bits.join(', ')}.`));
+        part.push(h('ul', { class: 'us-doclist' }, D.files.map(f => h('li', null, h('code', null, f.st), ' ', h('span', { class: 'us-path' }, f.path))), D.total > D.files.length ? h('li', { class: 'us-dim' }, `… et ${D.total - D.files.length} autres`) : null));
+      } else part.push(h('p', { class: 'us-t-ok' }, 'Tout est commité.'));
+      if (r.commits && r.commits.length) part.push(h('ul', { class: 'us-doclist' }, r.commits.map(k => h('li', null, h('code', null, k.short), ' ', k.subject, ' ', h('span', { class: 'us-dim' }, `${k.author}, `, T.agoEl(k.at))))));
+      // GitHub
+      part.push(h('div', { class: 'us-sub' }, 'Sur GitHub'));
+      if (!r.github) {
+        const other = (r.remotes || []).find(x => x.name === 'origin');
+        if (other) part.push(h('p', null, 'Relié à ', h('code', { class: 'us-path' }, other.url), ', qui n\'est pas GitHub.'));
+        else {
+          part.push(h('p', null, 'Pas encore sur GitHub.'));
+          if (r.lfs) part.push(h('p', { class: 'us-dim' }, 'Ce projet range ses gros fichiers avec Git LFS. Pour le mettre sur GitHub : créer un dépôt privé, le relier ici, puis tout pousser. GitHub offre 10 Go de stockage LFS gratuits ; au-delà, c\'est payant au Go. Rien n\'est envoyé sans toi.'));
+          part.push(h('div', { class: 'us-row' },
+            h('input', { type: 'url', class: 'us-docq', 'data-keep': 'gitremote' + hash(r.root), value: gitUi.url[r.root] || '', placeholder: 'https://github.com/toi/projet', 'aria-label': `Adresse GitHub de ${r.name}`,
+              oninput: (e) => { gitUi.url[r.root] = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); gitRemote(r, M); } } }),
+            btn(busy('remote') ? 'Liaison…' : 'Relier', () => gitRemote(r, M), '', { disabled: !!gitUi.busy })));
+          part.push(h('small', { class: 'us-dim' }, 'Relier ne pousse rien : la tour ajoute seulement l\'adresse du dépôt (git remote add origin).'));
+        }
+      } else if (!R) part.push(h('p', { class: 'us-dim' }, 'Lecture de GitHub…'));
+      else if (!R.ok) part.push(h('p', { class: 'us-t-ko' }, R.error));
+      else {
+        part.push(h('p', null, h('a', { href: R.url, target: '_blank', rel: 'noopener', class: 'us-link' }, `${r.github.owner}/${r.github.repo}`), ` · ${R.private ? 'privé' : 'public'} · dernier push `, T.agoEl(R.pushedAt)));
+        const say = !sync ? null : sync.state === 'ok' ? ['us-t-ok', `Le PC est à jour avec ${R.defaultBranch}.`]
+          : sync.state === 'behind' ? ['us-t-warn', `GitHub a ${nCommits(sync.n)} que le PC n'a pas encore : récupère-les (git pull).`]
+            : sync.state === 'ahead' ? ['us-t-warn', `Le PC a ${nCommits(sync.n)} pas encore poussé${sync.n > 1 ? 's' : ''} sur GitHub.`]
+              : sync.state === 'branch' ? ['us-dim', `Le PC est sur la branche ${sync.branch} ; GitHub suit ${sync.main}.`]
+                : ['us-t-warn', 'Le PC et GitHub ont chacun des commits que l\'autre n\'a pas.'];
+        if (say) part.push(h('p', { class: say[0] }, say[1]));
+        if (R.prs.length) part.push(h('div', { class: 'us-sub' }, T.plural(R.prs.length, 'PR ouverte', 'PR ouvertes')), h('ul', { class: 'us-doclist' }, R.prs.map(p => h('li', null, h('a', { href: p.url, target: '_blank', rel: 'noopener', class: 'us-link' }, `#${p.number} ${p.title}`), ' ', h('span', { class: 'us-dim' }, `${p.draft ? 'brouillon, ' : ''}${p.user || ''}, `, T.agoEl(p.at))))));
+        else part.push(h('p', { class: 'us-dim' }, 'Aucune PR ouverte.'));
+        if (R.commits.length) part.push(h('div', { class: 'us-sub' }, `Derniers commits sur ${R.defaultBranch}`), h('ul', { class: 'us-doclist' }, R.commits.slice(0, 5).map(k => h('li', null, h('code', null, k.short), ' ', k.subject, ' ', h('span', { class: 'us-dim' }, `${k.author}, `, T.agoEl(k.at))))));
+        part.push(h('div', { class: 'us-actions' }, btn(busy('fetch') ? 'Récupération…' : 'Récupérer de GitHub', () => gitDo('fetch:' + r.root, '/api/git/fetch', { root: r.root }, 'GitHub relu (git fetch).'), '', { disabled: !!gitUi.busy, title: 'git fetch : met à jour ce que le PC sait de GitHub, sans toucher à tes fichiers' }),
+          r.fetchedAt ? h('span', { class: 'us-dim' }, 'dernier fetch ', T.agoEl(r.fetchedAt)) : null));
+      }
+    }
+    if (r.kind === 'suivi') part.push(h('div', { class: 'us-actions' }, btn('Ne plus suivre', () => T.api('/api/git/unfollow', { root: r.root }))));
+    return h('li', { class: 'us-task us-doc' }, head, ...part);
+  }
+  function gitBody(M, kind) {
+    const Gt = gitOf(M);
+    if (!Gt) return [h('p', { class: 'us-dim' }, 'La tour lit tes dépôts…')];
+    // a la premiere ouverture, le premier depot qui demande de l'attention est deplie
+    if (!gitUi.seen) { gitUi.seen = true; const first = Gt.repos.find(r => ['ko', 'warn', 'blue'].includes(repoTone(r, Gt)[0])) || Gt.repos[0]; if (first) gitUi.open.add(first.root); }
+    const follow = () => { const p = gitUi.path.trim(); if (!p) return T.toast('Colle le chemin du dossier.'); gitDo('follow:', '/api/git/follow', { path: p }, (r) => { gitUi.path = ''; gitUi.open.add(r.root); return 'Dossier suivi.'; }); };
+    const list = kind === 'github' ? [...Gt.repos].sort((a, b) => !!b.github - !!a.github) : Gt.repos;
+    return [
+      !Gt.git ? h('div', { class: 'us-task us-sk-ko', role: 'alert' }, h('b', { class: 'us-t-ko' }, 'Git n\'est pas installé sur ce PC.'),
+        h('p', null, 'La tour en a besoin pour suivre tes projets. Installe-le depuis le site officiel en gardant les choix par défaut, puis clique « Revérifier ».'),
+        h('div', { class: 'us-actions' }, h('a', { class: 'us-btn us-go', href: Gt.download, target: '_blank', rel: 'noopener' }, 'Télécharger Git'), btn('Revérifier', () => gitDo('refresh:', '/api/git/refresh', {}, 'Git revérifié.')))) : null,
+      h('p', null, 'Chaque dossier suivi : sa branche, ses derniers commits, ce qui n\'est pas encore commité, et ce qui se passe sur GitHub. La tour ne fait que lire ; rien ne part sur GitHub sans toi.'),
+      h('ul', { class: 'us-tuto-list' }, list.map(r => repoCard(r, M, Gt))),
+      h('div', { class: 'us-sub' }, 'Suivre un autre dossier'),
+      h('div', { class: 'us-row' },
+        h('input', { type: 'text', class: 'us-docq', 'data-keep': 'gitpath', value: gitUi.path, placeholder: 'C:\\Users\\toi\\Documents\\MonProjet', 'aria-label': 'Chemin du dossier à suivre',
+          oninput: (e) => { gitUi.path = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); follow(); } } }),
+        btn(gitUi.busy === 'follow:' ? 'Ajout…' : 'Suivre', follow, 'us-go', { disabled: !!gitUi.busy })),
+      h('small', { class: 'us-dim' }, 'S\'il n\'a pas encore git, la tour te proposera de l\'initialiser.'),
+      h('div', { class: 'us-actions' }, btn(gitUi.busy === 'refresh:' ? 'Lecture…' : 'Relire', () => gitDo('refresh:', '/api/git/refresh', {}, 'Dépôts relus.'), '', { disabled: !!gitUi.busy }),
+        Gt.git ? h('span', { class: 'us-dim' }, `git ${Gt.git.version}`) : null),
+    ];
+  }
+
   // Lecteur de doc : le Markdown mis en page (titres, listes, tableaux, code, liens). Un lien vers une autre
   // page de la doc l'ouvre ici ; un lien web s'ouvre dans un onglet.
   function mdInline(text, base, open) {
@@ -2552,6 +2777,8 @@
     G.hud.agentBtn.classList.toggle('alert', !!(M.S.roster && M.S.roster.ko));
     G.hud.docBtn.classList.toggle('on', !G.side && !!G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal'));
     G.hud.docBtn.classList.toggle('alert', docDebts(M).some(d => d.owed));
+    G.hud.gitBtn.classList.toggle('on', !G.side && !!G.sel && (G.sel.kind === 'git' || G.sel.kind === 'github'));
+    G.hud.gitBtn.classList.toggle('alert', gitAlert(M));
     G.hud.tutoBtn.classList.toggle('run', !!(M.S.tuto && M.S.tuto.running));
   }
 
@@ -2566,7 +2793,7 @@
     };
     G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
-      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions core : une par sujet du jeu (animation, interface, menus, armes...), sa mémoire, ses règles, et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Core'), G.hud.featBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions feature : une par nouvelle idée, à créer ici (touche N pour une nouvelle)', onclick: () => sideToggle('features') }, 'Features'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.docBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La documentation du jeu : à lire, à chercher ; les sessions y écrivent la leur. Et la doc Unreal Engine par thème (touche D)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal') ? null : { kind: 'docs' }, true); } }, 'Doc'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
+      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions core : une par sujet du jeu (animation, interface, menus, armes...), sa mémoire, ses règles, et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Core'), G.hud.featBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions feature : une par nouvelle idée, à créer ici (touche N pour une nouvelle)', onclick: () => sideToggle('features') }, 'Features'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.docBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La documentation du jeu : à lire, à chercher ; les sessions y écrivent la leur. Et la doc Unreal Engine par thème (touche D)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal') ? null : { kind: 'docs' }, true); } }, 'Doc'), G.hud.gitBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les dépôts : l\'état git de chaque projet et ce qui se passe sur GitHub ; initialiser git dans un dossier (touche G)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'git' || G.sel.kind === 'github') ? null : { kind: 'git' }, true); } }, 'Git'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
       G.hud.mode,
       G.hud.entity);
     root.replaceChildren(G.app);
