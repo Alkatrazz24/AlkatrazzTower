@@ -1884,6 +1884,36 @@
     refreshChat(true);
     f.text.focus();
   }
+  // La discussion : toi, le chef (la session), ses missions aux agents, ce que les agents disent et font,
+  // et leurs rapports. Les actions qui se suivent sont regroupees sur une ligne.
+  function chatItems(msgs, a, M) {
+    const team = (M.S.team || {})[a && a.project] || [];
+    const who = (ag) => { const m = team.find(x => x.name.toLowerCase() === String(ag).toLowerCase()); return m ? `${ag} (${m.section})` : ag; };
+    const chef = a ? `${a.name}, le chef` : 'Le chef';
+    const head = (txt, m) => h('small', { class: 'us-dim' }, txt, m.at ? ` · ${T.clock(m.at)}` : '');
+    const long = (text) => {
+      const [first, ...rest] = String(text).split('\n');
+      return rest.join('\n').trim() ? h('details', null, h('summary', null, first), h('div', { class: 'us-pre' }, rest.join('\n').trim())) : h('div', { class: 'us-pre' }, first);
+    };
+    const out = [];
+    for (let i = 0; i < msgs.length; i++) {
+      const m = msgs[i];
+      if (m.kind === 'action') {
+        const run = [m];
+        while (msgs[i + 1] && msgs[i + 1].kind === 'action' && msgs[i + 1].who === m.who && msgs[i + 1].agent === m.agent) run.push(msgs[++i]);
+        const shown = run.slice(-3).map(x => x.text);
+        out.push(h('div', { class: `us-act us-act-${m.who}` }, h('b', null, m.who === 'chef' ? chef : who(m.agent)), ' ',
+          run.length > 3 ? `${run.length} actions, dont ` : '', shown.join(' · ')));
+        continue;
+      }
+      if (m.who === 'toi') out.push(h('div', { class: 'us-msg us-msg-toi' }, head('Toi', m), h('div', { class: 'us-pre' }, m.text)));
+      else if (m.who === 'chef') out.push(h('div', { class: 'us-msg us-msg-chef' }, head(chef, m), h('div', { class: 'us-pre' }, m.text)));
+      else if (m.kind === 'mission') out.push(h('div', { class: 'us-msg us-msg-mission' }, head(`Mission pour ${who(m.agent)}`, m), long(m.text)));
+      else if (m.kind === 'rapport') out.push(h('div', { class: 'us-msg us-msg-rapport' }, head(`Rapport de ${who(m.agent)}`, m), long(m.text)));
+      else out.push(h('div', { class: 'us-msg us-msg-agent' }, head(who(m.agent), m), h('div', { class: 'us-pre' }, m.text)));
+    }
+    return out;
+  }
   // Remis a jour a chaque changement de l'etat de la tour, quand la discussion est ouverte.
   async function refreshChat(force) {
     if (!chatDlg || !chatDlg.open || !chatDlg.dataset.id) return;
@@ -1912,8 +1942,7 @@
     if (f.mine && !msgs.some(m => m.who === 'toi' && m.text === f.mine)) msgs.push({ who: 'toi', text: f.mine, at: Date.now() });
     else f.mine = '';
     const near = f.log.scrollHeight - f.log.scrollTop - f.log.clientHeight < 60;
-    f.log.replaceChildren(...(msgs.length ? msgs.map(m => h('div', { class: `us-msg us-msg-${m.who}` }, h('small', { class: 'us-dim' }, m.who === 'toi' ? 'Toi' : (a ? a.name : 'Agent'), m.at ? ` · ${T.clock(m.at)}` : ''), h('div', { class: 'us-pre' }, m.text)))
-      : [h('p', { class: 'us-dim' }, r && r.ok === false ? r.error : 'Pas encore de message.')]));
+    f.log.replaceChildren(...(msgs.length ? chatItems(msgs, a, M) : [h('p', { class: 'us-dim' }, r && r.ok === false ? r.error : 'Pas encore de message.')]));
     if (near || force) f.log.scrollTop = f.log.scrollHeight;
   }
 

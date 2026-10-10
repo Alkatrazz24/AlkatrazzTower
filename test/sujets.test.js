@@ -121,7 +121,7 @@ test('ranger une salle : elle sort du batiment, et revient quand la session repr
   assert.ok(!s.hide('inconnu'));
 });
 
-test('discuter : la conversation se lit dans le journal, sans outils ni sous-agents', () => {
+test('discuter : la conversation se lit dans le journal, sans les messages ajoutes par Claude Code', () => {
   const { readChat } = require('../lib/discussion');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tower-chat-'));
   const f = path.join(dir, 's.jsonl');
@@ -137,7 +137,7 @@ test('discuter : la conversation se lit dans le journal, sans outils ni sous-age
     'pas du json',
   ].join('\n'));
   const r = readChat(f);
-  assert.deepStrictEqual(r.messages.map(m => [m.who, m.text]), [['toi', 'Ajoute le menu pause'], ['agent', 'Je regarde.'], ['agent', 'Quel style de menu ?']]);
+  assert.deepStrictEqual(r.messages.map(m => [m.who, m.kind, m.text]), [['toi', 'text', 'Ajoute le menu pause'], ['chef', 'text', 'Je regarde.'], ['chef', 'action', 'Read'], ['chef', 'text', 'Quel style de menu ?']]);
   assert.ok(!readChat(path.join(dir, 'absent.jsonl')).ok);
   fs.rmSync(dir, { recursive: true, force: true });
 });
@@ -180,4 +180,30 @@ test('discuter : un message relance la session sans fenetre, les suivants attend
   assert.ok(d.send(w, 'on reprend').ok);
   assert.deepStrictEqual(runs[2].args.slice(0, 3), ['-p', '--resume', w]);
   assert.ok(!d.send(id, '   ').ok);
+});
+
+test('discuter : les missions du chef, ce que font les agents et leurs rapports', () => {
+  const { readChat } = require('../lib/discussion');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tower-chat-'));
+  const f = path.join(dir, 's.jsonl');
+  const L = (o) => JSON.stringify(o);
+  fs.writeFileSync(f, [
+    L({ type: 'user', timestamp: '2026-10-10T17:00:00Z', message: { role: 'user', content: 'Le coup de pied' } }),
+    L({ type: 'assistant', timestamp: '2026-10-10T17:00:01Z', message: { id: 'm1', content: [{ type: 'text', text: 'Je confie le montage à ctb-animation.' }, { type: 'tool_use', id: 'tu1', name: 'Agent', input: { subagent_type: 'ctb-animation', description: 'Montage du coup de pied', prompt: 'Crée le montage.' } }] } }),
+    L({ type: 'user', timestamp: '2026-10-10T17:05:00Z', toolUseResult: { status: 'completed', agentType: 'ctb-animation' }, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu1', content: [{ type: 'text', text: 'Montage créé : AM_CoupDePied.' }] }] } }),
+  ].join('\n'));
+  fs.mkdirSync(path.join(dir, 's', 'subagents'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 's', 'subagents', 'agent-a1.meta.json'), JSON.stringify({ agentType: 'ctb-animation' }));
+  fs.writeFileSync(path.join(dir, 's', 'subagents', 'agent-a1.jsonl'), [
+    L({ type: 'user', isSidechain: true, timestamp: '2026-10-10T17:00:02Z', message: { role: 'user', content: 'Crée le montage.' } }),
+    L({ type: 'assistant', isSidechain: true, timestamp: '2026-10-10T17:00:03Z', message: { content: [{ type: 'text', text: 'Je vais créer le montage dans Content/CTB/Animations.' }, { type: 'tool_use', name: 'Read', input: { file_path: 'C:/CTB/tools/creer.py' } }] } }),
+    L({ type: 'assistant', isSidechain: true, timestamp: '2026-10-10T17:04:59Z', message: { content: [{ type: 'text', text: 'Montage créé : AM_CoupDePied.' }] } }),
+  ].join('\n'));
+  const r = readChat(f);
+  assert.deepStrictEqual(r.messages.map(m => [m.who, m.kind, m.agent || '']), [
+    ['toi', 'text', ''], ['chef', 'text', ''], ['mission', 'mission', 'ctb-animation'],
+    ['agent', 'text', 'ctb-animation'], ['agent', 'action', 'ctb-animation'], ['agent', 'rapport', 'ctb-animation']]);
+  assert.match(r.messages[2].text, /^Montage du coup de pied\n\nCrée le montage\./);
+  assert.strictEqual(r.messages[5].text, 'Montage créé : AM_CoupDePied.');
+  fs.rmSync(dir, { recursive: true, force: true });
 });
