@@ -1100,7 +1100,8 @@
         a.sujet && (M.sujets || []).some(z => z.id === a.sujet) ? [h('div', { class: 'us-sub' }, 'Son sujet'), sujetBody(M, M.sujets.find(z => z.id === a.sujet), a)] : null,
         usageBlock(a),
         a.old ? h('p', { class: 'us-dim' }, a.hidden ? 'Salle rangée : elle n\'apparaît qu\'avec les anciennes sessions.' : 'Ancienne session : elle n\'apparaît qu\'avec les anciennes sessions.') : null,
-        h('div', { class: 'us-actions' }, btn('Renommer la salle', () => renameDialog(a), '', M.demo ? { disabled: true } : {}), btn('Personnage', () => T.act.openChar(a.id)),
+        h('div', { class: 'us-actions' }, btn(canChat(a) ? 'Discuter' : 'Lire la discussion', () => chatDialog(a.id), canChat(a) ? 'us-go' : '', { title: canChat(a) ? 'Lui écrire depuis la tour, sans fenêtre' : 'Elle tourne dans sa fenêtre : tu lis ici, tu lui écris là-bas' }),
+          btn('Renommer la salle', () => renameDialog(a), '', M.demo ? { disabled: true } : {}), btn('Personnage', () => T.act.openChar(a.id)),
           a.hidden ? btn('Remettre dans le bâtiment', () => T.act.hide(a.id, false), '', M.demo ? { disabled: true } : {})
             : btn('Ranger la salle', () => { T.act.hide(a.id, true); select(null); }, '', M.demo ? { disabled: true } : { title: 'Elle quitte le bâtiment, rien n\'est effacé : « Anciennes sessions » la remontre' }),
           a.st === 'ended' || a.st === 'silent' ? btn('Retirer', () => { T.act.forget(a.id); select(null); }, 'us-danger') : null),
@@ -1347,7 +1348,8 @@
   }
   function askBox(a) {
     const k = a.pending;
-    const later = btn('Dans sa fenêtre', () => sendAsk(a, { decision: 'window' }), '', { title: 'La question s\'affiche dans sa fenêtre Claude Code, tu y réponds là-bas' });
+    const inTower = !!(a.raw && a.raw.chat && a.raw.chat.mode === 'tour'); // discussion sans fenetre : la reponse ne peut venir que d'ici
+    const later = inTower ? null : btn('Dans sa fenêtre', () => sendAsk(a, { decision: 'window' }), '', { title: 'La question s\'affiche dans sa fenêtre Claude Code, tu y réponds là-bas' });
     if (k.kind === 'permission') {
       return h('div', { class: 'us-ask us-askq' },
         h('b', null, 'Il demande l\'autorisation'), h('p', null, h('code', null, k.tool), ' ', k.summary),
@@ -1378,7 +1380,7 @@
         })),
         other(q))),
       h('div', { class: 'us-actions' }, one ? null : btn('Envoyer mes réponses', () => sendAsk(a, { answers: Object.fromEntries(k.questions.map(q => [q.question, sel[q.question] || []])) }), 'us-go', ready ? {} : { disabled: true }), later),
-      h('small', { class: 'us-dim' }, 'La session reprend dès que tu réponds. Sans réponse ici, la question passe dans sa fenêtre au bout de 10 minutes.'));
+      h('small', { class: 'us-dim' }, inTower ? 'La session reprend dès que tu réponds. Sans réponse ici en 10 minutes, c\'est refusé.' : 'La session reprend dès que tu réponds. Sans réponse ici, la question passe dans sa fenêtre au bout de 10 minutes.'));
   }
 
   // ---------- suivi d'une tache lancee (lib/suivi.js) : ou il en est, ce qu'il a fait, ce qu'il reste ----------
@@ -1841,20 +1843,98 @@
     } else if (r && r.error) T.toast(r.error);
   }
 
+  // ---------- discuter avec une session (lib/discussion.js) ----------
+  // Une fenetre de discussion : la conversation lue dans le journal de la session, ses demandes
+  // d'autorisation, et ta reponse. Chaque message relance la session sans fenetre ; une session ouverte
+  // dans sa fenetre se lit seulement (on lui ecrit la-bas).
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const chatMode = (a) => !!(a && a.raw && a.raw.chat && a.raw.chat.mode === 'tour');
+  const canChat = (a) => !!a && UUID.test(a.id) && (chatMode(a) || a.st === 'ended');
+  let chatDlg = null;
+  function chatDialog(id) {
+    if (!chatDlg) {
+      const f = {};
+      const send = async () => {
+        const text = f.text.value.trim();
+        if (!text || f.send.disabled) return;
+        f.send.disabled = true;
+        const r = await T.api('/api/chat/send', { sessionId: chatDlg.dataset.id, text });
+        f.send.disabled = false;
+        if (r && r.ok) { f.text.value = ''; f.mine = text; refreshChat(true); } else if (r && r.error) f.err.textContent = r.error;
+      };
+      chatDlg = h('dialog', { class: 'us-dialog us-wide us-chat', 'aria-label': 'Discussion' },
+        h('form', { method: 'dialog', onsubmit: (e) => { e.preventDefault(); send(); } },
+          h('div', { class: 'us-ehead' }, f.head = h('h2', null), btn('Fermer', () => chatDlg.close(), 'us-x', { 'aria-label': 'Fermer la discussion' })),
+          f.log = h('div', { class: 'us-chatlog', role: 'log', 'aria-live': 'polite' }),
+          f.ask = h('div'),
+          f.state = h('p', { class: 'us-dim us-chatstate' }),
+          f.text = h('textarea', { name: 'message', rows: 3, maxlength: 20000, 'aria-label': 'Ton message', placeholder: 'Ton message… (Ctrl+Entrée pour envoyer)',
+            onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } } }),
+          f.err = h('p', { class: 'us-t-ko' }),
+          h('div', { class: 'us-actions' }, f.send = h('button', { type: 'submit', class: 'us-btn us-go' }, 'Envoyer'),
+            f.stop = btn('Arrêter', async () => { const r = await T.api('/api/chat/stop', { sessionId: chatDlg.dataset.id }); if (r && r.error) T.toast(r.error); }, 'us-danger', { title: 'Arrête ce qu\'il fait : la session garde son historique' }))));
+      chatDlg.f = f;
+      chatDlg.addEventListener('close', () => { chatDlg.dataset.id = ''; });
+      document.body.append(chatDlg);
+    }
+    const f = chatDlg.f;
+    chatDlg.dataset.id = id;
+    f.sig = ''; f.mine = ''; f.text.value = ''; f.err.textContent = ''; f.log.replaceChildren(h('p', { class: 'us-dim' }, 'Lecture…'));
+    chatDlg.showModal();
+    refreshChat(true);
+    f.text.focus();
+  }
+  // Remis a jour a chaque changement de l'etat de la tour, quand la discussion est ouverte.
+  async function refreshChat(force) {
+    if (!chatDlg || !chatDlg.open || !chatDlg.dataset.id) return;
+    const f = chatDlg.f, id = chatDlg.dataset.id, M = G.M;
+    const a = M && M.agents.find(x => x.id === id);
+    const c = a && a.raw.chat;
+    f.head.textContent = a ? (a.salle || a.name) : 'Discussion';
+    const can = canChat(a), busy = !!(c && c.busy);
+    f.text.disabled = !can || M.demo; f.send.disabled = !can || M.demo;
+    f.stop.hidden = !busy;
+    f.state.textContent = !a ? 'La session démarre…'
+      : !can ? 'Elle tourne dans sa fenêtre : tu lis la discussion ici, et tu lui écris là-bas. Une fois la fenêtre fermée, tu peux la reprendre ici.'
+        : busy ? `${a.name} travaille${a.tool ? ` (${a.tool.name} ${a.tool.summary})` : ''}${c.queued ? `, ${T.plural(c.queued, 'message attend', 'messages attendent')} son tour` : ''}…`
+          : c && c.error ? `Dernier message : ${c.error}` : a.st === 'ended' ? 'Session fermée : ton message la reprend ici, sans fenêtre.' : 'À toi.';
+    f.ask.replaceChildren(...(a && a.pending ? [askBox(a)] : []));
+    const sig = a ? `${a.lastSeen}|${busy}|${a.raw.transcript || ''}` : '';
+    if (!force && sig === f.sig) return;
+    f.sig = sig;
+    if (M.demo) { f.log.replaceChildren(h('p', { class: 'us-dim' }, 'Mode démo : la discussion se lit sur la vraie tour.')); return; }
+    let r = null;
+    const seq = f.seq = (f.seq || 0) + 1; // une lecture plus ancienne qui revient apres ne recouvre pas la derniere
+    try { r = await fetch(`/api/chat?session=${encodeURIComponent(id)}&n=80`).then(x => x.json()); } catch { /* tour injoignable */ }
+    if (!chatDlg.open || chatDlg.dataset.id !== id || seq !== f.seq) return;
+    const msgs = (r && r.messages) || [];
+    // Ton dernier message s'affiche tout de suite, avant que la session l'ait ecrit dans son journal.
+    if (f.mine && !msgs.some(m => m.who === 'toi' && m.text === f.mine)) msgs.push({ who: 'toi', text: f.mine, at: Date.now() });
+    else f.mine = '';
+    const near = f.log.scrollHeight - f.log.scrollTop - f.log.clientHeight < 60;
+    f.log.replaceChildren(...(msgs.length ? msgs.map(m => h('div', { class: `us-msg us-msg-${m.who}` }, h('small', { class: 'us-dim' }, m.who === 'toi' ? 'Toi' : (a ? a.name : 'Agent'), m.at ? ` · ${T.clock(m.at)}` : ''), h('div', { class: 'us-pre' }, m.text)))
+      : [h('p', { class: 'us-dim' }, r && r.ok === false ? r.error : 'Pas encore de message.')]));
+    if (near || force) f.log.scrollTop = f.log.scrollHeight;
+  }
+
   // ---------- sujets du jeu (lib/sujets.js) ----------
   // Un sujet = une salle qui existe meme sans session, son carnet (ou on en est) et le tableau partage
   // ou les sujets se laissent des messages. Une session de sujet se lance a la demande et reprend le carnet.
   const forSujet = (z, e) => { const t = e.to.toLowerCase(); return t === z.title.toLowerCase() || /^(tous|toutes|all)$/.test(t); };
   const boardLine = (e) => h('li', null, h('span', { class: 'us-time' }, e.when ? e.when.slice(5).replace(/^(\d\d)-(\d\d)/, '$2/$1') : ''),
     h('span', null, h('b', null, `${e.from} → ${e.to}`), ' ', e.text));
-  function sujetLaunch(M, z) {
-    launchTask({ id: z.id, title: z.title }, M.sujetsProject);
+  // Par defaut, la session d'un sujet se lance dans la tour : tu lui parles dans sa discussion.
+  async function sujetLaunch(M, z, window) {
+    if (window) return launchTask({ id: z.id, title: z.title }, M.sujetsProject);
+    const r = await T.api('/api/chat/start', { id: z.id, project: M.sujetsProject });
+    if (r && r.ok) { sideToggle('sujets', false); select({ kind: 'agent', id: r.sessionId }, true); chatDialog(r.sessionId); }
+    else if (r && r.error) T.toast(r.error);
   }
   function sujetBody(M, z, live) {
     const n = z.notes, mail = (M.board || []).filter(e => forSujet(z, e)).slice(-4);
     const proj = encodeURIComponent(M.sujetsProject || '');
     return [
-      live ? null : h('p', { class: 'us-dim' }, 'En sommeil : aucune session ne tourne. « Lancer la session » en ouvre une, qui lit d\'abord le carnet et le tableau, puis te demande quoi faire.'),
+      live ? null : h('p', { class: 'us-dim' }, 'En sommeil : aucune session ne tourne. « Discuter » en lance une ici, qui lit d\'abord le carnet et le tableau, puis te demande quoi faire.'),
       z.text ? h('p', null, z.text) : null,
       rowsOf([
         ['Ses agents', z.agents.length ? z.agents.join(', ') : 'aucun attitré'],
@@ -1865,7 +1945,8 @@
       n && n.next ? h('div', { class: 'us-said' }, h('b', null, 'Prochaines étapes : '), h('span', { class: 'us-pre' }, n.next)) : null,
       mail.length ? [h('div', { class: 'us-sub' }, 'Pour lui au tableau'), h('ul', { class: 'us-board' }, mail.map(boardLine))] : null,
       h('div', { class: 'us-actions' },
-        live ? null : btn('Lancer la session', () => sujetLaunch(M, z), 'us-go', M.demo || !M.sujetsProject ? { disabled: true } : { title: 'Ouvre Claude Code dans une fenêtre, dans le dossier du projet, sur ce sujet' }),
+        live ? null : btn('Discuter', () => sujetLaunch(M, z), 'us-go', M.demo || !M.sujetsProject ? { disabled: true } : { title: 'Lance la session de ce sujet dans la tour : tu lui parles ici, sans fenêtre' }),
+        live ? null : btn('Dans une fenêtre', () => sujetLaunch(M, z, true), '', M.demo || !M.sujetsProject ? { disabled: true } : { title: 'Ouvre Claude Code dans une fenêtre, dans le dossier du projet, sur ce sujet' }),
         btn('Lire le carnet', () => fileView(`Carnet : ${z.title}`, `Saved/Tour/sujets/${z.id.slice(6)}.md`, `/api/sujets/file?project=${proj}&id=${encodeURIComponent(z.id)}`), '', M.demo || !n ? { disabled: true } : {}),
         btn('Écrire au tableau', () => boardDialog(M, z.title), '', M.demo ? { disabled: true } : {})),
     ];
@@ -1886,7 +1967,7 @@
             h('button', { type: 'button', class: 'us-runbtn', onclick: () => open(z) },
               h('span', { class: `us-dot us-d-${a ? dotFor(a.st) : 'grey'}` }), h('b', null, z.title),
               h('span', { class: 'us-dim' }, ` ${a ? `${a.name}, ${a.stText}` : 'en sommeil'}${z.notes ? '' : ', sans carnet'}${mail ? `, ${T.plural(mail, 'message', 'messages')}` : ''}`)),
-            a ? null : btn('Lancer', () => sujetLaunch(M, z), 'us-go', M.demo || !M.sujetsProject ? { disabled: true } : {}));
+            a ? btn('Discuter', () => { sideToggle('sujets', false); select({ kind: 'agent', id: a.id }, true); chatDialog(a.id); }) : btn('Discuter', () => sujetLaunch(M, z), 'us-go', M.demo || !M.sujetsProject ? { disabled: true } : {}));
         })),
         h('div', { class: 'us-sub' }, 'Tableau'),
         (M.board || []).length ? h('ul', { class: 'us-board' }, M.board.slice(-12).reverse().map(boardLine)) : h('p', { class: 'us-dim' }, 'Vide pour l\'instant. Les sessions de sujet y écrivent ce que les autres doivent savoir.'),
@@ -2041,6 +2122,7 @@
     if (MODE.follow && G.sel && !G.drag) center(G.sel);
     G.dirty = true;
     renderHud();
+    refreshChat(false);
   }
 
   // web/usine/mondes/<id>.js appelle Usine.world({...}) ; web/templates/<id>.js appelle Usine.mode({...}).

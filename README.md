@@ -105,7 +105,7 @@ tourne : un sujet par section des agents du projet (`section:` de `.claude/agent
 Interface, Menus, Armes et combat...), plus **Items** et **Base**. Le réseau et les tests ne sont pas des
 sujets : leurs agents relisent le travail de tous.
 
-- **Lancer la session** ouvre Claude Code dans une fenêtre sur ce sujet. La session ne tourne pas en
+- **Discuter** lance la session du sujet dans la tour (ou « Dans une fenêtre »). La session ne tourne pas en
   permanence (une longue session relit tout son contexte à chaque tour, c'est ce qui coûte des tokens) :
   elle tient le **carnet** du sujet, `Saved/Tour/sujets/<sujet>.md` (où on en est, décisions, prochaines
   étapes, fichiers), et la suivante reprend en le lisant.
@@ -113,6 +113,12 @@ sujets : leurs agents relisent le travail de tous.
   (`- date heure · Animation → Armes et combat : ...`), toujours ajoutée à la fin. Chaque session le lit
   en commençant, y écrit ce que les autres doivent savoir, et passe à ses agents les lignes qui les
   concernent. Tu peux y écrire depuis la tour (« Écrire au tableau »).
+- **Discuter** : tu parles à la session depuis la tour, sans fenêtre. Chaque message relance la session
+  (`claude -p --resume`, elle garde tout son historique) ; ce que tu écris pendant qu'elle travaille
+  attend son tour, et « Arrêter » coupe le tour en cours. Ses demandes d'autorisation s'affichent dans la
+  discussion (Autoriser, Refuser) ; elle pose ses questions dans ses réponses. « Dans une fenêtre » lance
+  la session comme avant. Toute session a « Discuter » dans sa fiche : une session ouverte dans sa fenêtre
+  se lit seulement, une session fermée se reprend ici.
 - Les **anciennes sessions** (terminées, rangées, ou sans rien de neuf depuis une heure) quittent le
   bâtiment ; le bouton « Anciennes » les remontre. « Ranger la salle » en range une à la main ; rien
   n'est effacé, et une session rangée qui reprend revient d'elle-même.
@@ -310,6 +316,7 @@ chaque changement de `web/` au lieu de deviner.
 | `lib/projects.js` | recherche et connexion des projets Unreal |
 | `lib/skills.js`, `lib/agents.js` | bibliothèque des skills et quartier des agents : inventaire, vérification, usage |
 | `lib/taches.js`, `lib/suivi.js` | tâches prêtes à lancer, et leur suivi (fait, à faire, questions, rapport) |
+| `lib/discussion.js` | discuter avec une session depuis la tour : sa conversation lue dans le journal, un message = un `claude -p --resume` |
 | `lib/sujets.js` | sujets du jeu : leur consigne, leur carnet et le tableau partagé, dans `Saved/Tour/` |
 | `lib/inventory.js`, `web/map.js` | carte du projet : comptage des assets et dessin de la ville |
 | `unreal/AlkatrazzTower`, `scripts/install-plugin.js` | plugin d'éditeur Unreal et son installation dans un projet |

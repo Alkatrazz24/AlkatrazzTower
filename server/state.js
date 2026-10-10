@@ -208,9 +208,12 @@ class TowerState {
         a.subagents = {};
         break;
       case 'SessionEnd':
+        a.subagents = {};
+        // Une session de discussion (lib/discussion.js) se termine a chaque message : elle reste
+        // ouverte pour la tour, et attend le suivant.
+        if (a.chat && a.chat.mode === 'tour') { if (a.status === 'working') a.status = 'idle'; break; }
         a.status = 'ended';
         a.message = ev.reason ? `fin : ${ev.reason}` : '';
-        a.subagents = {};
         break;
       default:
         break;
@@ -843,6 +846,8 @@ class TowerState {
     if (Array.isArray(saved.tasks)) this.tasks = saved.tasks;
     if (saved.redTests && typeof saved.redTests === 'object') this.redTests = saved.redTests;
     for (const a of Object.values(this.agents)) delete a.building; // aucun verrou ne survit a un redemarrage
+    // ni un message de discussion en cours : son processus est parti avec l'ancienne tour
+    for (const a of Object.values(this.agents)) if (a.chat) { if (a.chat.busy) { a.chat.error = 'Interrompu : la tour a redémarré.'; if (a.status === 'working') a.status = 'idle'; } a.chat.busy = false; a.chat.queued = 0; }
     // Tache lancee avant le suivi : on la complete, et son dernier fichier ecrit dans Saved/Tour (son rapport) se lit.
     for (const a of Object.values(this.agents)) {
       if (!a.task || a.task.counts) continue;

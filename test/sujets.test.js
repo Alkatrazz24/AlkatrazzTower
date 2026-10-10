@@ -120,3 +120,64 @@ test('ranger une salle : elle sort du batiment, et revient quand la session repr
   assert.ok(s.hide('r') && s.hide('r', false) && !s.agents.r.hidden);
   assert.ok(!s.hide('inconnu'));
 });
+
+test('discuter : la conversation se lit dans le journal, sans outils ni sous-agents', () => {
+  const { readChat } = require('../lib/discussion');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tower-chat-'));
+  const f = path.join(dir, 's.jsonl');
+  const L = (o) => JSON.stringify(o);
+  fs.writeFileSync(f, [
+    L({ type: 'user', timestamp: '2026-10-10T17:00:00Z', message: { role: 'user', content: 'Ajoute le menu pause' } }),
+    L({ type: 'assistant', timestamp: '2026-10-10T17:00:05Z', message: { id: 'm1', role: 'assistant', content: [{ type: 'text', text: 'Je regarde.' }] } }),
+    L({ type: 'assistant', timestamp: '2026-10-10T17:00:06Z', message: { id: 'm1', role: 'assistant', content: [{ type: 'tool_use', name: 'Read', input: {} }] } }),
+    L({ type: 'user', timestamp: '2026-10-10T17:00:07Z', message: { role: 'user', content: [{ type: 'tool_result', content: 'x' }] } }),
+    L({ type: 'assistant', isSidechain: true, timestamp: '2026-10-10T17:00:08Z', message: { id: 'm2', content: [{ type: 'text', text: 'sous-agent' }] } }),
+    L({ type: 'user', timestamp: '2026-10-10T17:00:09Z', message: { role: 'user', content: '<task-notification>fini</task-notification>' } }),
+    L({ type: 'assistant', timestamp: '2026-10-10T17:01:00Z', message: { id: 'm3', role: 'assistant', content: [{ type: 'text', text: 'Quel style de menu ?' }] } }),
+    'pas du json',
+  ].join('\n'));
+  const r = readChat(f);
+  assert.deepStrictEqual(r.messages.map(m => [m.who, m.text]), [['toi', 'Ajoute le menu pause'], ['agent', 'Je regarde.'], ['agent', 'Quel style de menu ?']]);
+  assert.ok(!readChat(path.join(dir, 'absent.jsonl')).ok);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('discuter : un message relance la session sans fenetre, les suivants attendent leur tour', () => {
+  const { EventEmitter } = require('events');
+  const discussion = require('../lib/discussion');
+  const s = new TowerState();
+  const runs = [];
+  const run = (args, cwd, input) => { const c = new EventEmitter(); c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); runs.push({ args, cwd, input, c }); return c; };
+  const d = discussion.create(s, { run });
+  const st = d.start({ cwd: '/jeu', text: 'Tache de la tour [sujet-menus] : lis la consigne' });
+  assert.ok(st.ok);
+  const id = st.sessionId;
+  assert.deepStrictEqual(runs[0].args.slice(0, 3), ['-p', '--session-id', id]);
+  assert.ok(runs[0].args.includes('--permission-prompts'));
+  assert.strictEqual(runs[0].cwd, '/jeu');
+  assert.strictEqual(s.agents[id].status, 'working');
+  // Pendant qu'il travaille, le message suivant attend.
+  assert.deepStrictEqual(d.send(id, 'Le menu pause d\'abord'), { ok: true, queued: true });
+  assert.strictEqual(s.agents[id].chat.queued, 1);
+  assert.strictEqual(runs.length, 1);
+  // Fin du tour : Stop puis SessionEnd du -p ; la session reste ouverte pour la tour.
+  s.event({ session_id: id, cwd: '/jeu', hook_event_name: 'Stop', last_assistant_message: 'Quel style ?' });
+  s.event({ session_id: id, cwd: '/jeu', hook_event_name: 'SessionEnd', reason: 'other' });
+  assert.strictEqual(s.agents[id].status, 'idle');
+  runs[0].c.stdout.emit('data', '{"type":"result","is_error":false,"result":"ok"}\n');
+  runs[0].c.emit('close', 0);
+  assert.deepStrictEqual(runs[1].args.slice(0, 3), ['-p', '--resume', id]);
+  assert.strictEqual(runs[1].input, 'Le menu pause d\'abord');
+  runs[1].c.stdout.emit('data', '{"type":"result","is_error":true,"result":"Credit balance is too low"}\n');
+  runs[1].c.emit('close', 1);
+  assert.match(s.agents[id].chat.error, /Credit/);
+  assert.ok(!s.agents[id].chat.busy);
+  // Une session ouverte dans sa fenetre se lit seulement ; une fois fermee, on la reprend ici.
+  const w = '11111111-2222-4333-8444-555555555555';
+  s.event({ session_id: w, cwd: '/jeu', hook_event_name: 'UserPromptSubmit', prompt: 'salut' });
+  assert.ok(!d.send(w, 'coucou').ok);
+  s.event({ session_id: w, cwd: '/jeu', hook_event_name: 'SessionEnd', reason: 'logout' });
+  assert.ok(d.send(w, 'on reprend').ok);
+  assert.deepStrictEqual(runs[2].args.slice(0, 3), ['-p', '--resume', w]);
+  assert.ok(!d.send(id, '   ').ok);
+});

@@ -238,6 +238,8 @@ const tuto = require('../lib/tuto').create(state, { projects: knownProjects });
 const taches = require('../lib/taches').create(state);
 // Fin de tache : la tour compile et lance les tests elle-meme (lib/verif.js).
 const verif = require('../lib/verif').create(state);
+// Discuter avec une session depuis la tour (lib/discussion.js) : chaque message relance la session sans fenetre.
+const discussion = require('../lib/discussion').create(state, { launchEnv: require('../lib/taches').launchEnv });
 const usage = require('../lib/usage');
 const usageTimers = new Map();
 function usageSoon(sid, ms = 2500) {
@@ -326,6 +328,15 @@ const routes = {
   'POST /api/ask/answer': (b) => state.answerAsk(String(b.id || ''), b),
   'POST /api/ask/close': (b) => ({ ok: state.closeAsk(String(b.id || '')) }),
   'POST /api/agents/rename': (b) => ({ ok: state.renameRoom(String(b.sessionId || ''), b.label) }),
+  'GET /api/chat': (b, url) => discussion.read(String(url.searchParams.get('session') || ''), Math.min(200, Number(url.searchParams.get('n')) || 60)),
+  'POST /api/chat/send': (b) => discussion.send(String(b.sessionId || ''), b.text),
+  'POST /api/chat/stop': (b) => discussion.stop(String(b.sessionId || '')),
+  // Une tache ou un sujet dans une discussion de la tour plutot que dans une fenetre.
+  'POST /api/chat/start': (b) => {
+    const r = taches.prepare({ id: b.id, project: projectFor(b.project) });
+    if (!r.ok) return r;
+    return discussion.start({ cwd: r.project.root, text: r.ask });
+  },
   'POST /api/agents/hide': (b) => ({ ok: state.hide(String(b.sessionId || ''), b.hidden !== false) }),
   'GET /api/sujets/file': (b, url) => {
     const p = projectFor(url.searchParams.get('project'));
