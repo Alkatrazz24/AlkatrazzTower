@@ -58,6 +58,7 @@ class TowerState {
     this.projects = [];    // projets Unreal connectes : [{ name, root, uproject, engine }]
     this.inventories = {}; // nom du projet -> inventaire (lib/inventory.js), recalcule par le serveur
     this.editors = {};     // nom du projet -> ce que dit le plugin Unreal de l'editeur ouvert
+    this.skills = null;    // la bibliotheque des skills installes et leur usage (lib/skills.js), relue par le serveur
     this.tasks = [];       // taches ajoutees par l'utilisateur (lib/taches.js), en plus des taches de base
     this.answers = {};     // id de question -> reponse donnee dans la tour, en attente du hook
     this.redTests = {};    // projet -> chemins des tests rouges a leur dernier passage
@@ -770,6 +771,7 @@ class TowerState {
       tuto: this.tuto || null,
       tasks: this.taskList(),
       taskSuivi: suivi.CONSIGNE,
+      skills: this.skills,
     };
   }
 

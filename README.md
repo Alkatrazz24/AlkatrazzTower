@@ -98,6 +98,23 @@ rapport à la fenêtre (200 k, ou 1 M), et ce que coûte chaque **action** (Read
 voit dans la fiche de chaque agent, et dans le panneau Tâches : suivi des tâches et tokens du
 jour par session. Au clavier, « tâche » liste les tâches à lancer.
 
+## La bibliothèque des skills
+
+Au bout du couloir, à côté de la salle de lancement, la **bibliothèque** : un livre par skill installé
+(bouton **Skills** de la barre du haut, ou touche B). Elle lit, sans rien modifier :
+
+- les skills **perso** (`~/.claude/skills`), ceux du **compte** claude.ai, ceux de chaque **projet**
+  connu (`<projet>/.claude/skills`) et ceux des **plugins**, avec l'endroit où chaque plugin est activé ;
+- chaque `SKILL.md` : en-tête lisible, description présente et pas trop longue, nom cohérent avec son
+  dossier, fichiers cités présents, même nom à deux endroits ;
+- l'**usage** des 30 derniers jours dans les journaux de Claude Code (`~/.claude/projects`) : appels de
+  l'outil Skill et commandes `/nom` tapées, par session et par projet.
+
+Un livre rouge est cassé (Claude Code ne peut pas s'en servir), orange à revoir, poussiéreux jamais
+utilisé. **Ajouter un skill** écrit un `SKILL.md` dans le dossier perso ou dans `.claude/skills` d'un
+projet, à partir d'un modèle, ou depuis une adresse GitHub : le fichier est montré en entier et ne
+s'installe qu'une fois lu et confirmé.
+
 ## La carte du projet
 
 Sur la page, le projet est une petite ville. La maison au centre, c'est le jeu, avec son nom,
