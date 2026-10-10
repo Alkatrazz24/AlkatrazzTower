@@ -27,6 +27,10 @@
     add('Journal des échecs', `${M.builds.filter(b => !b.ok).length} récents`, 'erreurs builds rates ko', () => api.select({ kind: 'ko' }, true));
     add('Journal des réussis', `${M.builds.filter(b => b.ok).length} récents`, 'builds ok succes', () => api.select({ kind: 'ok' }, true));
     for (const p of (M.inv ? T.rooms(M.inv) : [])) add(`Gisement ${p.name}`, `${T.num(p.count)} éléments`, 'dossier domaine', () => api.select({ kind: 'patch', id: p.id }, true));
+    const proj = M.projects[0] ? M.projects[0].name : '';
+    for (const t of (M.S.tasks || [])) add(`Tâche : ${t.title}`, proj ? `lancer Claude Code sur ${proj}` : 'connecte un projet', 'tache lancer claude', () => api.launchTask(t, proj));
+    add('Tâches et tokens', 'ouvrir le panneau', 'taches tokens consommation contexte', () => api.side('taches', true));
+    add('Tutos', 'voir la tour marcher', 'tuto aide demo', () => api.side('tuto', true));
     add('Connecter un projet', 'Unreal', 'projet uproject ajouter', T.act.openProjects);
     add('Recompter le projet', 'met à jour les gisements', 'rafraichir inventaire', T.act.refreshMap);
     add(T.ui.showEnded ? 'Masquer les sessions terminées' : 'Montrer les sessions terminées', `${M.endedCount}`, 'fini ended', () => T.act.toggleEnded());

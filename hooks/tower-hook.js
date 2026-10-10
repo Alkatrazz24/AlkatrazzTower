@@ -17,12 +17,13 @@ setTimeout(quit, 1500).unref();
 process.on('uncaughtException', quit);
 process.on('unhandledRejection', quit);
 
-// Garde seulement ce que la tour affiche : pas de contenu de fichier, pas de reponse d'outil.
+// Garde seulement ce que la tour affiche : pas de contenu de fichier, pas de reponse d'outil. Le chemin
+// du journal (transcript_path) sert a compter les tokens : la tour le lit elle-meme, hors du hook.
 function slim(ev) {
   // Heure de l'evenement : les hooks asynchrones peuvent arriver dans le desordre.
   const out = { ts: Date.now() };
   for (const k of ['session_id', 'cwd', 'hook_event_name', 'tool_name', 'prompt', 'message', 'notification_type',
-    'source', 'reason', 'agent_id', 'agent_type', 'error', 'session_title', 'permission_mode', 'model']) {
+    'source', 'reason', 'agent_id', 'agent_type', 'error', 'session_title', 'permission_mode', 'model', 'transcript_path']) {
     if (ev[k] !== undefined) out[k] = typeof ev[k] === 'string' ? ev[k].slice(0, 2000) : ev[k];
   }
   if (ev.last_assistant_message) out.last_assistant_message = String(ev.last_assistant_message).slice(0, 1000);

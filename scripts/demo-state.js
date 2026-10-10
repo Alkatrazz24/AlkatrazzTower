@@ -143,6 +143,30 @@ state.agents['s-test'].status = 'working';
 // Une session terminee hier soir.
 state.agents['s-old'] = { ...state.agents['s-ui'], sessionId: 's-old', status: 'ended', title: 'ctb-docs', prompt: 'Mets à jour docs/agents-unreal.md', message: 'fin : logout', lastSeen: T0 - 15 * 3600_000, characterId: state.createCharacter({ name: 'Firmin' }).id, lastBuild: null, lastTest: null, subagents: {} };
 
+// Une tache lancee depuis le panneau Taches, et une tache ajoutee par l'utilisateur.
+at(-35); ev('s-relec', 'UserPromptSubmit', { prompt: 'Tache de la tour [relecture] : lis la consigne dans Saved/Tour/taches/relecture.md et suis-la.' });
+state.agents['s-relec'].characterId = state.createCharacter({ name: 'Clothilde', look: { hat: 'aucun', tool: 'loupe', accessory: 'lunettes', shirt: '#7c3aed', hairStyle: 'chignon', hair: '#d6d3d1' } }).id;
+at(-2); tool('s-relec', 'Read', { file_path: P('Source/ConquerTheBackrooms/Raid/CTBRaidSubsystem.cpp') });
+state.tasks.push({ id: 'perso-assets-orphelins', title: 'Assets orphelins', text: 'Liste les assets que plus rien ne référence.', prompt: 'Liste les assets de Content/ que plus rien ne référence dans {projet}, sans rien supprimer.', createdAt: T0 - 86400_000 });
+
+// Tokens : ce que la tour lirait dans les journaux de Claude Code.
+const day = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const use = (sid, k, ctx, win, tools) => {
+  const total = Math.round(k * 1000);
+  state.agents[sid].usage = {
+    in: Math.round(total * 0.004), out: Math.round(total * 0.012), cacheRead: Math.round(total * 0.9), cacheWrite: Math.round(total * 0.084), total,
+    messages: Math.round(k / 9), context: ctx * 1000, window: win, contextPct: Math.round(100 * ctx * 1000 / win),
+    tools: tools.map(([name, calls, outK, ctxK]) => ({ name, calls, out: outK * 1000, ctx: ctxK * 1000 })), days: { [day(T0)]: total }, lastAt: T0 - 60_000,
+  };
+};
+use('s-armes', 4820, 118, 200_000, [['Bash', 31, 22, 2400], ['Edit', 14, 18, 1100], ['Read', 26, 4, 950], ['Réponse', 0, 6, 300]]);
+use('s-ia', 3150, 164, 200_000, [['Read', 40, 6, 1500], ['WebFetch', 5, 2, 700], ['Bash', 12, 9, 650], ['Réponse', 0, 5, 260]]);
+use('s-niveaux', 2210, 71, 200_000, [['Bash', 18, 11, 980], ['Edit', 9, 12, 760], ['Read', 15, 3, 400]]);
+use('s-ui', 1640, 52, 200_000, [['Write', 6, 15, 620], ['Read', 19, 3, 540], ['Bash', 7, 4, 380]]);
+use('s-son', 980, 43, 200_000, [['Edit', 5, 6, 410], ['Agent', 1, 3, 300], ['Read', 9, 1, 230]]);
+use('s-test', 2730, 96, 200_000, [['Bash', 28, 14, 1900], ['Read', 21, 3, 700]]);
+use('s-relec', 1260, 312, 1_000_000, [['Read', 58, 7, 980], ['Grep', 22, 2, 230], ['Réponse', 0, 3, 50]]);
+
 // L'editeur, vu par le plugin.
 state.editorState({ project: 'ConquerTheBackrooms', uproject: P('ConquerTheBackrooms.uproject'), engine: '5.8', map: 'Level0_Maze', pie: false, dirty: 3,
   dirtyNames: ['L_Level0_Maze', 'BP_Exit', 'MI_Fluorescent'], liveCoding: { enabled: true, compiling: false }, openAssets: ['/Game/Maps/L_Level0_Maze', '/Game/Blueprints/BP_Exit'] });

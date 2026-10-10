@@ -62,6 +62,28 @@ ne sont jamais sauvegardées, ne comptent pas pour la version et partent avec «
 tutos », au bout de 30 minutes ou au redémarrage. Les tutos de build refusent de partir quand un vrai
 build tourne.
 
+## Tâches : lancer le travail courant, suivre ses tokens
+
+Le bouton **Tâches** de la barre du haut propose des consignes prêtes à lancer sur le projet connecté :
+
+| Tâche | Ce que fait l'agent |
+| --- | --- |
+| Relecture complète et rapport | relit code, Blueprints, niveaux et config, sans rien modifier, et écrit un rapport dans `Saved/Tour/rapports/` |
+| Anomalies du code et corrections | liste les bugs par gravité, puis corrige les plus sûrs un par un, build et tests à l'appui |
+| Idées de features et plan d'action | propose 5 features, puis écrit le plan détaillé de la meilleure dans `Saved/Tour/plans/` |
+
+- **Lancer** ouvre Claude Code dans une nouvelle fenêtre, dans le dossier du projet, avec la consigne
+  (écrite dans `Saved/Tour/taches/`, dossier non versionné). Tu valides ses modifications comme d'habitude.
+- **Copier la consigne** la met dans le presse-papiers, pour une session déjà ouverte.
+- **Nouvelle tâche** en ajoute une à toi (`{projet}` et `{date}` sont remplacés) ; « Copier en perso »
+  part d'une tâche de base. Elles sont gardées par la tour.
+
+La tour compte les **tokens** de chaque session en lisant son journal Claude Code (le `transcript_path`
+que le hook lui passe ; lecture seule) : le total (entrée, sortie, cache), le **contexte** rempli par
+rapport à la fenêtre (200 k, ou 1 M), et ce que coûte chaque **action** (Read, Bash, Edit...). On les
+voit dans la fiche de chaque agent, et dans le panneau Tâches : dernières tâches lancées et tokens du
+jour par session. Au clavier, « tâche » liste les tâches à lancer.
+
 ## La carte du projet
 
 Sur la page, le projet est une petite ville. La maison au centre, c'est le jeu, avec son nom,
