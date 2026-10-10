@@ -276,8 +276,33 @@ async function demoSkills() {
   state.roster = agents.withUsage(agents.scan({ cfg: CFG, projects: [{ name: 'ConquerTheBackrooms', root: PROJ }, { name: 'Alkatrazz Tower', root: TOWER }], skills: inv }), await skills.readAgentUsage({ cfg: CFG, now: T0 }), { now: T0 });
 }
 
+// Les sujets du jeu : une salle par section de l'equipe, plus Items et Base. Deux carnets deja tenus,
+// le tableau partage avec quelques messages, et la session du sujet Animation au travail.
+function demoSujets() {
+  const sujets = require('../lib/sujets');
+  const put = (rel, text) => { const f = P(rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
+  put('Saved/Tour/sujets/animation.md', '# Animation\n\n## Où on en est\nLe coup de pied est codé (CTBPorte::CoupDePied), sans clip : il manque le montage et le slot FullBody dans ABP_PlayerPawn_CTB.\n\n## Décisions\n- Une seule animation de coup de pied, jouée en FullBody.\n\n## Prochaines étapes\n- Importer un clip de coup de pied\n- Ajouter le slot FullBody dans ABP_PlayerPawn_CTB\n- Lancer tools/creer_coup_de_pied.py\n\n## Fichiers du sujet\n- Content/CTB/Characters/Animations\n');
+  put('Saved/Tour/sujets/armes-et-combat.md', '# Armes et combat\n\n## Où on en est\nLe fusil à pompe recharge cartouche par cartouche ; le test FusilPompe est rouge.\n\n## Prochaines étapes\n- Interrompre la recharge quand on tire\n- Relancer CTB.Munitions\n');
+  put('Saved/Tour/tableau.md', ['# Tableau des sujets', '',
+    '- 2026-10-09 10:12 · Armes et combat → Animation : le montage de recharge du fusil à pompe doit pouvoir s\'interrompre (notify « Interruptible »).',
+    '- 2026-10-09 10:40 · Interface → Items : la WebUI lit maintenant la taille des objets dans DT_Loot (colonne Taille), garde-la.',
+    '- 2026-10-09 11:05 · Animation → Armes et combat : fait, notify « Interruptible » ajouté au montage de recharge.',
+    '- 2026-10-09 11:30 · ali → tous : on garde la touche K pour le coup de pied.',
+    '- 2026-10-09 11:48 · Gameplay → Animation : CTBPorte appelle OnCoupDePied quand la porte cède, branche le son et l\'animation dessus.', ''].join('\n'));
+  for (const [n, sec, d] of [['ctb-menus', 'Menus', 'Menu principal, pause, réglages.'], ['ctb-economie', 'Économie et inventaire', 'Inventaire, loot, commerce et profil.'], ['ctb-monde', 'Monde et niveaux', 'Parcelles, niveaux et décor.']])
+    put(`.claude/agents/${n}.md`, `---\nname: ${n}\nsection: ${sec}\ndescription: ${JSON.stringify(d)}\n---\n\nTu es le spécialiste ${n}.\n`);
+  state.setSujets('ConquerTheBackrooms', sujets.scan({ name: 'ConquerTheBackrooms', root: PROJ }, require('../lib/equipe').teamOf(PROJ, 0)));
+  at(-11); ev('s-anim', 'UserPromptSubmit', { prompt: 'Tache de la tour [sujet-animation] : lis la consigne dans Saved/Tour/taches/sujet-animation.md et suis-la.' });
+  state.agents['s-anim'].characterId = state.createCharacter({ name: 'Ambre', look: { hat: 'bandana', hatColor: '#0d9488', tool: 'pinceau', shirt: '#0f766e', hairStyle: 'queue', hair: '#78350f' } }).id;
+  at(-10); tool('s-anim', 'Read', { file_path: P('Saved/Tour/sujets/animation.md') });
+  at(-9); tool('s-anim', 'Read', { file_path: P('Saved/Tour/tableau.md') });
+  at(-4); ev('s-anim', 'PreToolUse', { tool_name: 'Read', tool_input: { file_path: P('Content/Characters/Animations/A_Arms_Reload.uasset') }, agent_id: 'anim-a', agent_type: 'ctb-animation' });
+  at(-2);
+}
+
 (async () => {
 await demoSkills();
+demoSujets();
 
 // Les chemins du dossier temporaire deviennent des chemins Windows plausibles.
 const WIN = 'C:\\Users\\Alkatrazz\\Documents\\Unreal Projects';

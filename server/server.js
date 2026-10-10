@@ -139,6 +139,16 @@ function probeChantiers() {
   if (JSON.stringify(next) !== JSON.stringify(state.chantiers)) { state.chantiers = next; state.changed(); }
 }
 
+// Les sujets du jeu (lib/sujets.js) : un par section de l'equipe, leur carnet et le tableau partage,
+// relus toutes les 10 s dans Saved/Tour/ de chaque projet connecte.
+const sujetsLib = require('../lib/sujets');
+function probeSujets() {
+  for (const p of state.projects) {
+    if (!p || !p.root || !p.name) continue;
+    try { state.setSujets(p.name, sujetsLib.scan(p, require('../lib/equipe').teamOf(p.root))); } catch { /* projet illisible */ }
+  }
+}
+
 // ---- inventaire des projets pour la carte ----------------------------------------------------
 
 const scanning = new Set();
@@ -179,8 +189,10 @@ setTimeout(() => refreshInventories(false), 1500).unref();
 setInterval(() => { state.expire(); }, 2000).unref();
 setInterval(probeEditor, 10_000).unref();
 setInterval(probeChantiers, 10_000).unref();
+setInterval(probeSujets, 10_000).unref();
 probeEditor();
 probeChantiers();
+probeSujets();
 
 // ---- HTTP ---------------------------------------------------------------------------------------
 
@@ -314,6 +326,18 @@ const routes = {
   'POST /api/ask/answer': (b) => state.answerAsk(String(b.id || ''), b),
   'POST /api/ask/close': (b) => ({ ok: state.closeAsk(String(b.id || '')) }),
   'POST /api/agents/rename': (b) => ({ ok: state.renameRoom(String(b.sessionId || ''), b.label) }),
+  'POST /api/agents/hide': (b) => ({ ok: state.hide(String(b.sessionId || ''), b.hidden !== false) }),
+  'GET /api/sujets/file': (b, url) => {
+    const p = projectFor(url.searchParams.get('project'));
+    return p ? sujetsLib.readFile(p.root, String(url.searchParams.get('id') || '')) : { ok: false, error: 'Aucun projet connecté.' };
+  },
+  'POST /api/sujets/post': (b) => {
+    const p = projectFor(b.project);
+    if (!p) return { ok: false, error: 'Aucun projet connecté.' };
+    const r = sujetsLib.post(p.root, { from: b.from || 'ali', to: b.to, text: b.text });
+    if (r.ok) probeSujets();
+    return r;
+  },
 
   // Personnages
   'GET /api/characters': () => Object.values(state.characters).map(c => ({
