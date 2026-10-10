@@ -601,7 +601,7 @@
     const vw = G.canvas.width / G.dpr, vh = G.canvas.height / G.dpr;
     const wide = vw > 900;
     // Sur grand ecran, le HUD du mode prend des bords : on cadre l'usine dans la zone libre.
-    const P = wide && MODE.pads ? MODE.pads(!!G.sel) : { l: 8, r: 8, t: 8, b: 8 };
+    const P = wide && MODE.pads ? MODE.pads(!!G.sel || !!G.tutoOpen) : { l: 8, r: 8, t: 8, b: 8 };
     const padL = P.l, padR = P.r, padT = P.t, padB = P.b;
     const z = Math.min((vw - padL - padR) / (W.w * TS), (vh - padT - padB) / (W.h * TS));
     G.cam.z = Math.max(.35, Math.min(4, z));
@@ -773,7 +773,7 @@
       if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
       const W = G.world; if (!W) return;
       if (/^[1-9]$/.test(e.key)) { const m = W.machines[+e.key - 1]; if (m) { select({ kind: 'agent', id: m.a.id }, true); e.preventDefault(); } }
-      else if (e.key === 'Escape') select(null);
+      else if (e.key === 'Escape') { if (G.tutoOpen) tutoToggle(false); else select(null); }
       else if (e.key === 'f' || e.key === 'F') select({ kind: 'forge' }, true);
       else if (e.key === 'v' || e.key === 'V') select({ kind: 'silo' }, true);
       else if (e.key === 'j' || e.key === 'J') select({ kind: G.M.builds.some(b => !b.ok) ? 'ko' : 'ok' }, true);
@@ -947,12 +947,134 @@
   };
 
   function same(a, b) { return a.length === b.length && a.every((x, i) => x === b[i]); }
+  // ---------- tutos : de courts scenarios joues sur la vraie tour (lib/tuto.js) ----------
+  // Le panneau prend la place de la fiche ; chaque etape se coche quand la tour la voit vraiment.
+  const TUTO_WHERE = {
+    agent: {
+      atraiter: 'Quand il a fini, une carte « … a fini » arrive dans la liste à gauche.',
+      equipe: 'Sa carte apparaît en bas, avec ce qu\'il fait et depuis quand.',
+      version: 'Il apparaît sur l\'usine ; la version n\'est pas touchée.',
+      coupdoeil: 'La phrase du bas passe à « Tout tourne », puis une notification dit qu\'il a fini.',
+      clavier: 'Tape son nom dans la barre du haut : Entrée ouvre sa fiche.',
+    },
+    question: {
+      atraiter: 'Sa question arrive en haut de la liste à gauche, en orange.',
+      equipe: 'Sa carte passe en orange : « attend ta réponse ».',
+      version: 'L\'usine le montre en orange ; l\'onglet du navigateur affiche (1).',
+      coupdoeil: 'La phrase du bas dit « … t\'attend » et une notification s\'affiche.',
+      clavier: 'La barre propose sa question en premier.',
+    },
+  };
+  const TUTO_LOOK = {
+    forge: 'Regarde le tapis : les caisses partent à la forge une par une, la seconde attend devant.',
+    echec: 'La caisse finit au coffre rouge ; clique dessus pour lire l\'erreur.',
+    vrai: 'Ouvre un terminal dans le dossier du projet, lance claude et demande : « Liste les dossiers de Content, sans rien modifier. »',
+  };
+  let tutoFocus = '';
+
+  function tutoSteps(id, M, t) {
+    const ag = (sid) => M.agents.find(a => a.id === sid);
+    const proj = t.project;
+    const builds = (pre) => M.builds.filter(b => String(b.raw.sessionId).startsWith(pre));
+    if (id === 'agent') {
+      const a = ag('tuto-agent');
+      return [['Sa machine apparaît dans l\'usine', !!a], [`Elle est rattachée à ${proj}`, !!a && a.project === proj],
+        ['Il lit des fichiers : la fiche montre l\'outil', !!a && !!a.tool], ['Il a fini : la tour te le dit', !!a && a.st === 'idle']];
+    }
+    if (id === 'question') {
+      const a = ag('tuto-question');
+      const done = !!a && a.st === 'idle';
+      return [['Sa machine apparaît dans l\'usine', !!a], ['Il attend ta réponse', !!a && (a.st === 'waiting' || done)], ['Tu as vu sa question', done]];
+    }
+    if (id === 'forge') {
+      const bs = builds('tuto-forge'), b2 = bs.find(b => b.raw.sessionId === 'tuto-forge-b');
+      const holdA = M.lock && M.lock.raw.sessionId === 'tuto-forge-a';
+      return [['Le premier build prend la forge', holdA || bs.some(b => b.raw.sessionId === 'tuto-forge-a')],
+        ['Le second attend son tour dans la file', M.queue.some(q => q.raw.sessionId === 'tuto-forge-b') || (!!b2 && b2.waitMs > 1000)],
+        ['Les deux builds réussissent, l\'un après l\'autre', bs.filter(b => b.ok).length >= 2]];
+    }
+    if (id === 'echec') {
+      const b = builds('tuto-echec')[0];
+      return [['Le faux build passe à la forge', !!b || (!!M.lock && M.lock.raw.sessionId === 'tuto-echec')],
+        ['Il échoue : la caisse va au coffre rouge', !!b && !b.ok], ['La tour a lu l\'erreur de compilation', !!b && b.lines.length > 0]];
+    }
+    const real = M.agents.find(a => !a.id.startsWith('tuto-') && a.project === proj && (a.raw.firstSeen || 0) >= t.startedAt);
+    return [[`Un nouvel agent apparaît sur ${proj}`, !!real], ['Il travaille : la fiche montre son outil', !!real && !!real.tool], ['Il a fini', !!real && real.st === 'idle']];
+  }
+
+  // La camera va une fois vers ce que le tuto fait bouger.
+  function tutoCamera(id, M) {
+    const sid = { agent: 'tuto-agent', question: 'tuto-question' }[id];
+    let key = '', sel = null;
+    if (sid && M.agents.some(a => a.id === sid)) { key = id + sid; sel = { kind: 'agent', id: sid }; }
+    else if (id === 'forge' || id === 'echec') { key = id; sel = { kind: 'forge' }; }
+    else if (id === 'vrai') {
+      const t = M.S.tuto && M.S.tuto.last;
+      const real = t && M.agents.find(a => !a.id.startsWith('tuto-') && a.project === t.project && (a.raw.firstSeen || 0) >= t.startedAt);
+      if (real) { key = id + real.id; sel = { kind: 'agent', id: real.id }; }
+    }
+    if (key && key !== tutoFocus) { tutoFocus = key; G.sel = sel; center(sel); G.dirty = true; }
+  }
+
+  async function tutoCall(path, body) {
+    const r = await T.api(path, body);
+    if (r && r.ok === false && r.error) T.toast(r.error);
+    return r;
+  }
+
+  function tutoPanel(M) {
+    const info = M.S.tuto || {};
+    const list = info.list || [];
+    const last = info.last, running = info.running;
+    const proj = info.project;
+    const close = btn('Fermer', () => tutoToggle(false), 'us-x', { 'aria-label': 'Fermer les tutos', title: 'Échap' });
+    if (last) tutoCamera(last.id, M);
+    const cards = list.map((x, i) => {
+      const open = last && last.id === x.id;
+      const steps = open ? tutoSteps(x.id, M, last) : [];
+      const all = open && steps.every(s => s[1]);
+      const off = M.demo || !proj ? { disabled: true } : {};
+      const launch = (label, cls) => btn(label, () => { tutoFocus = ''; tutoCall('/api/tuto/start', { id: x.id }); }, cls, off);
+      const head = h('div', { class: 'us-tuto-head' }, h('b', null, `${i + 1}. ${x.title}`),
+        all ? h('span', { class: 'us-t-ok' }, 'Réussi') : open && running ? h('span', { class: 'us-dim' }, 'en cours') : open ? null : launch('Lancer', 'us-go'));
+      const body = [h('p', { class: 'us-dim' }, x.text)];
+      if (open) {
+        const where = (TUTO_WHERE[x.id] && TUTO_WHERE[x.id][MODE.id]) || TUTO_LOOK[x.id];
+        if (where) body.push(h('p', { class: 'us-tuto-where' }, where));
+        body.push(h('ol', { class: 'us-tuto-steps' }, steps.map(([txt, ok]) => h('li', { class: ok ? 'ok' : '' }, h('i', { 'aria-hidden': 'true' }, ok ? '✓' : '·'), txt, ok ? h('span', { class: 'us-sr' }, ' (fait)') : null))));
+        const a = M.agents.find(y => y.id === 'tuto-question');
+        if (x.id === 'question' && a && a.st === 'waiting') body.push(btn('J\'ai vu', () => tutoCall('/api/tuto/answer'), 'us-go'));
+      }
+      if (open) body.push(launch('Rejouer', ''));
+      return h('li', { class: 'us-tuto-card' + (open ? ' open' : '') + (all ? ' done' : '') }, head, body);
+    });
+    const intro = M.demo ? 'En démo, les tutos ne se lancent pas : ouvre la tour sur ton PC.'
+      : !proj ? 'Connecte d\'abord ton projet Unreal (bouton du projet en haut) : les tutos se jouent dessus.'
+      : `Des scénarios courts joués sur ta vraie tour, avec ${proj}. Rien n'est écrit dans le projet : les agents du tuto sont simulés et la forge lance un faux build. Chaque étape se coche quand la tour la voit.`;
+    return h('section', { class: 'us-panel us-entity us-tuto', 'aria-label': 'Tutos' },
+      h('div', { class: 'us-ehead' }, h('h2', null, proj ? `Tutos sur ${proj}` : 'Tutos'), close),
+      h('div', { class: 'us-ebody' }, h('p', null, intro), h('ol', { class: 'us-tuto-list' }, cards),
+        h('div', { class: 'us-tuto-foot' }, btn('Effacer les traces des tutos', () => { tutoFocus = ''; tutoCall('/api/tuto/clean'); G.sel = null; }, '', M.demo ? { disabled: true } : {}),
+          h('span', { class: 'us-dim' }, 'Elles partent aussi seules au bout de 30 min et ne sont jamais sauvegardées.'))));
+  }
+
+  function tutoToggle(on) {
+    G.tutoOpen = on === undefined ? !G.tutoOpen : on;
+    if (!G.tutoOpen) { G.sel = null; tutoFocus = ''; }
+    if (!G.userMoved) fit();
+    G.dirty = true;
+    renderHud();
+  }
+
   function renderHud() {
     const M = G.M; if (!M) return;
     G.hud.chips.replaceChildren(...chips(M).filter(Boolean));
     G.hud.res.replaceChildren(...(MODE.counters ? counters(M) : []));
-    const ent = entityPanel(M);
+    const ent = G.tutoOpen ? tutoPanel(M) : entityPanel(M);
+    // La fiche est refaite a chaque nouvelle donnee : on garde l'endroit ou on l'avait fait defiler.
+    const was = G.hud.entity.firstChild, oldBody = was && was.querySelector('.us-ebody');
     G.hud.entity.replaceChildren(...(ent ? [ent] : []));
+    if (oldBody && ent && ent.getAttribute('aria-label') === was.getAttribute('aria-label')) ent.querySelector('.us-ebody').scrollTop = oldBody.scrollTop;
     G.hud.entity.hidden = !ent;
     G.app.classList.toggle('us-has-sel', !!ent);
     // Un mode peut rendre les memes noeuds d'une fois sur l'autre (un champ de saisie garde alors son focus).
@@ -960,6 +1082,8 @@
     if (!same(nodes, [...G.hud.mode.children])) G.hud.mode.replaceChildren(...nodes);
     if (!M.inv) G.hud.empty.replaceChildren(h('p', null, M.projects.length ? 'La tour compte le projet : les gisements apparaissent dans un instant.' : 'Connecte un projet Unreal : ses domaines deviennent les gisements de l\'usine.'));
     G.hud.empty.hidden = !!M.inv;
+    G.hud.tutoBtn.classList.toggle('on', !!G.tutoOpen);
+    G.hud.tutoBtn.classList.toggle('run', !!(M.S.tuto && M.S.tuto.running));
   }
 
   function build(root) {
@@ -973,7 +1097,7 @@
     };
     G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
-      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), T.switcher('Fonctionnement'), worldSwitch()),
+      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
       G.hud.mode,
       G.hud.entity);
     root.replaceChildren(G.app);

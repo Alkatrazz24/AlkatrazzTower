@@ -43,6 +43,25 @@ Banquise. Il marche avec les cinq templates.
   (`web/demo/state.json`, régénérée par `node scripts/demo-state.js`) sans toucher à la tour.
 - L'ancienne page reste disponible : <http://127.0.0.1:4777/classique.html>.
 
+## Tutos : voir la tour marcher sur ton projet
+
+Le bouton **Tutos** de la barre du haut ouvre cinq scénarios courts, joués sur la vraie tour avec ton
+projet connecté. Chaque étape se coche quand la tour la voit vraiment.
+
+| Tuto | Ce qu'il montre |
+| --- | --- |
+| Un agent arrive | une session s'ouvre sur le projet, lit deux fichiers, puis finit |
+| Il te pose une question | un agent attend ta réponse ; « J'ai vu » le libère |
+| Un build à la fois | deux builds en même temps : un à la forge, l'autre attend son tour |
+| Un build qui échoue | la tour lit l'erreur de compilation et la montre |
+| Ton vrai agent | tu lances Claude Code dans le dossier du projet, la tour le voit arriver |
+
+Rien n'est écrit dans le projet. Les agents des tutos sont simulés (identifiants `tuto-…`), et la forge
+lance un faux build (`scripts/tuto-build.js`) sous le vrai verrou avec le vrai `tower-run`. Leurs traces
+ne sont jamais sauvegardées, ne comptent pas pour la version et partent avec « Effacer les traces des
+tutos », au bout de 30 minutes ou au redémarrage. Les tutos de build refusent de partir quand un vrai
+build tourne.
+
 ## La carte du projet
 
 Sur la page, le projet est une petite ville. La maison au centre, c'est le jeu, avec son nom,

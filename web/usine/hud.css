@@ -225,3 +225,25 @@ h1, h2, h3, p { margin: 0; }
   .us-r span { display: none; }
   .us-r { padding-right: 8px; }
 }
+
+/* ---------- tutos (panneau a la place de la fiche) ---------- */
+.us-tutobtn.on { background: var(--us-sel-bg); border-color: var(--us-orange); }
+.us-tutobtn.run::after { content: ''; display: inline-block; width: 7px; height: 7px; margin-left: 6px; border-radius: 50%; background: var(--us-orange); vertical-align: middle; animation: us-tuto-blink 1.2s ease-in-out infinite; }
+@keyframes us-tuto-blink { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .us-tutobtn.run::after { animation: none; } }
+.us-tuto p { margin: 0; }
+.us-tuto-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.us-tuto-card { display: grid; gap: 6px; justify-items: start; padding: 8px 10px; background: var(--us-inset); border: 1px solid var(--us-edge); border-radius: var(--us-radius); }
+.us-tuto-card.open { border-color: var(--us-orange); }
+.us-tuto-card.done { border-color: var(--us-ok); }
+.us-tuto-head { display: flex; gap: 10px; align-items: center; width: 100%; font: 600 16px/1.2 var(--us-cond); }
+.us-tuto-head b { flex: 1; font-weight: 600; }
+.us-tuto-head .us-btn { flex: none; }
+.us-tuto-where { padding: 6px 8px; border-left: 3px solid var(--us-orange); background: var(--us-panel); }
+.us-tuto-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.us-tuto-steps li { display: grid; grid-template-columns: 18px 1fr; gap: 6px; color: var(--us-muted); }
+.us-tuto-steps li.ok { color: var(--us-ink); }
+.us-tuto-steps i { font-style: normal; font-weight: 700; text-align: center; }
+.us-tuto-steps li.ok i { color: var(--us-ok); }
+.us-tuto-foot { display: grid; gap: 4px; justify-items: start; font-size: 13px; }
+.us-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

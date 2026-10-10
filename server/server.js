@@ -185,6 +185,9 @@ const MIME = {
   '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8',
 };
 
+// Tutos : scenarios joues sur la vraie tour et le vrai projet, sans rien y ecrire (lib/tuto.js).
+const tuto = require('../lib/tuto').create(state, { projects: knownProjects });
+
 const routes = {
   'GET /api/health': () => ({ ok: true, name: 'alkatrazz-tower', pid: process.pid }),
   'GET /api/state': () => state.snapshot(),
@@ -244,6 +247,11 @@ const routes = {
     if (ed && b.saved) { ed.lastSaved = { asset: String(b.saved).slice(0, 200), at: Date.now() }; state.changed(); }
     return { ok: !!p };
   },
+
+  'GET /api/tuto': () => tuto.info(),
+  'POST /api/tuto/start': (b) => tuto.start(b),
+  'POST /api/tuto/answer': () => ({ ok: tuto.answer() }),
+  'POST /api/tuto/clean': () => ({ ok: tuto.clean() }),
 
   'POST /api/campaigns': (b) => {
     try { return { ok: true, campaign: state.createCampaign(b) }; }

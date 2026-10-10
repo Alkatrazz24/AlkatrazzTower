@@ -7,7 +7,7 @@
   const U = window.Usine;
   U.mode({
     id: 'version', name: 'La version', counters: false, noFiche: ['silo'],
-    pads: () => ({ l: 480, r: 330, t: 64, b: 20 }),
+    pads: (sel) => ({ l: 480, r: sel ? 410 : 330, t: 64, b: 20 }),
     hud(M, api) {
       const { h, T, btn } = api, c = M.campaign;
       let main;

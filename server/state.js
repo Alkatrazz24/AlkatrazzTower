@@ -8,6 +8,9 @@ const { docRead } = require('../lib/unreal');
 const chars = require('../lib/characters');
 const { roomForPath } = require('../lib/inventory');
 
+// Agents des tutos (lib/tuto.js) : jamais sauvegardes, jamais comptes pour une version.
+const isTuto = (id) => String(id || '').startsWith('tuto-');
+
 const LEASE_MS = 30_000;      // sans signe de vie, le verrou ou la place en file est rendu
 const MAX_BUILDS = 50;
 const SNIP = 160;
@@ -335,9 +338,10 @@ class TowerState {
       testFilter: entry.testFilter || null,
       how,
     };
-    this.noteTestGroups(b);
+    // Un faux build de tuto ne prouve rien.
+    if (!isTuto(b.sessionId)) this.noteTestGroups(b);
     // Un verrou perdu ou libere a la main ne dit rien de la qualite du code.
-    if (how !== 'expired' && how !== 'forced') this.feedCampaigns(b);
+    if (how !== 'expired' && how !== 'forced' && !isTuto(b.sessionId)) this.feedCampaigns(b);
     // Les chemins de tests ne servent qu'aux campagnes : on ne les garde pas dans l'historique.
     if (b.tests) {
       const { passedPaths, failedPaths, ...rest } = b.tests;
@@ -372,6 +376,8 @@ class TowerState {
   // Donne un personnage a un agent : celui de son role s'il existe, sinon un personnage libre,
   // sinon un nouveau tire au hasard (toujours le meme pour une meme session).
   assignCharacter(a) {
+    // Un agent de tuto a son propre personnage, efface avec lui.
+    if (isTuto(a.sessionId)) { a.characterId = this.createCharacter({ seed: a.sessionId, tuto: true }).id; return this.characters[a.characterId]; }
     const list = Object.values(this.characters);
     const busy = new Set(Object.values(this.agents).filter(x => x !== a && x.status !== 'ended').map(x => x.characterId));
     let c = a.title && list.find(x => x.role && x.role.toLowerCase() === a.title.toLowerCase());
@@ -381,7 +387,7 @@ class TowerState {
     return c;
   }
 
-  createCharacter({ name, look, role, seed } = {}) {
+  createCharacter({ name, look, role, seed, tuto } = {}) {
     const id = `P${++this.seq}-${this.now().toString(36)}`;
     const taken = new Set(Object.values(this.characters).map(c => c.name));
     const c = {
@@ -391,6 +397,7 @@ class TowerState {
       look: chars.cleanLook(look, chars.randomLook(seed || id)),
       createdAt: this.now(),
     };
+    if (tuto) c.tuto = true;
     this.characters[id] = c;
     this.changed();
     return c;
@@ -594,11 +601,16 @@ class TowerState {
       projects: this.projects,
       inventories: this.inventories,
       editors: this.editors,
+      tuto: this.tuto || null,
     };
   }
 
   toJSON() {
-    return { agents: this.agents, builds: this.builds, seq: this.seq, campaigns: this.campaigns, testGroups: this.testGroups, characters: this.characters, projects: this.projects };
+    const keep = (o, ok) => Object.fromEntries(Object.entries(o).filter(([, v]) => ok(v)));
+    return {
+      agents: keep(this.agents, a => !isTuto(a.sessionId)), builds: this.builds.filter(b => !isTuto(b.sessionId)), seq: this.seq,
+      campaigns: this.campaigns, testGroups: this.testGroups, characters: keep(this.characters, c => !c.tuto), projects: this.projects,
+    };
   }
 
   load(saved) {
