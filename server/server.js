@@ -16,6 +16,24 @@ const ROOT = path.resolve(__dirname, '..');
 const DATA_DIR = process.env.TOWER_DATA || path.join(ROOT, 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const WEB = path.join(ROOT, 'web');
+
+// Version de la page : change des qu'un fichier de web/ change. Une page restee ouverte (onglet de
+// l'editeur Unreal, navigateur) la recoit a chaque connexion et se recharge quand elle differe.
+function webVersion(dir = WEB) {
+  const h = require('crypto').createHash('sha1');
+  const walk = (d) => {
+    let names = [];
+    try { names = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of names.sort((a, b) => (a.name < b.name ? -1 : 1))) {
+      const f = path.join(d, e.name);
+      if (e.isDirectory()) walk(f);
+      else { try { const st = fs.statSync(f); h.update(`${path.relative(dir, f)}:${st.size}:${st.mtimeMs}\n`); } catch { /* fichier parti */ } }
+    }
+  };
+  walk(dir);
+  return h.digest('hex').slice(0, 12);
+}
+const WEB_VERSION = webVersion();
 const WAIT_MS = 20_000;
 
 const state = new TowerState();
@@ -296,7 +314,8 @@ const server = http.createServer(async (req, res) => {
 
   if (key === 'GET /api/stream') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
-    res.write(`retry: 2000\ndata: ${JSON.stringify(state.snapshot())}\n\n`);
+    res.write(`retry: 2000\nevent: version\ndata: ${JSON.stringify(WEB_VERSION)}\n\n`);
+    res.write(`data: ${JSON.stringify(state.snapshot())}\n\n`);
     clients.add(res);
     const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
     req.on('close', () => { clearInterval(ping); clients.delete(res); });
