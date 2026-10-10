@@ -1,0 +1,22 @@
+/* « La version » : la liste de controle a gauche, la forge et les builds a droite. */
+.us-quest { position: absolute; top: 60px; left: 16px; max-height: calc(100% - 76px); width: 450px; overflow: auto; display: grid; gap: 12px; align-content: start; padding: 14px 16px; }
+.us-quest h2 { font: 600 26px/1.1 var(--us-cond); color: var(--us-orange); }
+.us-vhead { display: flex; align-items: baseline; gap: 10px; }
+.us-pct { margin-left: auto; font: 700 22px/1 var(--us-cond); font-variant-numeric: tabular-nums; }
+.us-quest .us-bar { height: 16px; }
+.us-nextbox { display: grid; gap: 6px; justify-items: start; background: var(--us-inset); border: 1px solid var(--us-edge); border-left: 4px solid var(--us-blue); padding: 10px 12px; border-radius: var(--us-radius); }
+.us-nextbox small { font: 600 13px/1 var(--us-cond); text-transform: uppercase; letter-spacing: .06em; color: var(--us-muted); }
+.us-nextbox p { font-size: 16px; font-weight: 600; }
+.us-nextbox.us-c-ko { border-left-color: var(--us-ko); }
+.us-nextbox.us-c-you { border-left-color: var(--us-warn); }
+.us-nextbox.us-c-ok { border-left-color: var(--us-ok); }
+.us-steps { margin: 0; padding-left: 22px; display: grid; gap: 10px; font-size: 15px; }
+.us-big { font-size: 18px; padding: 8px 18px; justify-self: start; }
+.us-vside { position: absolute; top: 60px; right: 16px; bottom: 16px; width: 300px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.us-vside > * { pointer-events: auto; }
+.us-has-sel .us-vside { display: none; }
+.us-forgebox { display: grid; gap: 6px; justify-items: start; font-size: 14px; }
+.us-lastbuilds { min-height: 0; overflow: auto; }
+@media (max-width: 900px) {
+  .us-vside { display: grid; pointer-events: auto; }
+}

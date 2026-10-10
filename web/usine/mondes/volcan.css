@@ -1,0 +1,13 @@
+/* Le volcan : panneaux de basalte, liseres de braise, accent orange lave. Base : web/usine/hud.css. */
+:root {
+  --us-bg: #1c1412; --us-panel: #1d1311; --us-panel2: #2a1a16; --us-inset: #130b09; --us-edge: #050302; --us-hi: #4a2a20;
+  --us-hover: #2e1c17; --us-sel-bg: #3a2016; --us-code-bg: #0d0706; --us-chip-bg: #3a2620;
+  --us-ink: #f6e7dc; --us-muted: #c49d8a; --us-orange: #ff9a3c; --us-orange2: #e0480f; --us-on-orange: #1a0903;
+  --us-ok: #8fd46c; --us-ko: #ff5f4a; --us-warn: #ffc24d; --us-blue: #7fbde8; --us-grey: #8e7d74;
+  --us-btn1: #3a2620; --us-btn2: #2a1a16; --us-btn-hi: #5a3a2e;
+  --us-topbg: linear-gradient(180deg, rgba(20, 8, 5, .95), rgba(20, 8, 5, .6) 70%, transparent); --us-topsolid: rgba(20, 8, 5, .97);
+  --us-panel-shadow: inset 0 2px 0 #ff6a1a, inset 0 3px 8px rgba(255, 106, 26, .18), 0 0 0 1px #000, 0 8px 24px rgba(0, 0, 0, .6);
+  --us-radius: 2px;
+}
+.us-ptitle, .us-ehead h2 { text-shadow: 0 0 12px rgba(255, 106, 26, .5); }
+.us-bar > i { box-shadow: 0 0 12px rgba(255, 106, 26, .7); }

@@ -1,0 +1,88 @@
+/* Socle commun a tous les templates : reset, dialogues, personnages animes, carte.
+   Chaque template definit ces variables (et peut tout surcharger) :
+   --tw-bg --tw-panel --tw-field --tw-ink --tw-muted --tw-line --tw-accent --tw-on-accent
+   --tw-ok --tw-ko --tw-warn --tw-font --tw-radius */
+:root {
+  --tw-bg: #14161b; --tw-panel: #1c1f26; --tw-field: #252932; --tw-ink: #e8eaee; --tw-muted: #9aa1ad; --tw-line: #30343e;
+  --tw-accent: #78a6ff; --tw-on-accent: #0b1020; --tw-ok: #4fd18b; --tw-ko: #ff6b6b; --tw-warn: #f2b84b;
+  --tw-font: "Segoe UI", system-ui, sans-serif; --tw-radius: 8px;
+}
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--tw-bg); color: var(--tw-ink); font: 15px/1.5 var(--tw-font); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--tw-accent); outline-offset: 2px; }
+.tw-boot { padding: 40px; color: var(--tw-muted); }
+
+/* Personnages (web/avatar.js) */
+.av { display: block; overflow: visible; image-rendering: pixelated; }
+.av-working .av-arm-l { transform-origin: 2px 9px; animation: av-swing .45s ease-in-out infinite alternate; }
+.av-working .av-body { animation: av-bob .9s ease-in-out infinite; }
+.av-waiting .av-bubble, .av-idle .av-bubble { animation: av-bob 1.2s ease-in-out infinite; }
+.av-ended, .av-silent { filter: grayscale(1) brightness(.7); }
+.av-ready .av-head { animation: av-look 4s steps(1) infinite; }
+@keyframes av-swing { from { transform: rotate(-35deg); } to { transform: rotate(25deg); } }
+@keyframes av-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
+@keyframes av-look { 0%, 70% { transform: none; } 80% { transform: translateX(-.5px); } 90% { transform: translateX(.5px); } }
+.forge.lit .forge-fire { animation: tw-fire .3s steps(2) infinite; }
+@keyframes tw-fire { from { opacity: 1; } to { opacity: .55; } }
+
+/* Carte (web/map.js) */
+.tw-map > svg { display: block; width: 100%; height: auto; }
+.map-room, .map-house { cursor: pointer; }
+.map-room:hover, .map-room:focus, .map-house:hover, .map-house:focus { filter: brightness(1.18); outline: none; }
+.map-room.sel .map-sign, .map-house.sel .map-sign { stroke-width: 3; }
+.map-smoke { animation: tw-smoke 2.4s ease-in-out infinite; }
+@keyframes tw-smoke { 0% { transform: translateY(4px); opacity: .2; } 50% { opacity: 1; } 100% { transform: translateY(-8px); opacity: 0; } }
+.map-name { paint-order: stroke; stroke: #0b1020; stroke-width: 3px; }
+
+/* Selecteur de template */
+.tw-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--tw-muted); }
+.tw-switch select { background: var(--tw-field); border: 1px solid var(--tw-line); border-radius: var(--tw-radius); padding: 3px 6px; color: var(--tw-ink); }
+.tw-switch a { color: inherit; }
+
+/* Dialogues partages : projets, personnage, version */
+.tw-dialog { background: var(--tw-panel); color: var(--tw-ink); border: 1px solid var(--tw-line); border-radius: calc(var(--tw-radius) * 1.5); padding: 20px; width: min(760px, 94vw); font: 14px/1.5 var(--tw-font); }
+.tw-dialog.tw-wide { width: min(900px, 96vw); }
+.tw-dialog::backdrop { background: rgba(0, 0, 0, .6); }
+.tw-dialog h2 { font-size: 18px; margin: 0; flex: 1; }
+.tw-dialog form { display: grid; gap: 16px; }
+.tw-dhead { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.tw-dialog input, .tw-dialog select { background: var(--tw-field); border: 1px solid var(--tw-line); border-radius: var(--tw-radius); padding: 7px 10px; min-width: 0; }
+.tw-dialog button { background: var(--tw-field); border: 1px solid var(--tw-line); border-radius: var(--tw-radius); padding: 6px 14px; cursor: pointer; }
+.tw-dialog button:hover { border-color: var(--tw-muted); }
+.tw-dialog .tw-primary { background: var(--tw-accent); border-color: var(--tw-accent); color: var(--tw-on-accent); font-weight: 600; }
+.tw-dialog .tw-quiet { background: none; border-color: transparent; color: var(--tw-muted); }
+.tw-dialog label { display: grid; gap: 4px; font-size: 13px; color: var(--tw-muted); }
+.tw-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.tw-grow { flex: 1; }
+.tw-hint { color: var(--tw-muted); font-size: 13px; }
+.tw-path { font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-break: break-all; }
+.tw-err { color: var(--tw-ko); font-size: 13px; }
+.tw-ok { color: var(--tw-ok); }
+.tw-scan { display: grid; gap: 6px; max-height: 50vh; overflow: auto; margin: 10px 0; }
+.tw-scanitem { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; background: var(--tw-field); border-radius: var(--tw-radius); padding: 8px 12px; }
+.tw-editor { display: grid; grid-template-columns: 180px 1fr; gap: 18px; }
+.tw-preview { display: grid; justify-items: center; align-content: start; gap: 10px; background: var(--tw-field); border-radius: var(--tw-radius); padding: 14px 8px; }
+.tw-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.tw-colors { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.tw-colors label { justify-items: center; font-size: 11px; }
+.tw-colors input { width: 38px; height: 28px; padding: 1px; }
+.tw-askbox { background: var(--tw-field); border-radius: var(--tw-radius); padding: 10px 12px; display: grid; gap: 6px; margin: 12px 0; font-size: 13px; }
+.tw-askbox code { font-family: ui-monospace, Consolas, monospace; font-size: 12px; background: var(--tw-bg); padding: 6px 8px; border-radius: 6px; white-space: pre-wrap; }
+.tw-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tw-rows { display: grid; gap: 8px; margin: 8px 0; }
+.tw-frow { display: grid; grid-template-columns: minmax(140px, 1.2fr) minmax(170px, 1fr) minmax(140px, 1fr) auto; gap: 8px; align-items: center; }
+.tw-final { background: var(--tw-field); border-radius: var(--tw-radius); padding: 12px 14px; display: grid; gap: 8px; }
+.tw-final label { display: flex; gap: 8px; align-items: center; color: var(--tw-ink); font-size: 14px; }
+@media (max-width: 720px) {
+  .tw-editor, .tw-grid2, .tw-frow { grid-template-columns: 1fr; }
+}
+
+.tw-toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); background: var(--tw-ink); color: var(--tw-bg); padding: 8px 16px; border-radius: var(--tw-radius); font-size: 14px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 50; }
+.tw-toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}

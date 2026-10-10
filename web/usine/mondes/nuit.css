@@ -1,0 +1,14 @@
+/* Equipe de nuit : panneaux bleu nuit, liseres lumineux, accent jaune lampadaire. Base : web/usine/hud.css. */
+:root {
+  --us-bg: #0c1220; --us-panel: #111a2c; --us-panel2: #17223a; --us-inset: #0a1120; --us-edge: #04070f; --us-hi: #2a3a5c;
+  --us-hover: #1a2642; --us-sel-bg: #25304a; --us-code-bg: #070c18; --us-chip-bg: #2a3654;
+  --us-ink: #e6ecff; --us-muted: #93a0c2; --us-orange: #ffd27a; --us-orange2: #e8a530; --us-on-orange: #1a1204;
+  --us-ok: #6fe08a; --us-ko: #ff7a6b; --us-warn: #ffcf5a; --us-blue: #7cc4ff; --us-grey: #7d879e;
+  --us-btn1: #233152; --us-btn2: #1a2540; --us-btn-hi: #3a4d78;
+  --us-topbg: linear-gradient(180deg, rgba(5, 9, 22, .95), rgba(5, 9, 22, .6) 70%, transparent); --us-topsolid: rgba(5, 9, 22, .97);
+  --us-panel-shadow: inset 0 1px 0 rgba(124, 196, 255, .18), 0 0 0 1px rgba(124, 196, 255, .06), 0 8px 24px rgba(0, 0, 0, .65);
+  --us-radius: 4px;
+}
+.us-ptitle, .us-ehead h2, .us-tip b { text-shadow: 0 0 10px rgba(255, 210, 122, .45); }
+.us-bar > i { box-shadow: 0 0 10px rgba(255, 210, 122, .6); }
+.us-slot.sel { box-shadow: 0 0 14px rgba(255, 210, 122, .45); }
