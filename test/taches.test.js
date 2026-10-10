@@ -64,3 +64,19 @@ test('les tokens : un message compte une fois, le contexte vient du dernier, les
   assert.strictEqual((await usage.usageOf(file, 'claude-x[1m]')).window, 1_000_000);
   assert.strictEqual(await usage.usageOf('/pas/un/journal.txt'), null);
 });
+
+test('en fond : seulement les taches qui ne modifient pas le code, avec des droits limites', async () => {
+  const s = new TowerState();
+  const t = taches.create(s);
+  assert.deepStrictEqual(t.list().filter(x => x.readonly).map(x => x.id), ['relecture', 'features']);
+  assert.strictEqual(t.save({ title: 'Lecture', prompt: 'p', readonly: true }).task.readonly, true);
+  assert.strictEqual(t.save({ title: 'Ecriture', prompt: 'p' }).task.readonly, false);
+  const project = { name: 'CTB', root: os.tmpdir() };
+  const r = await t.launch({ id: 'anomalies', project, background: true });
+  assert.strictEqual(r.ok, false);
+  assert.match(r.error, /modifie le code/);
+  const a = taches.BACKGROUND_ARGS;
+  assert.ok(a.includes('Read') && a.includes('Write(./Saved/Tour/**)'));
+  assert.ok(!a.some(x => /^(Write|Edit)$/.test(x)), 'aucune ecriture hors de Saved/Tour');
+  assert.ok(a.slice(a.indexOf('--disallowedTools')).includes('Bash'));
+});
