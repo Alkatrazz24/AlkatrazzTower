@@ -68,6 +68,8 @@ class TowerState {
     this.sujets = {};      // projet -> { topics, board } : les sujets du jeu, leur carnet, le tableau (lib/sujets.js)
     this.features = [];    // sessions feature creees depuis la tour (lib/features.js)
     this.featureNotes = {}; // id de feature -> son carnet, relu par le serveur
+    this.misePlace = {};   // id de sujet -> sa derniere mise en place (lib/miseenplace.js)
+    this.miseView = null;  // () => la file des mises en place, branche par le serveur
     this.regles = {};      // id de sujet ou de feature -> { action: 'oui' | 'demander' | 'non' } (lib/regles.js)
     this.answers = {};     // id de question -> reponse donnee dans la tour, en attente du hook
     this.redTests = {};    // projet -> chemins des tests rouges a leur dernier passage
@@ -870,6 +872,7 @@ class TowerState {
       features: this.features.map(f => ({ ...f, notes: this.featureNotes[f.id] || null })),
       regles: Object.fromEntries([...Object.values(this.sujets).flatMap(v => (v && v.topics) || []), ...this.features].map(x => [x.id, regles.rulesOf(this.regles[x.id])])),
       actions: regles.ACTIONS,
+      miseEnPlace: this.miseView ? this.miseView() : { budgets: [], budget: 0, current: null, queue: [], runs: this.misePlace },
     };
   }
 
@@ -878,7 +881,7 @@ class TowerState {
     return {
       agents: keep(this.agents, a => !isTuto(a.sessionId)), builds: this.builds.filter(b => !isTuto(b.sessionId)), seq: this.seq,
       campaigns: this.campaigns, testGroups: this.testGroups, characters: keep(this.characters, c => !c.tuto), projects: this.projects,
-      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles,
+      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles, misePlace: this.misePlace,
     };
   }
 
@@ -897,6 +900,14 @@ class TowerState {
     if (saved.redTests && typeof saved.redTests === 'object') this.redTests = saved.redTests;
     if (Array.isArray(saved.features)) this.features = saved.features;
     if (saved.regles && typeof saved.regles === 'object') this.regles = saved.regles;
+    // une mise en place en cours ou en file est partie avec l'ancienne tour
+    if (saved.misePlace && typeof saved.misePlace === 'object') {
+      this.misePlace = saved.misePlace;
+      for (const r of Object.values(this.misePlace)) {
+        if (r.status === 'running') Object.assign(r, { status: 'error', error: 'Interrompue : la tour a redémarré.' });
+        else if (r.status === 'queued') r.status = r.endedAt ? 'done' : 'none';
+      }
+    }
     for (const a of Object.values(this.agents)) delete a.building; // aucun verrou ne survit a un redemarrage
     // ni un message de discussion en cours : son processus est parti avec l'ancienne tour
     for (const a of Object.values(this.agents)) if (a.chat) { if (a.chat.busy) { a.chat.error = 'Interrompu : la tour a redémarré.'; if (a.status === 'working') a.status = 'idle'; } a.chat.busy = false; a.chat.queued = 0; }

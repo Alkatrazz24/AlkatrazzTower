@@ -306,6 +306,9 @@ function demoSujets() {
   put(feats.notesPath(coffres.id), '# Coffres de la base\n\n## Où on en est\nPlan validé par ali : un coffre de 20 cases, sauvegardé dans le profil.\n\n## Prochaines étapes\n- Créer BP_Coffre_Base\n- Sauver son contenu dans le profil\n');
   state.setFeatureNotes(coffres.id, feats.scan(PROJ, coffres).notes);
   state.setRule(ids(['Armes et combat'])[0], 'commandes', 'oui');
+  // Mises en place deja faites sur deux sujets (lib/miseenplace.js).
+  state.misePlace['sujet-animation'] = { status: 'done', at: clock - 50 * 60_000, endedAt: clock - 44 * 60_000, budget: 1, tokens: 412000, cost: 0.38 };
+  state.misePlace[ids(['Armes et combat'])[0]] = { status: 'done', at: clock - 43 * 60_000, endedAt: clock - 35 * 60_000, budget: 1, tokens: 655000, cost: 1, capped: true };
   at(-6); ev('s-lampe', 'UserPromptSubmit', { prompt: `Tache de la tour [${lampe.id}] : lis la consigne dans Saved/Tour/taches/${lampe.id}.md et suis-la.` });
   state.agents['s-lampe'].characterId = state.createCharacter({ name: 'Silex', look: { hat: 'casque', hatColor: '#d97706', tool: 'cle', shirt: '#92400e' } }).id;
   at(-5); tool('s-lampe', 'Read', { file_path: P('Saved/Tour/sujets/interface.md') });

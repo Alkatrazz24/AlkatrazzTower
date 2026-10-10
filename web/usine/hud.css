@@ -396,3 +396,5 @@ h1, h2, h3, p { margin: 0; }
 .us-topics { border: 1px solid var(--us-hi); border-radius: 4px; padding: 6px 8px; margin: 8px 0; }
 .us-checks { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .us-check { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+/* Mise en place : la limite de depense par sujet */
+.us-select { background: var(--us-inset); color: var(--us-ink); border: 1px solid var(--us-hi); border-radius: var(--us-radius); padding: 5px 8px; font: inherit; font-size: 13px; }
