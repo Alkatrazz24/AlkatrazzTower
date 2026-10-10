@@ -199,11 +199,19 @@ function readBody(req) {
   });
 }
 
-// Refuse les requetes venues d'une autre origine (une page web quelconque ouverte dans le navigateur).
+// Seule la page de la tour peut agir sur la tour. Un navigateur envoie toujours Origin avec un POST :
+// une autre page web (autre site, ou autre serveur local sur un autre port) est refusee. Les
+// programmes locaux (hooks, tower-run, plugin Unreal) n'envoient pas d'Origin.
+const OWN = new RegExp(`^(127\\.0\\.0\\.1|localhost):${PORT}$`, 'i');
 function foreignOrigin(req) {
   const o = req.headers.origin;
   if (!o) return false;
-  return !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(o);
+  return !new RegExp(`^http://(127\\.0\\.0\\.1|localhost):${PORT}$`, 'i').test(o);
+}
+// Un nom d'hote inconnu = une page qui a fait pointer son domaine sur 127.0.0.1 (DNS rebinding) :
+// elle ne lit ni n'ecrit rien, pas meme l'etat.
+function foreignHost(req) {
+  return !OWN.test(String(req.headers.host || ''));
 }
 
 const MIME = {
@@ -373,7 +381,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${HOST}`);
   const key = `${req.method} ${url.pathname}`;
 
-  if (req.method === 'POST' && foreignOrigin(req)) return send(res, 403, { error: 'origine refusee' });
+  if (foreignHost(req) || req.method === 'POST' && foreignOrigin(req)) return send(res, 403, { error: 'origine refusee' });
 
   if (key === 'GET /api/stream') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
@@ -481,4 +489,4 @@ function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-module.exports = { server, state };
+module.exports = { server, state, foreignOrigin, foreignHost };
