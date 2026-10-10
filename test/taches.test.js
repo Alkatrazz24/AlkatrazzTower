@@ -80,3 +80,12 @@ test('en fond : seulement les taches qui ne modifient pas le code, avec des droi
   assert.ok(!a.some(x => /^(Write|Edit)$/.test(x)), 'aucune ecriture hors de Saved/Tour');
   assert.ok(a.slice(a.indexOf('--disallowedTools')).includes('Bash'));
 });
+
+test('une session lancee par la tour ecrit son journal, meme si la tour vient d\'une session Claude Code', () => {
+  const env = taches.launchEnv({ PATH: 'x', CLAUDE_CODE_CHILD_SESSION: '1', CLAUDECODE: '1', CLAUDE_CODE_USE_BEDROCK: '1' });
+  assert.strictEqual(env.CLAUDE_CODE_CHILD_SESSION, undefined);
+  assert.strictEqual(env.CLAUDECODE, undefined);
+  assert.strictEqual(env.CLAUDE_CODE_FORCE_SESSION_PERSISTENCE, '1');
+  assert.strictEqual(env.CLAUDE_CODE_USE_BEDROCK, '1'); // les reglages d'ali restent
+  assert.strictEqual(env.PATH, 'x');
+});
