@@ -208,6 +208,8 @@ const tuto = require('../lib/tuto').create(state, { projects: knownProjects });
 
 // Taches pretes a lancer (lib/taches.js) et tokens lus dans le journal de chaque session (lib/usage.js).
 const taches = require('../lib/taches').create(state);
+// Fin de tache : la tour compile et lance les tests elle-meme (lib/verif.js).
+const verif = require('../lib/verif').create(state);
 const usage = require('../lib/usage');
 const usageTimers = new Map();
 function usageSoon(sid, ms = 2500) {
@@ -292,6 +294,7 @@ const routes = {
 
   'POST /api/tasks/save': (b) => taches.save(b),
   'POST /api/tasks/delete': (b) => ({ ok: taches.remove(b.id) }),
+  'POST /api/tasks/verify': (b) => verif.start(String(b.sessionId || '')),
   'GET /api/tasks/file': (b, url) => require('../lib/suivi').readFile(state.agents[url.searchParams.get('session')], url.searchParams.get('path')),
 
   'GET /api/tuto': () => tuto.info(),

@@ -1190,6 +1190,10 @@
     if (a.st === 'working') return { tone: 'blue', text: 'En cours', detail: a.tool ? `${a.tool.name} ${a.tool.summary}` : '' };
     if (a.st === 'ended' && !k.doneAt) return { tone: 'grey', text: 'Session fermée avant la fin' };
     if (k.doneAt || a.st === 'idle') {
+      const v = k.verif && k.verif.state;
+      if (v === 'fail') return { tone: 'ko', text: 'Fini, mais la vérification de la tour a échoué' };
+      if (v === 'running') return { tone: 'blue', text: 'Fini : la tour vérifie (compilation et tests)' };
+      if (v === 'waiting') return { tone: 'warn', text: 'Fini : ferme l\'éditeur pour que la tour lance les tests' };
       const q = k.suivi && k.suivi.questions.length;
       return { tone: 'ok', text: q ? 'Fini : il a des questions pour toi' : k.suivi && k.suivi.rapport ? 'Fini : à toi de lire le rapport' : 'Fini, à toi' };
     }
@@ -1208,6 +1212,50 @@
     ].filter(Boolean);
   }
   const bullets = (items) => h('ul', { class: 'us-suivi-list' }, items.map(x => h('li', null, x)));
+  // ---------- verification de fin de tache (lib/verif.js) : la tour compile et lance les tests ----------
+  const VERDICT = {
+    ok: ['ok', 'Vérifiée par la tour : ça compile et les tests passent'],
+    fail: ['ko', 'La vérification a échoué'],
+    waiting: ['warn', 'Ferme l\'éditeur Unreal quand tu veux : la tour compilera la cible Éditeur et lancera les tests'],
+    running: ['blue', 'Vérification en cours'],
+    error: ['grey', 'Vérification impossible'],
+  };
+  const STEP_DOT = { ok: 'ok', fail: 'ko', running: 'blue', waiting: 'warn' };
+  const testName = (p) => String(p).split('.').slice(-2).join('.');
+  function stepText(s) {
+    if (s.state === 'waiting') return 'attend que l\'éditeur soit fermé';
+    if (s.state === 'todo') return 'à faire';
+    if (s.state === 'running') return ['en cours depuis ', T.forEl(s.at)];
+    if (s.state === 'skipped') return s.detail || 'pas lancée';
+    const t = s.tests;
+    if (t) {
+      const old = (s.oldFailures || []).length;
+      return `${t.passed}/${t.total} verts` + (old ? `, ${T.plural(old, 'test déjà rouge', 'tests déjà rouges')} avant la tâche` : '');
+    }
+    return s.ok ? 'réussie' : s.summary || 'en échec';
+  }
+  function verifBlock(a) {
+    const k = a.task, v = k.verif;
+    const running = v && v.state === 'running';
+    const go = btn(v ? 'Revérifier' : 'Vérifier maintenant', async () => {
+      const r = await T.api('/api/tasks/verify', { sessionId: a.id });
+      if (r && r.ok === false && r.error) T.toast(r.error);
+    }, '', M_demo() || running || a.st === 'working' ? { disabled: true } : { title: 'Compile le projet et lance la suite de tests sous le verrou de la forge' });
+    const head = h('div', { class: 'us-sub' }, 'Vérification par la tour');
+    if (!v) return [head, h('p', { class: 'us-dim' }, 'À la fin de la tâche, la tour compile le projet et lance les tests elle-même, sans jamais fermer ton éditeur.'), h('div', { class: 'us-actions' }, go)];
+    const [tone, text] = VERDICT[v.state] || VERDICT.error;
+    const bad = v.steps.filter(s => s.state === 'fail');
+    return [head,
+      h('div', { class: `us-state us-s-${tone}` }, text),
+      h('ul', { class: 'us-verif' }, v.steps.map(s => h('li', null,
+        h('span', { class: `us-dot us-d-${STEP_DOT[s.state] || 'grey'}` }), h('b', null, s.label), h('span', { class: 'us-dim' }, stepText(s))))),
+      bad.map(s => [
+        (s.newFailures || []).length ? [h('div', { class: 'us-dim' }, 'Tests cassés :'), bullets(s.newFailures.map(testName))] : null,
+        (s.errorLines || []).length ? h('pre', { class: 'us-suivi-last' }, s.errorLines.join('\n')) : null]),
+      v.state === 'fail' ? h('p', { class: 'us-dim' }, 'Dis-le à l\'agent dans sa fenêtre (ou relance la tâche) : il corrige, puis la tour revérifie à sa fin.') : null,
+      h('div', { class: 'us-actions' }, go)];
+  }
+  const M_demo = () => !!(G.M || {}).demo;
   function suiviBlock(a) {
     const k = a.task;
     if (!k) return null;
@@ -1232,7 +1280,8 @@
         h('ul', { class: 'us-suivi-files' }, files.map(f => h('li', null,
           h('span', null, shortPath(f.path)),
           f.tower ? btn('Lire', () => readFile(a, f.path), 'us-go', { title: 'Ouvre le fichier ici, dans la page' }) : h('span', { class: 'us-dim' }, 'dans le projet'))))] : null,
-      done && !sv && k.last ? [h('div', { class: 'us-sub' }, 'Son dernier message'), h('p', { class: 'us-suivi-last' }, k.last)] : null);
+      done && !sv && k.last ? [h('div', { class: 'us-sub' }, 'Son dernier message'), h('p', { class: 'us-suivi-last' }, k.last)] : null,
+      k.verif || (done && (k.counts || {}).edits) ? verifBlock(a) : null);
   }
 
   let readerDlg = null;
