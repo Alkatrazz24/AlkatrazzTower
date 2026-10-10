@@ -148,6 +148,7 @@
         lastBuild: a.lastBuild, lastTest: a.lastTest, docs: docsOf(a), error: a.lastError,
         where: folder(a.cwd), project: a.project ? a.project.name : '', lastSeen: a.lastSeen,
         room: a.room || null, roomName: a.room && R[a.room] ? R[a.room][0] : '',
+        usage: a.usage || null, task: a.task || null,
       };
     });
     const live = agents.filter(x => x.st !== 'ended');

@@ -7,6 +7,7 @@ const campaign = require('../lib/campaign');
 const { docRead } = require('../lib/unreal');
 const chars = require('../lib/characters');
 const { roomForPath } = require('../lib/inventory');
+const taches = require('../lib/taches');
 
 // Agents des tutos (lib/tuto.js) : jamais sauvegardes, jamais comptes pour une version.
 const isTuto = (id) => String(id || '').startsWith('tuto-');
@@ -53,6 +54,7 @@ class TowerState {
     this.projects = [];    // projets Unreal connectes : [{ name, root, uproject, engine }]
     this.inventories = {}; // nom du projet -> inventaire (lib/inventory.js), recalcule par le serveur
     this.editors = {};     // nom du projet -> ce que dit le plugin Unreal de l'editeur ouvert
+    this.tasks = [];       // taches ajoutees par l'utilisateur (lib/taches.js), en plus des taches de base
     this.onVictory = null; // (campagne) => void, branche par le serveur
     this.seq = 0;
     this.listeners = new Set();
@@ -110,6 +112,7 @@ class TowerState {
       const owner = Object.values(this.characters).find(c => c.role && c.role.toLowerCase() === a.title.toLowerCase());
       if (owner && owner.id !== a.characterId) a.characterId = owner.id;
     }
+    if (typeof ev.transcript_path === 'string' && ev.transcript_path) a.transcript = ev.transcript_path;
     const sub = ev.agent_id ? String(ev.agent_id) : null;
     if (sub) {
       a.subagents[sub] = { type: ev.agent_type || 'agent', lastSeen: t };
@@ -125,6 +128,12 @@ class TowerState {
         a.status = 'working';
         // Les messages injectes par Claude Code (fin de tache de fond...) ne sont pas une demande.
         if (ev.prompt && !/^\s*<[a-z-]+[\s>]/i.test(ev.prompt)) a.prompt = snip(ev.prompt, 240);
+        // Une session lancee depuis le panneau Taches (ou avec sa consigne collee) porte sa marque.
+        const tid = taches.taskIdIn(ev.prompt);
+        if (tid && (!a.task || a.task.id !== tid)) {
+          const def = this.taskList().find(x => x.id === tid);
+          a.task = { id: tid, title: def ? def.title : tid, at: t };
+        }
         a.message = '';
         a.promptAt = t;
         break;
@@ -184,6 +193,19 @@ class TowerState {
     for (const [k, v] of Object.entries(a.subagents)) if (t - v.lastSeen > 600_000) delete a.subagents[k];
     this.changed();
     return true;
+  }
+
+  // Tokens lus dans le journal de la session (lib/usage.js, appele par le serveur).
+  setUsage(sessionId, usage) {
+    const a = this.agents[sessionId];
+    if (!a || !usage) return false;
+    a.usage = usage;
+    this.changed();
+    return true;
+  }
+
+  taskList() {
+    return [...taches.BUILTIN.map(t => ({ ...t, builtin: true })), ...this.tasks.map(t => ({ ...t, builtin: false }))];
   }
 
   forget(sessionId) {
@@ -602,6 +624,7 @@ class TowerState {
       inventories: this.inventories,
       editors: this.editors,
       tuto: this.tuto || null,
+      tasks: this.taskList(),
     };
   }
 
@@ -610,6 +633,7 @@ class TowerState {
     return {
       agents: keep(this.agents, a => !isTuto(a.sessionId)), builds: this.builds.filter(b => !isTuto(b.sessionId)), seq: this.seq,
       campaigns: this.campaigns, testGroups: this.testGroups, characters: keep(this.characters, c => !c.tuto), projects: this.projects,
+      tasks: this.tasks,
     };
   }
 
@@ -622,6 +646,7 @@ class TowerState {
     if (saved.testGroups && typeof saved.testGroups === 'object') this.testGroups = saved.testGroups;
     if (saved.characters && typeof saved.characters === 'object') this.characters = saved.characters;
     if (Array.isArray(saved.projects)) this.projects = saved.projects;
+    if (Array.isArray(saved.tasks)) this.tasks = saved.tasks;
     for (const a of Object.values(this.agents)) delete a.building; // aucun verrou ne survit a un redemarrage
   }
 }

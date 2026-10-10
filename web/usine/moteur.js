@@ -601,7 +601,7 @@
     const vw = G.canvas.width / G.dpr, vh = G.canvas.height / G.dpr;
     const wide = vw > 900;
     // Sur grand ecran, le HUD du mode prend des bords : on cadre l'usine dans la zone libre.
-    const P = wide && MODE.pads ? MODE.pads(!!G.sel || !!G.tutoOpen) : { l: 8, r: 8, t: 8, b: 8 };
+    const P = wide && MODE.pads ? MODE.pads(!!G.sel || !!G.side) : { l: 8, r: 8, t: 8, b: 8 };
     const padL = P.l, padR = P.r, padT = P.t, padB = P.b;
     const z = Math.min((vw - padL - padR) / (W.w * TS), (vh - padT - padB) / (W.h * TS));
     G.cam.z = Math.max(.35, Math.min(4, z));
@@ -773,7 +773,7 @@
       if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
       const W = G.world; if (!W) return;
       if (/^[1-9]$/.test(e.key)) { const m = W.machines[+e.key - 1]; if (m) { select({ kind: 'agent', id: m.a.id }, true); e.preventDefault(); } }
-      else if (e.key === 'Escape') { if (G.tutoOpen) tutoToggle(false); else select(null); }
+      else if (e.key === 'Escape') { if (G.side) sideToggle(G.side, false); else select(null); }
       else if (e.key === 'f' || e.key === 'F') select({ kind: 'forge' }, true);
       else if (e.key === 'v' || e.key === 'V') select({ kind: 'silo' }, true);
       else if (e.key === 'j' || e.key === 'J') select({ kind: G.M.builds.some(b => !b.ok) ? 'ko' : 'ok' }, true);
@@ -865,7 +865,9 @@
           a.lastBuild && ['Compilation', resultTxt(a.lastBuild)],
           a.lastTest && ['Tests', resultTxt(a.lastTest)],
           a.docs && ['Doc UE', h('span', { class: a.docs.tone === 'warn' ? 'us-t-warn' : a.docs.tone === 'ok' ? 'us-t-ok' : 'us-dim' }, a.docs.text)],
+          a.task && ['Tâche', a.task.title],
         ]),
+        usageBlock(a),
         h('div', { class: 'us-actions' }, btn('Personnage', () => T.act.openChar(a.id)), a.st === 'ended' || a.st === 'silent' ? btn('Retirer', () => { T.act.forget(a.id); select(null); }, 'us-danger') : null),
       ];
     } else if (s.kind === 'patch') {
@@ -944,6 +946,7 @@
     select, center, refit: () => { G.userMoved = false; fit(); G.dirty = true; },
     get M() { return G.M; }, get sel() { return G.sel; }, get world() { return G.world; }, get mini() { return G.mini; },
     rerender: () => renderHud(),
+    side: (which, on) => sideToggle(which, on), launchTask, tok,
   };
 
   function same(a, b) { return a.length === b.length && a.every((x, i) => x === b[i]); }
@@ -1058,19 +1061,146 @@
           h('span', { class: 'us-dim' }, 'Elles partent aussi seules au bout de 30 min et ne sont jamais sauvegardées.'))));
   }
 
-  function tutoToggle(on) {
-    G.tutoOpen = on === undefined ? !G.tutoOpen : on;
-    if (!G.tutoOpen) { G.sel = null; tutoFocus = ''; }
+  // ---------- taches : consignes pretes a lancer, et tokens de chaque session (lib/taches.js, lib/usage.js) ----------
+  // 12 345 -> « 12,3 k » ; 1 234 567 -> « 1,23 M »
+  function tok(n) {
+    n = n || 0;
+    if (n < 1000) return String(n);
+    if (n < 1e6) return `${(n / 1000).toLocaleString('fr-FR', { maximumFractionDigits: n < 1e4 ? 1 : 0 })} k`;
+    return `${(n / 1e6).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} M`;
+  }
+  const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+
+  // Le contexte : une jauge qui vire a l'orange puis au rouge quand la fenetre se remplit.
+  function ctxBar(u) {
+    const pct = u.contextPct || 0;
+    return h('div', { class: 'us-ctx', title: `${tok(u.context)} tokens dans le contexte sur ${tok(u.window)}` },
+      h('div', { class: 'us-bar' }, h('i', { class: pct >= 80 ? 'ko' : pct >= 55 ? 'warn' : '', style: `width:${Math.max(2, pct)}%` })),
+      h('span', null, `${pct} % (${tok(u.context)} / ${tok(u.window)})`));
+  }
+
+  // Bloc « Tokens » de la fiche d'un agent : total, contexte, et ce que coute chaque action.
+  function usageBlock(a) {
+    const u = a.usage;
+    if (!u) return h('p', { class: 'us-dim' }, 'Tokens : la tour les lira à la prochaine action de cet agent.');
+    const max = Math.max(1, ...u.tools.map(t => t.out + t.ctx));
+    return h('div', { class: 'us-usage' },
+      h('div', { class: 'us-sub' }, 'Tokens de la session'),
+      h('p', null, h('b', null, tok(u.total)), ` en ${T.plural(u.messages, 'réponse', 'réponses')} : `,
+        h('span', { class: 'us-dim' }, `entrée ${tok(u.in)}, sortie ${tok(u.out)}, cache lu ${tok(u.cacheRead)}, cache écrit ${tok(u.cacheWrite)}`)),
+      h('div', { class: 'us-sub' }, 'Contexte'), ctxBar(u),
+      h('div', { class: 'us-sub' }, 'Par action'),
+      h('ul', { class: 'us-tools' }, u.tools.slice(0, 6).map(t => h('li', null,
+        h('b', null, t.name.replace(/^mcp__[^_]+__/, '')), h('span', { class: 'us-dim' }, t.calls ? T.plural(t.calls, 'appel', 'appels') : 'texte'),
+        h('i', { style: `width:${Math.max(3, Math.round(100 * (t.out + t.ctx) / max))}%` }), h('span', null, tok(t.out + t.ctx)))))
+    );
+  }
+
+  let taskDlg = null;
+  function taskDialog(task) {
+    if (!taskDlg) {
+      const f = {};
+      taskDlg = h('dialog', { class: 'us-dialog', 'aria-label': 'Tâche' },
+        h('form', { method: 'dialog', onsubmit: async (e) => {
+          e.preventDefault();
+          const r = await T.api('/api/tasks/save', { id: taskDlg.dataset.id || undefined, title: f.title.value, text: f.text.value, prompt: f.prompt.value });
+          if (r && r.ok) { taskDlg.close(); T.toast('Tâche enregistrée.'); } else if (r) f.err.textContent = r.error || 'Enregistrement impossible.';
+        } },
+          f.head = h('h2', null, 'Nouvelle tâche'),
+          h('label', null, 'Titre', f.title = h('input', { maxlength: 80, required: true, placeholder: 'ex. Assets orphelins' })),
+          h('label', null, 'En une ligne (facultatif)', f.text = h('input', { maxlength: 200, placeholder: 'ce que la tâche apporte' })),
+          h('label', null, 'Consigne pour Claude Code', f.prompt = h('textarea', { rows: 10, maxlength: 8000, required: true, placeholder: 'Ce que l\'agent doit faire, étape par étape. {projet} est remplacé par le nom du projet, {date} par la date du jour.' })),
+          f.err = h('p', { class: 'us-t-ko' }),
+          h('div', { class: 'us-actions' }, btn('Annuler', () => taskDlg.close()), h('button', { type: 'submit', class: 'us-btn us-go' }, 'Enregistrer'))));
+      taskDlg.f = f;
+      document.body.append(taskDlg);
+    }
+    const f = taskDlg.f;
+    taskDlg.dataset.id = task && !task.builtin ? task.id : '';
+    f.head.textContent = task && !task.builtin ? 'Modifier la tâche' : task ? `Copie de « ${task.title} »` : 'Nouvelle tâche';
+    f.title.value = task ? (task.builtin ? `${task.title} (perso)` : task.title) : '';
+    f.text.value = task ? task.text || '' : '';
+    f.prompt.value = task ? task.prompt : '';
+    f.err.textContent = '';
+    taskDlg.showModal();
+    f.title.focus();
+  }
+
+  function promptText(t, proj) {
+    const d = todayKey();
+    return `Tache de la tour [${t.id}] : ${t.title}\n\n${t.prompt.replace(/\{projet\}/g, proj || 'en cours').replace(/\{date\}/g, d)}\n`;
+  }
+  async function copyPrompt(t, proj) {
+    try { await navigator.clipboard.writeText(promptText(t, proj)); T.toast('Consigne copiée : colle-la dans une session Claude Code ouverte sur le projet.'); }
+    catch { T.toast('Copie impossible dans ce navigateur.'); }
+  }
+  async function launchTask(t, proj) {
+    const r = await T.api('/api/tasks/launch', { id: t.id, project: proj });
+    if (r && r.ok) T.toast(`Claude Code s'ouvre dans une nouvelle fenêtre avec « ${t.title} ».`);
+    // Sans la commande claude (Claude Code utilise depuis l'application de bureau), on copie la consigne.
+    else if (r && (r.code === 'noclaude' || /Windows/.test(r.error || ''))) {
+      try { await navigator.clipboard.writeText(promptText(t, proj)); T.toast(`Consigne copiée : colle-la dans une session Claude Code ouverte sur ${proj || 'le projet'}.`); }
+      catch { T.toast(r.error); }
+    } else if (r && r.error) T.toast(r.error);
+  }
+
+  function tachesPanel(M) {
+    const tasks = M.S.tasks || [];
+    const proj = M.projects[0] ? M.projects[0].name : '';
+    const close = btn('Fermer', () => sideToggle('taches', false), 'us-x', { 'aria-label': 'Fermer les tâches', title: 'Échap' });
+    const runs = M.agents.filter(a => a.task).sort((x, y) => y.task.at - x.task.at).slice(0, 6);
+    // En demo, les dates sont decalees a l'ouverture : « aujourd'hui » est le dernier jour du journal.
+    const day = M.demo ? M.agents.flatMap(a => Object.keys((a.usage && a.usage.days) || {})).sort().pop() || todayKey() : todayKey();
+    const today = M.agents.map(a => ({ a, n: a.usage && a.usage.days ? a.usage.days[day] || 0 : 0 })).filter(x => x.n).sort((x, y) => y.n - x.n);
+    const sum = today.reduce((s, x) => s + x.n, 0);
+    const card = (t) => h('li', { class: 'us-task' },
+      h('div', { class: 'us-tuto-head' }, h('b', null, t.title), t.builtin ? null : h('span', { class: 'us-dim' }, 'perso')),
+      t.text ? h('p', { class: 'us-dim' }, t.text) : null,
+      h('div', { class: 'us-actions' },
+        btn('Lancer', () => launchTask(t, proj), 'us-go', M.demo || !proj ? { disabled: true } : { title: 'Ouvre Claude Code dans le dossier du projet avec cette consigne' }),
+        btn('Copier la consigne', () => copyPrompt(t, proj)),
+        t.builtin ? btn('Copier en perso', () => taskDialog(t), '', M.demo ? { disabled: true } : { title: 'Crée une tâche perso à partir de celle-ci' })
+          : [btn('Modifier', () => taskDialog(t), '', M.demo ? { disabled: true } : {}),
+            btn('Supprimer', () => { if (confirm(`Supprimer la tâche « ${t.title} » ?`)) T.api('/api/tasks/delete', { id: t.id }); }, 'us-danger', M.demo ? { disabled: true } : {})]));
+    const open = (a) => { sideToggle('taches', false); select({ kind: 'agent', id: a.id }, true); };
+    return h('section', { class: 'us-panel us-entity us-taches', 'aria-label': 'Tâches' },
+      h('div', { class: 'us-ehead' }, h('h2', null, proj ? `Tâches sur ${proj}` : 'Tâches'), close),
+      h('div', { class: 'us-ebody' },
+        h('p', null, proj ? `« Lancer » ouvre Claude Code dans le dossier de ${proj} avec la consigne. Tu valides ses modifications comme d'habitude, et la tour suit la session et ses tokens.`
+          : 'Connecte d\'abord ton projet Unreal (bouton du projet en haut) : les tâches se lancent dans son dossier.'),
+        h('ul', { class: 'us-tuto-list' }, tasks.map(card)),
+        btn('Nouvelle tâche', () => taskDialog(null), 'us-go', M.demo ? { disabled: true } : {}),
+        h('div', { class: 'us-sub' }, 'Dernières tâches lancées'),
+        runs.length ? h('ul', { class: 'us-runs' }, runs.map(a => h('li', null,
+          h('button', { type: 'button', class: 'us-runbtn', onclick: () => open(a) },
+            h('span', { class: `us-dot us-d-${dotFor(a.st)}` }), h('b', null, a.task.title), h('span', { class: 'us-dim' }, ` ${a.name}, ${T.lower(a.stText)}`)),
+          a.usage ? [h('span', null, tok(a.usage.total)), ctxBar(a.usage)] : h('span', { class: 'us-dim' }, 'tokens à venir'))))
+          : h('p', { class: 'us-dim' }, 'Aucune pour l\'instant. Une session dont la première demande vient d\'ici apparaît dans cette liste.'),
+        h('div', { class: 'us-sub' }, 'Tokens aujourd\'hui'),
+        sum ? [h('p', null, h('b', null, tok(sum)), ` pour ${T.plural(today.length, 'session', 'sessions')}`),
+          h('ul', { class: 'us-tools' }, today.slice(0, 6).map(x => h('li', null, h('b', null, x.a.name), h('span', { class: 'us-dim' }, x.a.task ? x.a.task.title : x.a.role || x.a.where),
+            h('i', { style: `width:${Math.max(3, Math.round(100 * x.n / today[0].n))}%` }), h('span', null, tok(x.n)))))]
+          : h('p', { class: 'us-dim' }, 'Rien de compté aujourd\'hui. La tour lit les journaux de Claude Code à chaque action des agents.')));
+  }
+
+  function sideToggle(which, on) {
+    const open = on === undefined ? G.side !== which : on;
+    if (!open && G.side !== which) return;
+    G.side = open ? which : null;
+    tutoFocus = '';
+    if (which === 'tuto' && !open) G.sel = null;
     if (!G.userMoved) fit();
     G.dirty = true;
     renderHud();
   }
 
+  function tutoToggle(on) { sideToggle('tuto', on); }
+
   function renderHud() {
     const M = G.M; if (!M) return;
     G.hud.chips.replaceChildren(...chips(M).filter(Boolean));
     G.hud.res.replaceChildren(...(MODE.counters ? counters(M) : []));
-    const ent = G.tutoOpen ? tutoPanel(M) : entityPanel(M);
+    const ent = G.side === 'tuto' ? tutoPanel(M) : G.side === 'taches' ? tachesPanel(M) : entityPanel(M);
     // La fiche est refaite a chaque nouvelle donnee : on garde l'endroit ou on l'avait fait defiler.
     const was = G.hud.entity.firstChild, oldBody = was && was.querySelector('.us-ebody');
     G.hud.entity.replaceChildren(...(ent ? [ent] : []));
@@ -1082,7 +1212,8 @@
     if (!same(nodes, [...G.hud.mode.children])) G.hud.mode.replaceChildren(...nodes);
     if (!M.inv) G.hud.empty.replaceChildren(h('p', null, M.projects.length ? 'La tour compte le projet : les gisements apparaissent dans un instant.' : 'Connecte un projet Unreal : ses domaines deviennent les gisements de l\'usine.'));
     G.hud.empty.hidden = !!M.inv;
-    G.hud.tutoBtn.classList.toggle('on', !!G.tutoOpen);
+    G.hud.tutoBtn.classList.toggle('on', G.side === 'tuto');
+    G.hud.taskBtn.classList.toggle('on', G.side === 'taches');
     G.hud.tutoBtn.classList.toggle('run', !!(M.S.tuto && M.S.tuto.running));
   }
 
@@ -1097,7 +1228,7 @@
     };
     G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
-      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
+      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
       G.hud.mode,
       G.hud.entity);
     root.replaceChildren(G.app);

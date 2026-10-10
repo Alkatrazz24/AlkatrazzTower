@@ -188,11 +188,34 @@ const MIME = {
 // Tutos : scenarios joues sur la vraie tour et le vrai projet, sans rien y ecrire (lib/tuto.js).
 const tuto = require('../lib/tuto').create(state, { projects: knownProjects });
 
+// Taches pretes a lancer (lib/taches.js) et tokens lus dans le journal de chaque session (lib/usage.js).
+const taches = require('../lib/taches').create(state);
+const usage = require('../lib/usage');
+const usageTimers = new Map();
+function usageSoon(sid, ms = 2500) {
+  const a = state.agents[sid];
+  if (!a || !a.transcript || usageTimers.has(sid)) return;
+  usageTimers.set(sid, setTimeout(async () => {
+    usageTimers.delete(sid);
+    const cur = state.agents[sid];
+    if (!cur || !cur.transcript) return;
+    const u = await usage.usageOf(cur.transcript, cur.model).catch(() => null);
+    if (u && (!cur.usage || u.total !== cur.usage.total || u.context !== cur.usage.context)) state.setUsage(sid, u);
+  }, ms));
+}
+// Au demarrage, on relit les journaux des sessions encore ouvertes.
+for (const a of Object.values(state.agents)) if (a.status !== 'ended') usageSoon(a.sessionId, 4000);
+
+function projectFor(name) {
+  const all = knownProjects();
+  return (name && all.find(p => p.name.toLowerCase() === String(name).toLowerCase())) || all.find(p => /ctb|conquer/i.test(p.name)) || all[0] || null;
+}
+
 const routes = {
   'GET /api/health': () => ({ ok: true, name: 'alkatrazz-tower', pid: process.pid }),
   'GET /api/state': () => state.snapshot(),
 
-  'POST /api/event': (b) => ({ ok: state.event(b) }),
+  'POST /api/event': (b) => { const ok = state.event(b); if (ok) usageSoon(String(b.session_id)); return { ok }; },
 
   'POST /api/lock/acquire': (b) => {
     const st = state.acquire({
@@ -248,6 +271,9 @@ const routes = {
     return { ok: !!p };
   },
 
+  'POST /api/tasks/save': (b) => taches.save(b),
+  'POST /api/tasks/delete': (b) => ({ ok: taches.remove(b.id) }),
+
   'GET /api/tuto': () => tuto.info(),
   'POST /api/tuto/start': (b) => tuto.start(b),
   'POST /api/tuto/answer': () => ({ ok: tuto.answer() }),
@@ -295,6 +321,13 @@ const server = http.createServer(async (req, res) => {
     waiters.set(b.ticket, list);
     req.on('close', () => { if (!done) { done = true; clearTimeout(timer); } });
     return;
+  }
+
+  if (key === 'POST /api/tasks/launch') {
+    const b = await readBody(req);
+    if (!b) return send(res, 400, { error: 'JSON invalide' });
+    const r = await taches.launch({ id: b.id, project: projectFor(b.project) }).catch(e => ({ ok: false, error: e.message }));
+    return send(res, 200, r);
   }
 
   if (key === 'GET /api/projects/scan') {
