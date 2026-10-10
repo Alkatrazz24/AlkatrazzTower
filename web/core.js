@@ -156,8 +156,9 @@
         room: a.room || null, roomName: a.room && R[a.room] ? R[a.room][0] : '',
         usage: a.usage || null, task: a.task || null,
         // session core (un sujet du jeu) ou feature (une nouvelle idee) : l'id de son sujet ou de sa feature
-        sujet: a.task && /^(sujet|feature)-/.test(String(a.task.id)) ? a.task.id : '', hidden: !!a.hidden,
-        kind: a.task && String(a.task.id).startsWith('sujet-') ? 'core' : a.task && String(a.task.id).startsWith('feature-') ? 'feature' : '',
+        // (ou le chef, qui recoit toutes les demandes et les confie aux autres)
+        sujet: a.task && /^((sujet|feature)-|chef$)/.test(String(a.task.id)) ? a.task.id : '', hidden: !!a.hidden,
+        kind: a.task && String(a.task.id).startsWith('sujet-') ? 'core' : a.task && String(a.task.id).startsWith('feature-') ? 'feature' : a.task && a.task.id === 'chef' ? 'chef' : '',
       };
     });
     // Sujets du jeu (lib/sujets.js) : la session la plus recente de chaque sujet occupe sa salle ; les
@@ -179,6 +180,10 @@
       return { ...f, kind: 'feature', project: f.project || (sv ? sv.project : ''), agents: [...new Set(mine.flatMap(t => t.agents))], reviewers: [...new Set(mine.flatMap(t => t.reviewers || []))],
         topics: mine.map(t => t.title), session: sujetSession[f.id] || null, done: !!f.doneAt };
     });
+    // Le chef (lib/chef.js) : sa salle dans son batiment, et ce qu'il a confie a qui.
+    const C = S.chef || { ask: false, envois: [] };
+    const chef = sv ? { id: 'chef', kind: 'chef', title: 'Chef', project: sv.project, agents: [], reviewers: [], session: sujetSession.chef || null,
+      ask: !!C.ask, envois: (C.envois || []).filter(e => !e.project || e.project === sv.project) } : null;
     const live = agents.filter(x => x.st !== 'ended');
     const count = (s) => agents.filter(x => x.st === s).length;
     const byId = Object.fromEntries(agents.map(x => [x.id, x]));
@@ -259,7 +264,7 @@
       S, demo: DEMO, connected, now: now(),
       template: current, templates: TEMPLATES,
       agents, liveAgents: live, visibleAgents: agents.filter(x => ui.showEnded || !x.old), endedCount: agents.filter(x => x.old).length,
-      sujets, features, board: sv ? sv.board.entries : [], sujetsProject: sv ? sv.project : '',
+      sujets, features, chef, board: sv ? sv.board.entries : [], sujetsProject: sv ? sv.project : '',
       regles: S.regles || {}, actions: S.actions || [],
       mise: S.miseEnPlace || { budgets: [], budget: 1, current: null, queue: [], runs: {} },
       counts: { working: count('working'), waiting, idle: count('idle'), ready: count('ready'), silent: count('silent'), live: live.length },

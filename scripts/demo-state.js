@@ -313,6 +313,18 @@ function demoSujets() {
   state.agents['s-lampe'].characterId = state.createCharacter({ name: 'Silex', look: { hat: 'casque', hatColor: '#d97706', tool: 'cle', shirt: '#92400e' } }).id;
   at(-5); tool('s-lampe', 'Read', { file_path: P('Saved/Tour/sujets/interface.md') });
   at(-3); ev('s-lampe', 'PreToolUse', { tool_name: 'Read', tool_input: { file_path: P('Source/CTB/Items/CTBItemData.h') }, agent_id: 'lampe-a', agent_type: 'ctb-economie' });
+  // Le chef (lib/chef.js) : ali lui a demande pourquoi le rechargement ne joue pas, et de regarder des
+  // assets importes ; il a confie l'animation au sujet, et propose un envoi qu'ali n'a pas encore valide.
+  at(-14); ev('s-chef', 'UserPromptSubmit', { prompt: 'Tache de la tour [chef] : lis la consigne dans Saved/Tour/taches/chef.md et suis-la.' });
+  state.agents['s-chef'].characterId = state.createCharacter({ name: 'Onyx', look: { hat: 'couronne', hatColor: '#facc15', tool: 'clavier', shirt: '#1e3a8a' } }).id;
+  at(-13); tool('s-chef', 'Read', { file_path: P('Saved/Logs/ConquerTheBackrooms.log') });
+  at(-12); tool('s-chef', 'Write', { file_path: P('Saved/Tour/chef/envois/rechargement.md') });
+  at(-11); ev('s-chef', 'Stop', { last_assistant_message: 'Le montage A_Arms_Reload n\'a pas de slot UpperBody : j\'ai confié la correction au sujet Animation. Les assets de Content/Characters/New sont bien rangés ; deux textures sont en 8K.' });
+  const envoi = (min, o) => ({ id: `e-demo-${min}`, at: T0 + min * 60_000, sentAt: T0 + min * 60_000, project: 'ConquerTheBackrooms', file: 'demo.md', error: '', ...o });
+  state.chef.envois.unshift(
+    envoi(-12, { to: 'sujet-animation', toTitle: 'Animation', status: 'envoyé', how: 'discussion', sessionId: 's-anim', text: 'Le rechargement ne joue pas : le montage A_Arms_Reload n\'a pas de slot UpperBody, et ABP_Arms ne le joue que sur ce slot (Saved/Logs : « No slot UpperBody »). Ajoute le slot ou change le slot du montage, puis dis-moi au tableau ce que tu as fait.' }),
+    envoi(-11, { to: ids(['Interface'])[0], toTitle: 'Interface', status: 'proposé', text: 'Les deux textures 8K importées dans Content/Characters/New (T_New_Coat_D, T_New_Coat_N) : passe-les en 2K et vérifie que le HUD n\'en souffre pas.' }),
+  );
   at(-2);
 }
 

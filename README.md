@@ -127,6 +127,27 @@ Sous le bâtiment principal, deux bâtiments à part :
   `Saved/Tour/features/<nom>.md`. « Terminer la feature » sort sa salle du bâtiment (« Anciennes » la
   remontre). Elle a ses règles, comme une session core.
 
+## Le chef : toutes tes demandes au même endroit
+
+Bouton **Chef** (touche C), un bâtiment au bout de la rue. Tu lui confies tout ce qui touche au jeu :
+« pourquoi cette animation ne marche pas », « j'ai importé des assets, tu peux voir », une idée, un bug.
+« Discuter » le lance dans la tour (ou « Dans une fenêtre »).
+
+- Il vérifie ce qu'il peut en lisant (le projet, `Saved/Logs`, les carnets, le tableau) et te répond. Il
+  peut appeler des agents pour enquêter. Par défaut il ne modifie pas le jeu et ne lance ni commande ni
+  git ; ses règles se changent dans sa fiche, comme celles d'une session core.
+- Ce qui demande un changement, il le confie : un fichier par envoi dans `Saved/Tour/chef/envois/`
+  (`pour: sujet-animation`, ou `pour: nouvelle feature` avec `titre:` et `sujets:`, une ligne `---`, puis
+  la demande). La tour le lit toutes les 10 s et le transmet : dans la discussion de la session du sujet
+  si elle tourne dans la tour, sinon elle lance une session du sujet avec la demande ; une idée neuve crée
+  la feature et la lance. Si la session du sujet est ouverte dans sa fenêtre, la demande attend au tableau.
+  Chaque envoi est aussi écrit au tableau, et le fichier est rangé dans `Saved/Tour/chef/envoyes/`.
+- Le bureau des envois, sous sa salle, et sa fiche montrent chaque envoi : à qui, où en est la session,
+  « Voir la salle ». « Me demander avant chaque envoi » les garde en attente : tu cliques « Envoyer » ou
+  « Ignorer ».
+- La tour tient `Saved/Tour/chef/suivi.md` (où en est chaque envoi), que le chef lit avant chaque demande,
+  et les sessions lui répondent au tableau, pour « Chef » (`lib/chef.js`).
+
 ## Sujets : une session par sujet du jeu
 
 Bouton **Core** (touche S). Chaque sujet du jeu a sa salle dans la tour, même quand aucune session ne
@@ -397,6 +418,7 @@ chaque changement de `web/` au lieu de deviner.
 | `lib/taches.js`, `lib/suivi.js` | tâches prêtes à lancer, et leur suivi (fait, à faire, questions, rapport) |
 | `lib/discussion.js` | discuter avec une session depuis la tour : sa conversation lue dans le journal, un message = un `claude -p --resume` |
 | `lib/features.js` | sessions feature : une par nouvelle idée, créée depuis la tour, sa consigne et son carnet |
+| `lib/chef.js` | le chef : sa consigne, ses envois lus dans `Saved/Tour/chef/envois/` et transmis aux sessions core ou feature, leur suivi |
 | `lib/miseenplace.js` | mise en place des sessions core : un sujet après l'autre, en fond, en lecture seule, avec une limite de dépense |
 | `lib/regles.js` | règles d'une session core ou feature : sans demander, en demandant, interdit ; ses options de lancement |
 | `lib/sujets.js` | sujets du jeu : leur consigne, leur carnet et le tableau partagé, dans `Saved/Tour/` |
