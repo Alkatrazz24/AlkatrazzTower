@@ -246,6 +246,9 @@ const taches = require('../lib/taches').create(state);
 const verif = require('../lib/verif').create(state);
 // Discuter avec une session depuis la tour (lib/discussion.js) : chaque message relance la session sans fenetre.
 const discussion = require('../lib/discussion').create(state, { launchEnv: require('../lib/taches').launchEnv });
+// Mise en place des sessions core (lib/miseenplace.js) : un sujet apres l'autre, en fond et en lecture seule.
+const misePlace = require('../lib/miseenplace').create(state, discussion, { projectFor: (n) => projectFor(n) });
+state.miseView = misePlace.view;
 const usage = require('../lib/usage');
 const usageTimers = new Map();
 function usageSoon(sid, ms = 2500) {
@@ -343,6 +346,8 @@ const routes = {
     if (!r.ok) return r;
     return discussion.start({ cwd: r.project.root, text: r.ask, def: r.task.id });
   },
+  'POST /api/miseenplace': (b) => misePlace.start({ ids: b.ids, budget: b.budget }),
+  'POST /api/miseenplace/stop': () => misePlace.stop(),
   // Sessions feature : une nouvelle idee, creee depuis la tour, puis lancee en discussion (ou dans une fenetre).
   'POST /api/features': (b) => {
     const p = projectFor(b.project);

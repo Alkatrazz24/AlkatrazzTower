@@ -228,7 +228,7 @@
       }
       for (const f of campaign.features.filter(f => f.manual && !f.manual.done && f.status !== 'proven')) attention.push({ tone: 'you', kind: 'manual', feature: f, title: `À essayer en jeu : ${f.title}`, text: 'Lance une partie, essaie-la, puis confirme ici.' });
     }
-    for (const x of live.filter(x => x.st === 'idle')) {
+    for (const x of live.filter(x => x.st === 'idle' && !x.hidden)) { // une salle rangee (mise en place finie...) ne demande rien
       // Une tache lancee depuis la tour : son suivi dit ce qui reste et s'il y a des questions.
       const sv = x.task && x.task.suivi;
       const vf = x.task && x.task.verif ? { fail: 'la vérification de la tour a échoué', waiting: 'les tests attendent que tu fermes l\'éditeur', running: 'la tour vérifie', ok: 'vérifiée par la tour' }[x.task.verif.state] : '';
@@ -261,6 +261,7 @@
       agents, liveAgents: live, visibleAgents: agents.filter(x => ui.showEnded || !x.old), endedCount: agents.filter(x => x.old).length,
       sujets, features, board: sv ? sv.board.entries : [], sujetsProject: sv ? sv.project : '',
       regles: S.regles || {}, actions: S.actions || [],
+      mise: S.miseEnPlace || { budgets: [], budget: 1, current: null, queue: [], runs: {} },
       counts: { working: count('working'), waiting, idle: count('idle'), ready: count('ready'), silent: count('silent'), live: live.length },
       editor, projects: S.projects || [], campaign, past, attention, lock, queue, chantiers, builds,
       inventories: invs, inv, testGroups: S.testGroups || {},

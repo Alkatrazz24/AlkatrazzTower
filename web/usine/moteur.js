@@ -2021,9 +2021,26 @@
       h('ul', { class: 'us-rules' }, M.actions.map(ac => h('li', null,
         h('span', null, h('b', null, ac.label), h('small', { class: 'us-dim' }, ac.hint)),
         h('span', { class: 'us-seg', role: 'group', 'aria-label': ac.label }, LEVELS.map(([lv, txt]) =>
-          h('button', { type: 'button', class: `us-segbtn us-lv-${lv}`, 'aria-pressed': String(r[ac.id] === lv), disabled: M.demo || undefined,
+          h('button', { type: 'button', class: `us-segbtn us-lv-${lv}`, 'aria-pressed': String(r[ac.id] === lv), ...(M.demo ? { disabled: true } : {}),
             onclick: () => { if (r[ac.id] !== lv) set(ac.id, lv); } }, txt)))))),
       h('p', { class: 'us-dim' }, 'Toujours permis : lire tout le projet et écrire dans Saved/Tour (carnet, tableau, rapports). « Demander » te pose la question dans la tour.')];
+  }
+  // Mise en place (lib/miseenplace.js) : un passage en fond et en lecture seule ou la session core fait le
+  // tour de son sujet et remplit son carnet, pour preparer les prochaines taches. Un sujet a la fois.
+  const usd = (x) => `${Number(x).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`;
+  function miseText(M, z) {
+    const r = M.mise.runs[z.id];
+    if (!r || r.status === 'none') return h('span', { class: 'us-dim' }, 'pas encore faite');
+    if (r.status === 'queued') return `en file (${M.mise.queue.indexOf(z.id) + 1}e)`;
+    if (r.status === 'running') return ['en cours depuis ', T.agoEl(r.at)];
+    const spent = [r.tokens ? `${tok(r.tokens)} tokens` : '', r.cost != null ? usd(r.cost) : ''].filter(Boolean).join(', ');
+    if (r.status === 'error') return h('span', { class: 'us-t-ko' }, `échouée : ${r.error || 'erreur'}`);
+    return ['faite ', T.agoEl(r.endedAt), spent ? `, ${spent}` : '', r.capped ? h('span', { class: 'us-t-warn' }, ', arrêtée à sa limite') : ''];
+  }
+  async function miseStart(M, ids, budget) {
+    const r = await T.api('/api/miseenplace', { ids, budget: budget || M.mise.budget });
+    if (r && r.ok) T.toast(r.queued > 1 ? `${r.queued} sujets en file : ils passent un par un, en lecture seule.` : 'Mise en place lancée, en fond et en lecture seule : le carnet se remplit.');
+    else if (r) T.toast(r.error || 'Mise en place impossible.');
   }
   function sujetBody(M, z, live) {
     const feat = z.kind === 'feature';
@@ -2038,6 +2055,7 @@
       rowsOf([
         feat && ['Sujets touchés', z.topics.length ? z.topics.join(', ') : h('span', { class: 'us-dim' }, 'aucun choisi')],
         ['Ses agents', z.agents.length ? z.agents.join(', ') : 'aucun attitré'],
+        !feat && ['Mise en place', miseText(M, z)],
         z.reviewers && z.reviewers.length && ['Relecture', z.reviewers.join(', ')],
         [feat ? 'Son carnet' : 'Mémoire (carnet)', n ? ['mis à jour ', T.agoEl(n.at)] : h('span', { class: 'us-dim' }, `pas encore : la première session ${feat ? 'de la feature' : 'du sujet'} le crée`)],
       ]),
@@ -2050,6 +2068,7 @@
         live || z.done ? null : btn('Dans une fenêtre', () => sujetLaunch(M, z, true), '', M.demo || !M.sujetsProject ? { disabled: true } : { title: 'Ouvre Claude Code dans une fenêtre, dans le dossier du projet' }),
         btn('Lire le carnet', () => fileView(`Carnet : ${z.title}`, notes, `/api/sujets/file?project=${proj}&id=${encodeURIComponent(z.id)}`), '', M.demo || !n ? { disabled: true } : {}),
         feat ? null : btn('Écrire au tableau', () => boardDialog(M, z.title), '', M.demo ? { disabled: true } : {}),
+        feat || live ? null : btn('Mise en place', () => miseStart(M, [z.id]), '', M.demo || !M.sujetsProject || ['queued', 'running'].includes((M.mise.runs[z.id] || {}).status) ? { disabled: true } : { title: `La session fait le tour du sujet en fond, en lecture seule, et remplit son carnet (limite ${usd(M.mise.budget)})` }),
         feat ? btn(z.done ? 'Reprendre la feature' : 'Terminer la feature', async () => {
           const r = await T.api('/api/features/done', { id: z.id, done: !z.done });
           if (r && r.ok && !z.done) { select(null); T.toast(`« ${z.title} » est terminée : sa salle quitte le bâtiment (« Anciennes » la remontre).`); }
@@ -2066,18 +2085,33 @@
       h('div', { class: 'us-ebody' },
         zs.length ? h('p', null, 'Les sessions core, une par sujet du jeu, dans leur bâtiment. Elles ne tournent pas en permanence : chacune garde la mémoire de son sujet dans son carnet, et la suivante reprend là où elle s\'est arrêtée. Tu règles dans sa fiche ce qu\'elle peut faire seule, ce qu\'elle te demande et ce qui lui est interdit. Les sujets se parlent par le tableau.')
           : h('p', null, 'Connecte ton projet Unreal : ses sujets viennent des sections de ses agents (.claude/agents).'),
+        zs.length ? miseBar(M) : null,
         h('ul', { class: 'us-runs' }, zs.map(z => {
-          const a = z.session, mail = (M.board || []).filter(e => forSujet(z, e)).length;
+          const a = z.session, mail = (M.board || []).filter(e => forSujet(z, e)).length, mr = M.mise.runs[z.id];
           return h('li', null,
             h('button', { type: 'button', class: 'us-runbtn', onclick: () => open(z) },
               h('span', { class: `us-dot us-d-${a ? dotFor(a.st) : 'grey'}` }), h('b', null, z.title),
-              h('span', { class: 'us-dim' }, ` ${a ? `${a.name}, ${a.stText}` : 'en sommeil'}${z.notes ? '' : ', sans carnet'}${mail ? `, ${T.plural(mail, 'message', 'messages')}` : ''}`)),
+              h('span', { class: 'us-dim' }, ` ${a ? `${a.name}, ${a.stText}` : 'en sommeil'}${z.notes ? '' : ', sans carnet'}${mail ? `, ${T.plural(mail, 'message', 'messages')}` : ''}${mr && mr.status === 'queued' ? ', en file' : mr && mr.status === 'running' ? ', mise en place en cours' : mr && mr.status === 'done' ? ', mis en place' : ''}`)),
             a ? btn('Discuter', () => { sideToggle('sujets', false); select({ kind: 'agent', id: a.id }, true); chatDialog(a.id); }) : btn('Discuter', () => sujetLaunch(M, z), 'us-go', M.demo || !M.sujetsProject ? { disabled: true } : {}));
         })),
         h('div', { class: 'us-sub' }, 'Tableau'),
         (M.board || []).length ? h('ul', { class: 'us-board' }, M.board.slice(-12).reverse().map(boardLine)) : h('p', { class: 'us-dim' }, 'Vide pour l\'instant. Les sessions de sujet y écrivent ce que les autres doivent savoir.'),
         h('div', { class: 'us-actions' }, btn('Écrire au tableau', () => boardDialog(M, 'tous'), 'us-go', M.demo ? { disabled: true } : {}),
           btn('Lire tout le tableau', () => fileView('Tableau des sujets', 'Saved/Tour/tableau.md', `/api/sujets/file?project=${proj}&id=tableau`), '', M.demo || !(M.board || []).length ? { disabled: true } : {}))));
+  }
+  // « Tout mettre en place » : tous les sujets dans la file, avec la limite choisie par sujet ; ce qui a ete depense.
+  function miseBar(M) {
+    const R = M.mise, ids = (M.sujets || []).map(z => z.id), runs = ids.map(id => R.runs[id]).filter(Boolean);
+    const done = runs.filter(r => r.status === 'done').length, cost = runs.reduce((n, r) => n + (r.cost || 0), 0), toks = runs.reduce((n, r) => n + (r.tokens || 0), 0);
+    const busy = !!R.current || R.queue.length;
+    const sel = h('select', { name: 'budget', 'aria-label': 'Limite par sujet', class: 'us-select', ...(M.demo ? { disabled: true } : {}) },
+      (R.budgets.length ? R.budgets : [R.budget]).map(b => h('option', { value: b, selected: b === R.budget }, `${usd(b)} max par sujet`)));
+    return [h('div', { class: 'us-sub' }, 'Mise en place'),
+      h('p', { class: 'us-dim' }, 'Chaque session core fait le tour de son sujet (code, assets, tests, décisions) et remplit son carnet, pour préparer les prochaines tâches. En fond, en lecture seule, un sujet après l\'autre.'),
+      h('p', null, `${done} sur ${ids.length} sujets mis en place${toks ? `, ${tok(toks)} tokens` : ''}${cost ? `, ${usd(cost)} dépensés` : ''}${busy ? ` · en cours : ${(M.sujets.find(z => z.id === R.current) || {}).title || '…'}${R.queue.length ? `, ${R.queue.length} en file` : ''}` : ''}.`),
+      h('div', { class: 'us-actions' }, sel,
+        btn('Tout mettre en place', () => miseStart(M, [], Number(sel.value)), 'us-go', M.demo || !M.sujetsProject ? { disabled: true } : {}),
+        busy ? btn('Arrêter la file', async () => { await T.api('/api/miseenplace/stop', {}); T.toast('File arrêtée.'); }, 'us-danger', M.demo ? { disabled: true } : {}) : null)];
   }
   let boardDlg = null;
   function boardDialog(M, to) {

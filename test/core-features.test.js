@@ -103,3 +103,49 @@ test('regles d\'un sujet : ali les change, elles partent dans la consigne et a c
   assert.ok(optList(runs[2], '--allowedTools').includes('Edit'));
   assert.ok(!optList(runs[2], '--disallowedTools').includes('Edit(./Source/**)'));
 });
+
+test('mise en place : les sujets passent un par un, en lecture seule avec une limite, et la tour garde ce qui a ete depense', () => {
+  const s = withTopics();
+  const os = require('os'), fs = require('fs'), path = require('path');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tour-mep-'));
+  const runs = [], kids = [];
+  const run = (args, cwd, input) => { const c = new EventEmitter(); c.stdout = new EventEmitter(); c.stderr = new EventEmitter(); runs.push({ args, input }); kids.push(c); return c; };
+  const d = require('../lib/discussion').create(s, { run });
+  const mep = require('../lib/miseenplace').create(s, d, { projectFor: () => ({ name: 'CTB', root }) });
+  s.miseView = mep.view;
+  assert.ok(!mep.start({ ids: ['sujet-inconnu'] }).ok);
+  assert.deepStrictEqual(mep.start({ ids: ['sujet-interface', 'sujet-items'], budget: 2 }), { ok: true, queued: 2 });
+  // un seul a la fois
+  assert.strictEqual(runs.length, 1);
+  assert.strictEqual(s.snapshot().miseEnPlace.current, 'sujet-interface');
+  assert.deepStrictEqual(s.snapshot().miseEnPlace.queue, ['sujet-items']);
+  const a = runs[0].args, deny = optList(a, '--disallowedTools');
+  assert.ok(deny.includes('Bash') && deny.includes('Agent') && deny.includes('Edit(./Source/**)') && deny.includes('WebFetch'));
+  assert.deepStrictEqual(optList(a, '--allowedTools'), ['Read', 'Grep', 'Glob', 'LS', 'Edit(./Saved/Tour/**)']);
+  assert.strictEqual(a[a.indexOf('--max-budget-usd') + 1], '2');
+  assert.match(runs[0].input, /Tache de la tour \[sujet-interface\]/);
+  const consigne = fs.readFileSync(path.join(root, 'Saved', 'Tour', 'taches', 'mise-en-place-interface.md'), 'utf8');
+  assert.match(consigne, /lecture seule/);
+  assert.match(consigne, /## Points d'attention/);
+  // fin du premier : cout et tokens notes, sa salle rangee, le suivant part
+  const sid = s.misePlace['sujet-interface'].sessionId;
+  kids[0].stdout.emit('data', JSON.stringify({ type: 'result', is_error: false, result: 'ok', total_cost_usd: 0.4, usage: { input_tokens: 10, output_tokens: 20, cache_read_input_tokens: 1000 } }) + '\n');
+  kids[0].emit('close', 0);
+  assert.deepStrictEqual([s.misePlace['sujet-interface'].status, s.misePlace['sujet-interface'].cost, s.misePlace['sujet-interface'].tokens], ['done', 0.4, 1030]);
+  assert.ok(s.agents[sid].hidden);
+  return new Promise(r => setImmediate(r)).then(() => {
+    assert.strictEqual(runs.length, 2);
+    assert.match(runs[1].input, /sujet-items/);
+    // limite atteinte : fait quand meme, marque « arretee a sa limite » ; la session garde ensuite ses regles normales
+    kids[1].stdout.emit('data', JSON.stringify({ type: 'result', is_error: true, subtype: 'error_max_budget_usd', total_cost_usd: 2.01 }) + '\n');
+    kids[1].emit('close', 1);
+    assert.strictEqual(s.misePlace['sujet-items'].status, 'done');
+    assert.ok(s.misePlace['sujet-items'].capped);
+    // un redemarrage pendant une mise en place la marque interrompue
+    const s2 = new TowerState();
+    s2.load({ misePlace: { 'sujet-menus': { status: 'running' }, 'sujet-base': { status: 'queued' } } });
+    assert.strictEqual(s2.misePlace['sujet-menus'].status, 'error');
+    assert.strictEqual(s2.misePlace['sujet-base'].status, 'none');
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+});

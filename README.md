@@ -111,6 +111,14 @@ Sous le bâtiment principal, deux bâtiments à part :
   lancement et à chaque message de la discussion (`--allowedTools`, `--disallowedTools`) ; rien n'est
   écrit dans les réglages du projet. « Modifier interdit » protège `Source/`, `Content/`, `Config/`,
   `Plugins/`, `tools/`, `docs/`, `.claude/` et les fichiers à la racine (`.uproject`, `CLAUDE.md`, scripts).
+- **Mise en place** : pour préparer les prochaines tâches, une session core fait le tour de son sujet
+  (code, assets, tests, décisions) et réécrit son carnet : où on en est, fichiers clés, décisions, points
+  d'attention, prochaines étapes. Bouton « Mise en place » dans la fiche d'un sujet, ou « Tout mettre en
+  place » dans le panneau Core. Elle tourne en fond et en lecture seule : elle lit tout, n'écrit que dans
+  `Saved/Tour`, sans commande ni agent. Elle s'arrête à la limite choisie par sujet (`--max-budget-usd`,
+  0,50 à 5 $, 1 $ par défaut ; Claude Code vérifie entre deux étapes, donc il peut la dépasser un peu).
+  Les sujets passent un par un. La tour note pour chacun quand, combien de tokens et combien de dollars,
+  puis range sa session (`lib/miseenplace.js`).
 - **Features** (bouton Features, touche N pour une nouvelle) : une session par nouvelle idée. « Nouvelle
   feature » demande un nom, l'idée et les sujets touchés, puis la lance (dans la tour ou dans une
   fenêtre). Elle lit les carnets core de ces sujets sans les réécrire, propose un plan avant de toucher
@@ -338,6 +346,7 @@ chaque changement de `web/` au lieu de deviner.
 | `lib/taches.js`, `lib/suivi.js` | tâches prêtes à lancer, et leur suivi (fait, à faire, questions, rapport) |
 | `lib/discussion.js` | discuter avec une session depuis la tour : sa conversation lue dans le journal, un message = un `claude -p --resume` |
 | `lib/features.js` | sessions feature : une par nouvelle idée, créée depuis la tour, sa consigne et son carnet |
+| `lib/miseenplace.js` | mise en place des sessions core : un sujet après l'autre, en fond, en lecture seule, avec une limite de dépense |
 | `lib/regles.js` | règles d'une session core ou feature : sans demander, en demandant, interdit ; ses options de lancement |
 | `lib/sujets.js` | sujets du jeu : leur consigne, leur carnet et le tableau partagé, dans `Saved/Tour/` |
 | `lib/inventory.js`, `web/map.js` | carte du projet : comptage des assets et dessin de la ville |
