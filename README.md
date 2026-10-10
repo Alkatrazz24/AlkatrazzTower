@@ -37,7 +37,7 @@ hooks sortent toujours en 0, sans rien dire, et `TOWER_OFF=1` coupe tout sans ri
 
 ## Ce qu'il y a dans la v0.1
 
-La v0.1 rassemble tout ce qui a été construit jusqu'à la pull request 29 incluse.
+La v0.1 rassemble tout ce qui a été construit jusqu'à la pull request 30 incluse.
 
 | Partie | En bref |
 | --- | --- |
@@ -50,7 +50,7 @@ La v0.1 rassemble tout ce qui a été construit jusqu'à la pull request 29 incl
 | Questions dans la tour | les questions et demandes de permission des sessions lancées par la tour s'y répondent d'un clic |
 | Sujets, Core, Features | une session par sujet du jeu avec son carnet et ses règles, un tableau partagé, une session par nouvelle idée, « Discuter » depuis la tour, « Mise en place » |
 | Chef | une session qui reçoit toutes tes demandes, vérifie en lisant et confie les changements aux bonnes sessions |
-| Skills, Agents | bibliothèque des skills et quartier des agents : inventaire, vérification, usage, ajout |
+| Skills, Agents | bibliothèque des skills et quartier des agents : inventaire, vérification, usage, ajout ; `skills-ctb.js` copie dans un projet les skills des sessions de la tour et ceux de ponytail |
 | Documentation | la doc de chaque projet à lire dans la tour, la doc Unreal par thème, la doc obligatoire pour qui modifie le jeu |
 | Dépôts | git sur le PC et GitHub pour la tour, les projets et les dossiers suivis |
 | Carte et version | la ville du projet, la version à sortir avec ses features et son épreuve finale |
@@ -333,6 +333,14 @@ utilisé. **Ajouter un skill** écrit un `SKILL.md` dans le dossier perso ou dan
 projet, à partir d'un modèle, ou depuis une adresse GitHub : le fichier est montré en entier et ne
 s'installe qu'une fois lu et confirmé.
 
+**Les skills des sessions de la tour dans un projet.** Pour donner à un projet Unreal les skills qu'ont
+les sessions de la tour, plus ceux de ponytail : `node scripts/skills-ctb.js "<projet>"` montre ce qui
+serait copié dans `<projet>/.claude/skills`, ce qui y est déjà, ce qu'une session du projet a déjà (perso,
+compte, plugin activé) et ce qui est écarté avec la raison ; `--apply` copie, `--only a,b` n'en prend que
+certains. Les skills viennent de leurs dépôts GitHub publics (ceux d'Epic de `vendor/unreal-mcp-skills`),
+rien n'est écrasé ni commité. ponytail arrive sans ses hooks, et son skill principal ne se lance qu'à la
+main (`/ponytail`) sauf avec `--ponytail-auto`. graphify reste exclu.
+
 ## Le quartier des agents
 
 En face de la bibliothèque, le **quartier des agents** : un casier par agent que Claude Code peut appeler
@@ -530,14 +538,16 @@ Les consignes de travail de Claude sur ce dépôt sont dans [CLAUDE.md](CLAUDE.m
 | `web/classique.html` | l'ancienne page, gardée en secours |
 | `scripts/install-hooks.js` | branchement des hooks |
 | `scripts/doc-ctb.js` | écrit la règle « doc obligatoire » dans le `CLAUDE.md` et les agents d'un projet |
+| `scripts/skills-ctb.js`, `lib/skills-ctb.js` | copie dans un projet Unreal les skills des sessions de la tour et ceux de ponytail |
 | `scripts/setup.js`, `scripts/uninstall.js`, `setup.cmd`, `uninstall.cmd`, `start-tower.cmd` | installation, retrait et lancement sur un PC |
 | `.mcp.json`, `scripts/chrome-devtools-mcp.js` | Chrome DevTools MCP : Claude voit la page qu'il construit |
 | `unreal/AlkatrazzTower`, `scripts/install-plugin.js` | plugin d'éditeur Unreal et son installation dans un projet |
 | `skills/alkatrazz-tower-personnages` | skill qui apprend aux agents à modifier un personnage |
 | `vendor/unreal-engine-skills` | 31 skills Unreal de quodsoler (MIT, commit f3742d7) |
+| `vendor/unreal-mcp-skills` | 3 skills du plugin MCP de l'éditeur Unreal d'Epic Games (MIT) |
 | `docs/agents-unreal.md` | ce qui aide les agents sur UE5, avec les sources |
 
 ## Licence
 
-GPL-3.0, voir [LICENSE](LICENSE). Les skills Unreal de `vendor/` gardent leur licence MIT, les polices de
+GPL-3.0, voir [LICENSE](LICENSE). Les skills de `vendor/` gardent leur licence MIT, les polices de
 `web/fonts/` la SIL Open Font License.
