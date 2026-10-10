@@ -82,10 +82,7 @@ test('en fond : seulement les taches qui ne modifient pas le code, avec des droi
 });
 
 test('une session lancee par la tour ecrit son journal, meme si la tour vient d\'une session Claude Code', () => {
-  const env = taches.launchEnv({ PATH: 'x', CLAUDE_CODE_CHILD_SESSION: '1', CLAUDECODE: '1', CLAUDE_CODE_USE_BEDROCK: '1' });
-  assert.strictEqual(env.CLAUDE_CODE_CHILD_SESSION, undefined);
-  assert.strictEqual(env.CLAUDECODE, undefined);
-  assert.strictEqual(env.CLAUDE_CODE_FORCE_SESSION_PERSISTENCE, '1');
-  assert.strictEqual(env.CLAUDE_CODE_USE_BEDROCK, '1'); // les reglages d'ali restent
-  assert.strictEqual(env.PATH, 'x');
+  const env = taches.launchEnv({ PATH: 'x', CLAUDE_CODE_CHILD_SESSION: '1', CLAUDECODE: '1', CLAUDE_CODE_MESSAGING_TOKEN: 't',
+    CLAUDE_CODE_SESSION_ID: 's', CLAUDE_PID: '1', CLAUDE_CONFIG_DIR: 'C:\\cfg', CLAUDE_CODE_USE_BEDROCK: '1' });
+  assert.deepStrictEqual(env, { PATH: 'x', CLAUDE_CONFIG_DIR: 'C:\\cfg', CLAUDE_CODE_USE_BEDROCK: '1', CLAUDE_CODE_FORCE_SESSION_PERSISTENCE: '1' });
 });
