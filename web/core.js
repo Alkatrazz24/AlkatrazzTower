@@ -499,7 +499,7 @@
   }
   // Le selecteur a poser dans l'en-tete de chaque template.
   function switcher(label = 'Apparence') {
-    const sel = h('select', { 'aria-label': 'Template de la tour', onchange: (e) => choose(e.target.value) },
+    const sel = h('select', { name: 'template', 'aria-label': 'Template de la tour', onchange: (e) => choose(e.target.value) },
       TEMPLATES.map(t => h('option', { value: t.id, selected: t.id === current }, t.name)));
     return h('label', { class: 'tw-switch' }, h('span', null, label), sel, h('a', { href: 'galerie.html', title: 'Comparer les templates' }, 'Galerie'));
   }
