@@ -2,7 +2,7 @@
 // « La version » : la tour pilotee par l'objectif. A gauche, la version a sortir comme une liste de
 // controle : la prochaine etape en grand avec son bouton, puis chaque feature et ses preuves. A droite,
 // la forge et les derniers builds qui font avancer la liste. Sans version, un seul bouton pour en preparer une.
-// Le jeu (web/usine/moteur.js) dessine l'usine ; ce fichier ne decrit que le fonctionnement.
+// Le jeu (web/usine/moteur.js) dessine la tour ; ce fichier ne decrit que le fonctionnement.
 (function () {
   const U = window.Usine;
   U.mode({

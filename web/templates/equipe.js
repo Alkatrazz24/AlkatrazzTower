@@ -1,7 +1,7 @@
 'use strict';
 // « L'équipe » : la tour vue par les agents. En bas, une carte par agent : qui il est, ce qu'il fait en
-// ce moment, depuis quand. On en choisit un (clic ou touches 1 a 9) : la camera le suit dans l'usine et
-// sa fiche s'ouvre a droite. Le jeu (web/usine/moteur.js) dessine l'usine ; ce fichier ne decrit que le fonctionnement.
+// ce moment, depuis quand. On en choisit un (clic ou touches 1 a 9) : la camera va a sa salle et
+// sa fiche s'ouvre a droite. Le jeu (web/usine/moteur.js) dessine la tour ; ce fichier ne decrit que le fonctionnement.
 (function () {
   const U = window.Usine;
   // Ce que fait l'agent, en une ligne lisible.
@@ -26,14 +26,14 @@
           h('span', { class: 'us-mtext' },
             h('b', null, a.name), h('span', { class: `us-state us-s-${dotFor(a.st)}` }, a.stText),
             h('span', { class: 'us-mdo' }, doing(a, T, M)),
-            h('small', { class: 'us-dim' }, a.roomName ? `${a.roomName}, ` : '', 'vu ', T.agoEl(a.lastSeen)))));
+            h('small', { class: 'us-dim' }, a.subs ? `${T.plural(a.subs, 'sous-agent', 'sous-agents')}, ` : '', a.roomName ? `${a.roomName}, ` : '', 'vu ', T.agoEl(a.lastSeen)))));
       };
       return [h('section', { class: 'us-panel us-roster', 'aria-label': 'L\'équipe' },
         h('header', { class: 'us-rhead' }, h('h2', null, 'L\'équipe'), h('span', { class: 'us-dim' }, ms.length ? 'Choisis un agent : la caméra le suit.' : ''), h('span', { class: 'us-grow' }),
           btn(T.ui.showEnded ? 'Masquer les terminées' : `Sessions terminées (${M.endedCount})`, () => T.act.toggleEnded(), '', { disabled: !M.endedCount && !T.ui.showEnded }),
           btn('Forge', () => api.select({ kind: 'forge' }, true), '', { title: 'Touche F' }), btn('Version', () => api.select({ kind: 'silo' }, true), '', { title: 'Touche V' })),
         ms.length ? h('ul', { class: 'us-mates' }, ms.map(card))
-          : h('div', { class: 'us-empty' }, h('strong', null, 'Personne pour l\'instant.'), h('p', null, 'Lance une session Claude Code dans ton projet : son personnage arrive ici et prend une machine.')))];
+          : h('div', { class: 'us-empty' }, h('strong', null, 'Personne pour l\'instant.'), h('p', null, 'Lance une session Claude Code dans ton projet : sa salle s\'ouvre dans la tour et son personnage s\'y installe.')))];
     },
   });
 })();

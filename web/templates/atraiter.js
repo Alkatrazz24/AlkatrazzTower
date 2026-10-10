@@ -1,8 +1,8 @@
 'use strict';
 // « À traiter » : la tour comme une boite de reception. A gauche, uniquement ce qui demande ton
 // attention, une ligne par sujet avec le bon bouton ; quand la liste est vide, il n'y a rien a faire et
-// l'usine tourne seule en fond. Fleches haut et bas pour passer d'un sujet a l'autre, Entree pour agir.
-// Le jeu (web/usine/moteur.js) dessine l'usine ; ce fichier ne decrit que le fonctionnement.
+// la tour tourne seule en fond. Fleches haut et bas pour passer d'un sujet a l'autre, Entree pour agir.
+// Le jeu (web/usine/moteur.js) dessine la tour ; ce fichier ne decrit que le fonctionnement.
 (function () {
   const U = window.Usine;
   let cur = 0, keys = [];
@@ -14,7 +14,7 @@
   // Chaque sujet : un ton, une phrase, une action principale et parfois une seconde.
   function items(M, api) {
     const { T } = api, out = [];
-    if (!M.projects.length) out.push({ key: 'projet', tone: 'you', title: 'Connecte ton projet Unreal', text: 'La tour en lit les dossiers pour dessiner les gisements de l\'usine.', go: ['Connecter', T.act.openProjects] });
+    if (!M.projects.length) out.push({ key: 'projet', tone: 'you', title: 'Connecte ton projet Unreal', text: 'Les tâches se lancent dans son dossier, et chaque session ouverte dessus a sa salle dans son aile.', go: ['Connecter', T.act.openProjects] });
     for (const x of M.attention) {
       const key = `${x.kind}:${x.agent ? x.agent.id : x.feature ? x.feature.id : ''}:${x.text}`;
       if (seen[key]) continue;
@@ -57,7 +57,7 @@
       return [h('section', { class: 'us-panel us-inbox', 'aria-label': 'À traiter' },
         h('header', { class: 'us-ihead' }, h('h2', null, 'À traiter'), h('span', { class: 'us-count' + (list.length ? ' on' : '') }, String(list.length))),
         list.length ? h('ol', { class: 'us-cards' }, list.map(card))
-          : h('div', { class: 'us-empty' }, h('strong', null, 'Rien ne t\'attend.'), h('p', null, calm(M, api)), h('small', { class: 'us-dim' }, 'L\'usine tourne en fond : clique sur une machine pour voir ce qu\'elle fait.')),
+          : h('div', { class: 'us-empty' }, h('strong', null, 'Rien ne t\'attend.'), h('p', null, calm(M, api)), h('small', { class: 'us-dim' }, 'La tour tourne en fond : clique sur une salle pour voir ce que fait son agent.')),
         h('footer', { class: 'us-ifoot' }, list.length ? [h('kbd', null, '↑'), h('kbd', null, '↓'), ' pour passer d\'un sujet à l\'autre, ', h('kbd', null, 'Entrée'), ' pour agir.'] : calm(M, api)))];
     },
     onKey(e, api) {

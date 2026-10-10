@@ -148,6 +148,17 @@ at(-35); ev('s-relec', 'UserPromptSubmit', { prompt: 'Tache de la tour [relectur
 state.agents['s-relec'].characterId = state.createCharacter({ name: 'Clothilde', look: { hat: 'aucun', tool: 'loupe', accessory: 'lunettes', shirt: '#7c3aed', hairStyle: 'chignon', hair: '#d6d3d1' } }).id;
 for (const [m, f] of [[-30, 'CLAUDE.md'], [-24, 'Source/ConquerTheBackrooms/Weapons/CTBAmmoComponent.cpp'], [-15, 'Source/ConquerTheBackrooms/AI/CTBStalkerController.cpp']]) { at(m); tool('s-relec', 'Read', { file_path: P(f) }); }
 at(-2); tool('s-relec', 'Read', { file_path: P('Source/ConquerTheBackrooms/Raid/CTBRaidSubsystem.cpp') });
+// La relecture lit le projet avec cinq sous-agents, assis autour de la table de sa salle.
+for (const [id, type] of [['rel-1', 'Explore'], ['rel-2', 'Explore'], ['rel-3', 'Explore'], ['rel-4', 'Explore'], ['rel-5', 'general-purpose']]) {
+  ev('s-relec', 'PreToolUse', { tool_name: 'Read', tool_input: { file_path: P('CLAUDE.md') }, agent_id: id, agent_type: type });
+}
+state.agents['s-ia'].subagents['ia-1'] = { type: 'Explore', lastSeen: T0 - 5 * 60_000 }; // Odile attend ta reponse, son sous-agent aussi
+// Une session ouverte dans le dossier de la tour elle-meme : elle a son aile a part.
+const TOWER = path.join(ROOT, 'Alkatrazz Tower');
+at(-20); state.event({ session_id: 's-tour', cwd: TOWER, hook_event_name: 'SessionStart', ts: clock, session_title: 'Maintenance de la tour' });
+state.agents['s-tour'].characterId = state.createCharacter({ name: 'Quartz', look: { hat: 'casque', hatColor: '#0ea5e9', tool: 'cle', shirt: '#0369a1', hairStyle: 'court', hair: '#111827' } }).id;
+at(-8); state.event({ session_id: 's-tour', cwd: TOWER, hook_event_name: 'UserPromptSubmit', ts: clock, prompt: 'Mets à jour la tour locale après le merge et relance-la.' });
+at(-3); state.event({ session_id: 's-tour', cwd: TOWER, hook_event_name: 'Stop', ts: clock, last_assistant_message: 'La tour est à jour sur main et relancée, /api/health répond.' });
 
 // Une tache d'idees finie : son suivi (bloc « ## Suivi » de son dernier message) et son plan.
 at(-80); ev('s-idees', 'UserPromptSubmit', { prompt: 'Tache de la tour [features] : lis la consigne dans Saved/Tour/taches/features.md et suis-la.' });

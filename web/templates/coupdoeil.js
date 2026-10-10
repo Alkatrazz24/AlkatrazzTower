@@ -1,8 +1,8 @@
 'use strict';
-// « Coup d'œil » : pour un second ecran. Rien que l'usine en grand et une phrase en bas qui dit l'essentiel ;
+// « Coup d'œil » : pour un second ecran. Rien que la tour en grand et une phrase en bas qui dit l'essentiel ;
 // quand quelque chose change (un agent t'attend, un build finit, une feature casse), une notification
 // apparait quelques secondes en haut a droite. Un clic sur une notification ou sur le jeu ouvre la fiche.
-// Le jeu (web/usine/moteur.js) dessine l'usine ; ce fichier ne decrit que le fonctionnement.
+// Le jeu (web/usine/moteur.js) dessine la tour ; ce fichier ne decrit que le fonctionnement.
 (function () {
   const U = window.Usine;
   const LIFE = 9000;

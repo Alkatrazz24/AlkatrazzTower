@@ -1,15 +1,14 @@
 'use strict';
-// Moteur commun des templates « usine » : la tour comme une usine vue de dessus, facon jeu de gestion
-// d'usine. Chaque template (web/templates/<id>.js) n'apporte qu'un monde : couleurs, terrain, decor,
-// eclairage. Le jeu tourne en fond, en direct :
-//   - chaque domaine du projet (Blueprints, Sons...) est un gisement ; une foreuse y tourne quand
-//     il a bouge ces 3 derniers jours ;
-//   - chaque agent est une machine d'assemblage avec son personnage ; elle tourne quand il travaille,
-//     une alerte clignote au-dessus quand il attend ta reponse, un tapis l'alimente depuis le gisement
-//     du fichier qu'il touche ;
-//   - le tapis principal mene a la forge : une seule caisse dedans a la fois, les autres attendent
-//     sur le tapis ; a la sortie, un coffre des builds reussis et un coffre des echecs ;
-//   - la version a sortir est le silo a fusee : chaque feature prete est une piece de la fusee,
+// Moteur commun des templates : la tour vue de dessus, facon jeu de gestion, comme un batiment.
+// Chaque template (web/templates/<id>.js) apporte un fonctionnement (le HUD), chaque ambiance
+// (web/usine/mondes/<id>.js) un monde : couleurs, terrain, decor, eclairage. Le jeu tourne en direct :
+//   - chaque session Claude Code est une salle ; son agent y est assis a son bureau (un personnage en
+//     pixels), ses sous-agents autour d'une table. L'ecran defile quand il travaille, une alerte
+//     clignote quand il attend ta reponse ;
+//   - les salles bordent un couloir et sont regroupees en ailes, une par projet (ou par dossier) ;
+//   - au bout du couloir, la forge : un seul build a la fois, les autres agents font la queue devant
+//     sa porte ; dedans, un coffre des builds reussis et un coffre des echecs ;
+//   - en face, la salle de lancement : la version a sortir est une fusee, chaque feature prete l'eleve,
 //     l'epreuve finale est le lancement.
 // Par-dessus, un HUD : compteurs en haut, version a gauche, mini-carte et alertes a droite, barre
 // rapide en bas, et la fiche de ce qu'on a selectionne (clic sur le jeu, ou touches 1 a 9).
@@ -17,7 +16,7 @@
 (function () {
   const T = window.Tower, h = T.h;
   const TS = 16; // taille d'une case en pixels du monde
-  const MARGIN = 40; // cases de terrain precalculees autour de l'usine
+  const MARGIN = 40; // cases de terrain precalculees autour du batiment
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const BASE = {
     bg: '#2d2a25', ground: '#3a3530', ground2: '#353029', grid: 'rgba(0,0,0,.18)', concrete: '#57544e', concrete2: '#4f4c46',
@@ -27,6 +26,9 @@
     fire: '#ff8a1f', fireHot: '#ffd166', ok: '#5fbf4a', ko: '#e0533d', warn: '#f2b233', blue: '#59a8e8', ghost: 'rgba(110,170,255,.55)',
     text: '#f1ede4', shadow: 'rgba(0,0,0,.45)', labelBg: 'rgba(20,20,22,.8)', wire: 'rgba(40,30,20,.75)', pole: '#6b4f33',
     select: '#ffd23f', mini: '#16140f',
+    wall: '#8d8f93', wallLight: '#b4b6b9', wallDark: '#505256', floor: '#a47d4f', floorLine: '#7a5a35',
+    hall: '#6f6c66', carpet: '#7d2e2e', carpetEdge: '#c9a227', desk: '#6e4a2a', deskLight: '#94663b', deskDark: '#40291a',
+    screen: '#14202c', table: '#5d4127',
   };
   let TH = null, COL = BASE, SC = false; // monde courant ; SC : dessin facon plan d'ingenieur
   let MODE = {}; // fonctionnement courant (web/templates/<id>.js) : ce que montre le HUD et comment on s'en sert
@@ -40,7 +42,6 @@
   };
 
   // ---------- outils ----------
-  function rnd(seed) { let s = seed >>> 0 || 1; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; }
   function hash(str) { let x = 2166136261; for (const c of String(str)) x = Math.imul(x ^ c.charCodeAt(0), 16777619); return x >>> 0; }
   function h2(x, y) { let k = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) >>> 0; k = Math.imul(k ^ (k >>> 13), 1274126177) >>> 0; return (k ^ (k >>> 16)) >>> 0; }
   function vnoise(x, y, s) {
@@ -77,45 +78,67 @@
     return cv;
   }
 
-  // ---------- plan de l'usine ----------
+  // ---------- plan du batiment ----------
+  // Un couloir horizontal ; de part et d'autre, une salle par session, regroupees en ailes (une par
+  // projet). Au bout du couloir, la forge (en bas) et la salle de lancement de la version (en haut).
+  const ROOM_H = 7, CY = 9, CH = 3; // hauteur des salles, haut du couloir, hauteur du couloir
+  const TOP = CY - ROOM_H, BOT = CY + CH; // y des salles du haut et du bas
+  const MAX_SUBS = 6; // sous-agents dessines par salle ; au-dela, « +n »
+  const ORDER = { waiting: 0, idle: 1, working: 2, ready: 3, silent: 4, ended: 5 };
+  function roomW(a) {
+    const n = Math.min(MAX_SUBS, (a.subList || []).length);
+    return n ? Math.max(7, Math.round(6.2 + Math.ceil(n / 2) * 1.7)) : 6;
+  }
   function layout(M) {
     const shown = M.agents.filter(a => a.st !== 'ended' || T.ui.showEnded);
-    const order = { waiting: 0, idle: 1, working: 2, ready: 3, silent: 4, ended: 5 };
-    shown.sort((a, b) => (order[a.st] - order[b.st]) || a.name.localeCompare(b.name));
-    const n = Math.max(shown.length, 1);
-    const pitch = 6, x0 = 4;
-    const machines = shown.map((a, i) => ({ a, x: x0 + i * pitch, y: 10, w: 3, h: 3 }));
-    const queue = M.queue.length;
-    const forgeX = Math.max(x0 + n * pitch + 2 + queue * 2, 24);
-    const forge = { x: forgeX, y: 15, w: 4, h: 4 };
-    const beltY = 16.5;
-    const okChest = { x: forgeX + 7, y: 14, w: 2, h: 2 }, koChest = { x: forgeX + 7, y: 18, w: 2, h: 2 };
-    const silo = { x: forgeX + 12, y: 9, w: 8, h: 8 };
-    const width = silo.x + silo.w + 3;
-    // Gisements : un par domaine du projet, largeur selon le nombre d'elements.
-    const rooms = M.inv ? T.rooms(M.inv) : [];
-    const patches = [];
-    let px = 2;
-    const avail = width - 4;
-    const raw = rooms.map(r => Math.max(3, Math.min(8, Math.round(2 + 1.6 * Math.log10(r.count + 1)))));
-    const total = raw.reduce((s, w) => s + w + 1, 0);
-    const k = total > avail ? avail / total : 1;
-    rooms.forEach((r, i) => {
-      const w = Math.max(2, Math.floor(raw[i] * k));
-      patches.push({ r, x: px, y: 2, w, h: 4 });
-      px += w + 1;
-    });
-    // Poteaux electriques : un par machine, puis la forge et le silo.
-    const poles = machines.map(m => ({ x: m.x + 3.5, y: m.y - .6 }));
-    poles.push({ x: forge.x - .6, y: forge.y - .6 }, { x: silo.x - .8, y: silo.y - .2 });
-    // Lampadaires au bord de la dalle (ils eclairent la nuit).
+    // Ailes : un projet Unreal, sinon le dossier de la session. L'aile qui a le plus urgent passe en premier.
+    const wings = new Map();
+    for (const a of shown) {
+      const k = a.project || a.where || 'Autres';
+      if (!wings.has(k)) wings.set(k, []);
+      wings.get(k).push(a);
+    }
+    const byState = (a, b) => (ORDER[a.st] - ORDER[b.st]) || a.name.localeCompare(b.name);
+    const list = [...wings].map(([name, as]) => ({ name, as: as.sort(byState), project: !!as[0].project }));
+    list.sort((p, q) => byState(p.as[0], q.as[0]) || p.name.localeCompare(q.name));
+    const machines = [], fillers = [], wingList = [];
+    let x = 3;
+    for (const wg of list) {
+      const x0w = x;
+      let tx = x, bx = x;
+      for (const a of wg.as) {
+        const w = roomW(a), top = tx <= bx;
+        machines.push({ a, x: top ? tx : bx, y: top ? TOP : BOT, w, h: ROOM_H, top, wing: wg.name });
+        if (top) tx += w; else bx += w;
+      }
+      const end = Math.max(tx, bx);
+      // la rangee la plus courte se termine par une reserve, pour que l'aile reste d'un seul bloc
+      if (tx < end) fillers.push({ x: tx, y: TOP, w: end - tx, h: ROOM_H });
+      if (bx < end) fillers.push({ x: bx, y: BOT, w: end - bx, h: ROOM_H });
+      wingList.push({ name: wg.name, project: wg.project, x: x0w, w: end - x0w });
+      x = end + 1;
+    }
+    fillers.push({ x: 1, y: TOP, w: 2, h: ROOM_H }, { x: 1, y: BOT, w: 2, h: ROOM_H }); // le hall d'entree
+    if (!machines.length) { fillers.push({ x, y: TOP, w: 6, h: ROOM_H, free: true }, { x, y: BOT, w: 6, h: ROOM_H, free: true }); x += 7; }
+    // Gap d'un pas entre les ailes : un pilier plein.
+    const pillars = wingList.slice(1).map(wg => wg.x - 1);
+    const fx = x;
+    const froom = { x: fx, y: BOT, w: 10, h: ROOM_H, door: fx + 1.2 };
+    const forge = { x: fx + 1, y: BOT + 1.8, w: 4, h: 4 };
+    const okChest = { x: fx + 7.2, y: BOT + 1.4, w: 2, h: 2 }, koChest = { x: fx + 7.2, y: BOT + 4.2, w: 2, h: 2 };
+    const vroom = { x: fx, y: TOP, w: 10, h: ROOM_H };
+    const silo = { x: fx + 2, y: TOP + .5, w: 6, h: 6 };
+    const right = fx + 10;
+    const hall = { x: 1, y: CY, w: right - 1, h: CH };
+    // Plafonniers du couloir : ils eclairent la nuit.
     const lamps = [];
-    for (let x = 3; x < width - 2; x += 8) lamps.push({ x, y: 8.4 }, { x: x + 4, y: 21.5 });
-    const you = { x: silo.x - 2.2, y: silo.y + silo.h - 1 };
-    return { machines, forge, beltY, okChest, koChest, silo, patches, poles, lamps, you, w: width, h: 23, x0 };
+    for (let lx = 2.5; lx < right - 1; lx += 6) lamps.push({ x: lx, y: CY + 1.5 });
+    const you = { x: 1.2, y: CY + .1 };
+    return { machines, fillers, wings: wingList, pillars, forge, froom, okChest, koChest, silo, vroom, hall, lamps, you, w: right + 2, h: BOT + ROOM_H + 2, x0: 3 };
   }
 
-  // ---------- terrain : calcule une fois par taille d'usine, hors de la boucle ----------
+  // ---------- terrain : calcule une fois par taille de batiment, hors de la boucle ----------
+  const inBase = (x, y, W) => x >= 0 && x < W.w - 1 && y >= 1 && y < W.h - 1;
   function buildTerrain(W) {
     const x0 = -MARGIN, y0 = -MARGIN, cols = W.w + 2 * MARGIN, rows = W.h + 2 * MARGIN;
     const cv = document.createElement('canvas');
@@ -124,35 +147,27 @@
     c.translate(-x0 * TS, -y0 * TS);
     const anim = [];
     for (let y = y0; y < y0 + rows; y++) for (let x = x0; x < x0 + cols; x++) {
-      const inside = x >= 1 && x < W.w - 1 && y >= 8 && y < 22;
-      if (inside) continue;
+      if (inBase(x, y, W)) continue;
       let r = TH.tile ? TH.tile(x, y, fbm(x, y), h2(x, y)) : (h2(x, y) & 7) < 2 ? COL.ground2 : COL.ground;
-      // ni eau ni lave sous les gisements ni au ras de l'usine : on y pose le sol du monde
-      if (r.anim && x >= -1 && x <= W.w && y >= -1 && y <= W.h) r = TH.safe || COL.ground;
+      // ni eau ni lave au ras du batiment : on y pose le sol du monde
+      if (r.anim && x >= -2 && x <= W.w + 1 && y >= -1 && y <= W.h) r = TH.safe || COL.ground;
       const color = typeof r === 'string' ? r : r.c;
       c.fillStyle = color; c.fillRect(x * TS, y * TS, TS, TS);
       if (r.anim) anim.push({ x, y, kind: r.anim, c: color });
     }
-    // Decor hors de l'usine (arbres, rochers...), a l'ecart des gisements et de la dalle.
+    // Decor autour du batiment (arbres, rochers...), a l'ecart de ses murs.
     if (TH.deco) for (let y = y0; y < y0 + rows; y++) for (let x = x0; x < x0 + cols; x++) {
-      if (x >= 0 && x < W.w && y >= 0 && y < W.h) continue;
+      if (x >= -1 && x < W.w && y >= 0 && y < W.h) continue;
       if (anim.length && TH.tile && TH.tile(x, y, fbm(x, y), h2(x, y)).anim) continue;
       TH.deco(c, x * TS, y * TS, fbm(x, y), h2(x, y));
     }
-    // Dalle sous la ligne de production.
+    // Soubassement du batiment : une dalle qui deborde d'une case.
+    c.fillStyle = COL.concrete; c.fillRect(0, TS, (W.w - 1) * TS, (W.h - 2) * TS);
     if (!SC) {
-      c.fillStyle = COL.concrete; c.fillRect(TS, 8 * TS, (W.w - 2) * TS, 14 * TS);
-      for (let y = 8; y < 22; y++) for (let x = 1; x < W.w - 1; x++) if ((h2(x, y) & 7) === 0) { c.fillStyle = COL.concrete2; c.fillRect(x * TS, y * TS, TS, TS); }
-      c.strokeStyle = COL.grid; c.lineWidth = 1;
-      for (let x = 1; x < W.w; x++) { c.beginPath(); c.moveTo(x * TS + .5, 8 * TS); c.lineTo(x * TS + .5, 22 * TS); c.stroke(); }
-      for (let y = 8; y <= 22; y++) { c.beginPath(); c.moveTo(TS, y * TS + .5); c.lineTo((W.w - 1) * TS, y * TS + .5); c.stroke(); }
-      for (let x = 1; x < W.w - 1; x++) { c.fillStyle = x % 2 ? COL.stripeA : COL.stripeB; c.fillRect(x * TS, 8 * TS - 3, TS, 3); c.fillRect(x * TS, 22 * TS, TS, 3); }
+      for (let y = 1; y < W.h - 1; y++) for (let x = 0; x < W.w - 1; x++) if ((h2(x, y) & 7) === 0) { c.fillStyle = COL.concrete2; c.fillRect(x * TS, y * TS, TS, TS); }
+      c.fillStyle = COL.shadow; c.fillRect(TS, (W.h - 1) * TS, (W.w - 1) * TS, 4); c.fillRect((W.w - 1) * TS, 2 * TS, 4, (W.h - 3) * TS);
     } else {
-      c.fillStyle = COL.concrete; c.fillRect(TS, 8 * TS, (W.w - 2) * TS, 14 * TS);
-      c.strokeStyle = COL.grid; c.lineWidth = 1;
-      for (let x = 1; x < W.w; x++) { c.beginPath(); c.moveTo(x * TS + .5, 8 * TS); c.lineTo(x * TS + .5, 22 * TS); c.stroke(); }
-      for (let y = 8; y <= 22; y++) { c.beginPath(); c.moveTo(TS, y * TS + .5); c.lineTo((W.w - 1) * TS, y * TS + .5); c.stroke(); }
-      c.strokeStyle = COL.steelLight; c.setLineDash([8, 6]); c.lineWidth = 1.5; c.strokeRect(TS + .5, 8 * TS + .5, (W.w - 2) * TS, 14 * TS); c.setLineDash([]);
+      c.strokeStyle = COL.steelLight; c.setLineDash([8, 6]); c.lineWidth = 1.5; c.strokeRect(.5, TS + .5, (W.w - 1) * TS, (W.h - 2) * TS); c.setLineDash([]);
     }
     G.terrain = { cv, x0, y0, cols, rows, anim, w: W.w, theme: TH.id };
   }
@@ -171,126 +186,188 @@
     c.fillStyle = light; c.fillRect(x + 2, y + 2, w - 4, 2);
   }
 
-  function gear(c, cx, cy, r, a, color) {
-    c.save(); c.translate(cx, cy); c.rotate(a);
-    if (SC) {
-      c.strokeStyle = color; c.lineWidth = 1.5;
-      for (let i = 0; i < 8; i++) { c.rotate(Math.PI / 4); c.strokeRect(-2, -r - 3, 4, 4); }
-      c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.stroke();
-      c.beginPath(); c.arc(0, 0, r * .38, 0, Math.PI * 2); c.stroke();
-      c.restore(); return;
-    }
-    c.fillStyle = color;
-    for (let i = 0; i < 8; i++) { c.rotate(Math.PI / 4); c.fillRect(-2, -r - 3, 4, 5); }
-    c.beginPath(); c.arc(0, 0, r, 0, Math.PI * 2); c.fill();
-    c.fillStyle = COL.steelDark; c.beginPath(); c.arc(0, 0, r * .38, 0, Math.PI * 2); c.fill();
-    c.restore();
-  }
-
   function light(x, y, r, color, k = 1) { G.lights.push({ x, y, r, color, k }); }
 
-  function drawPatch(c, p, t) {
-    const rand = rnd(hash(p.r.id));
-    c.fillStyle = SC ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.18)';
-    c.fillRect(p.x * TS - 2, p.y * TS - 2, p.w * TS + 4, p.h * TS + 4);
-    if (SC) { c.strokeStyle = p.r.color; c.lineWidth = 1; c.setLineDash([3, 3]); c.strokeRect(p.x * TS - 1.5, p.y * TS - 1.5, p.w * TS + 3, p.h * TS + 3); c.setLineDash([]); }
-    const dots = Math.min(90, 10 + p.w * p.h * 2);
-    for (let i = 0; i < dots; i++) {
-      const x = p.x * TS + rand() * p.w * TS, y = p.y * TS + rand() * p.h * TS, s = 2 + Math.floor(rand() * 4);
-      c.fillStyle = shade(p.r.color, rand() * .5 - .3);
-      if (SC) c.fillRect(Math.floor(x), Math.floor(y), 2, 2); else c.fillRect(Math.floor(x), Math.floor(y), s, s);
+  // ---------- sous-agents : une allure tiree de leur type (deux « Explore » se ressemblent) ----------
+  const SUB_SHIRT = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+  const SUB_TOOL = { explore: 'pioche', plan: 'pinceau', 'general-purpose': 'cle', 'code-reviewer': 'epee' };
+  function subLook(s) {
+    const k = hash(s.type), j = hash(s.id);
+    return {
+      skin: ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac'][j % 5], hair: ['#2b1d0e', '#5a3825', '#a0522d', '#e6be8a', '#111111'][(j >>> 3) % 5],
+      hairStyle: ['court', 'long', 'chauve', 'queue'][(j >>> 6) % 4], shirt: SUB_SHIRT[k % SUB_SHIRT.length], shirtStyle: ['uni', 'rayures', 'salopette'][(k >>> 4) % 3],
+      pants: '#374151', hat: 'casquette', hatColor: shade(SUB_SHIRT[k % SUB_SHIRT.length], -.3),
+      tool: SUB_TOOL[String(s.type).toLowerCase()] || ['marteau', 'cle', 'clavier', 'pioche'][(k >>> 8) % 4],
+    };
+  }
+  const subsOf = (a) => (a.subList || []).slice().sort((p, q) => p.type.localeCompare(q.type) || p.id.localeCompare(q.id));
+
+  // Un personnage, coin haut gauche en (x, y), avec son ombre. s : echelle (agent 1,3 ; sous-agent plus petit).
+  const BIG = 1.3, SUB = 1.05;
+  function person(c, look, st, x, y, t, s = BIG) {
+    const im = avatarImg(look, st), w = 22 * s, hh = 35 * s;
+    const bob = st === 'working' && !reduced ? Math.round(Math.sin(t * 9 + x) * 1) : 0;
+    c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(x + w / 2, y + hh - 1, 8 * s, 2.6 * s, 0, 0, Math.PI * 2); c.fill();
+    if (im.complete && im.naturalWidth) c.drawImage(im, x, y - 2 + bob, w, hh);
+  }
+
+  // ---------- batiment : sols, murs, portes ----------
+  // Plancher de bois en lattes decalees.
+  function planks(c, x, y, w, hh, color = COL.floor) {
+    if (SC) { c.fillStyle = 'rgba(255,255,255,.05)'; c.fillRect(x, y, w, hh); return; }
+    c.fillStyle = color; c.fillRect(x, y, w, hh);
+    for (let yy = 0; yy < hh; yy += 5) {
+      const row = Math.floor((y + yy) / 5), off = h2(row, 7) % 24;
+      if (h2(row, 3) % 5 === 0) { c.fillStyle = shade(color, -.06); c.fillRect(x, y + yy, w, Math.min(5, hh - yy)); }
+      c.fillStyle = COL.floorLine; c.fillRect(x, y + yy, w, 1);
+      for (let xx = off; xx < w; xx += 24) c.fillRect(Math.floor(x + xx), y + yy, 1, Math.min(5, hh - yy));
     }
-    if (p.r.recent) { // une foreuse qui tourne
-      const dx = (p.x + p.w / 2 - 1) * TS, dy = (p.y + p.h - 2.4) * TS;
-      box(c, dx, dy, 2 * TS, 2 * TS, COL.steel, COL.steelLight, COL.steelDark);
-      const a = reduced ? 0 : t * 4;
-      c.save(); c.translate(dx + TS, dy + TS - 1); c.rotate(a);
-      if (SC) { c.strokeStyle = COL.steelLight; c.lineWidth = 1.5; c.strokeRect(-9, -2, 18, 4); c.strokeRect(-2, -9, 4, 18); }
-      else { c.fillStyle = COL.steelDark; c.fillRect(-9, -2, 18, 4); c.fillRect(-2, -9, 4, 18); }
-      c.restore();
-      G.emit.push(() => { c.fillStyle = COL.warn; c.fillRect(dx + 3, dy + 3, 4, 4); });
-      light(dx + TS, dy + TS, 34, COL.warn, .5);
-      // eclats de minerai qui sautent
-      if (!reduced && !SC) for (let i = 0; i < 3; i++) {
-        const q = (t * 1.3 + i / 3) % 1, ang = hash(p.r.id + i) % 628 / 100;
-        c.fillStyle = shade(p.r.color, .2); c.fillRect(dx + TS + Math.cos(ang) * q * 16, dy + TS + Math.sin(ang) * q * 10 - Math.sin(q * Math.PI) * 8, 2, 2);
+  }
+  // Dalles de pierre (couloir, forge).
+  function flags(c, x, y, w, hh, base) {
+    if (SC) { c.fillStyle = 'rgba(255,255,255,.035)'; c.fillRect(x, y, w, hh); return; }
+    c.fillStyle = base; c.fillRect(x, y, w, hh);
+    for (let ty = 0; ty < hh; ty += TS) for (let tx = 0; tx < w; tx += TS) {
+      const k = h2(Math.floor((x + tx) / TS), Math.floor((y + ty) / TS));
+      if (k % 3 === 0) { c.fillStyle = shade(base, k % 2 ? -.05 : .04); c.fillRect(x + tx, y + ty, Math.min(TS, w - tx), Math.min(TS, hh - ty)); }
+    }
+    c.fillStyle = COL.grid;
+    for (let tx = TS; tx < w; tx += TS) c.fillRect(x + tx, y, 1, hh);
+    for (let ty = TS; ty < hh; ty += TS) c.fillRect(x, y + ty, w, 1);
+  }
+  const WALL = 5; // epaisseur d'un mur, en pixels
+  function wallSeg(c, x, y, w, hh) {
+    if (w <= 0 || hh <= 0) return;
+    c.fillStyle = COL.wallDark; c.fillRect(x, y, w, hh);
+    c.fillStyle = COL.wall; c.fillRect(x, y, w - (hh > w ? 1 : 0), hh - (w >= hh ? 1 : 0));
+    c.fillStyle = COL.wallLight; if (w >= hh) c.fillRect(x, y, w, 1); else c.fillRect(x, y, 1, hh);
+    c.fillStyle = COL.wallDark; // joints entre les pierres
+    if (w >= hh) for (let k = (Math.floor(x) % 9) + 6; k < w; k += 9) c.fillRect(x + k, y + 1, 1, hh - 2);
+    else for (let k = (Math.floor(y) % 9) + 6; k < hh; k += 9) c.fillRect(x + 1, y + k, w - 2, 1);
+  }
+  // Murs d'une piece (en cases), avec une porte : { side: 'top'|'bottom', x, w, open }.
+  function walls(c, R, door) {
+    const x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS;
+    if (SC) {
+      c.strokeStyle = COL.steelLight; c.lineWidth = 1.5; c.strokeRect(x + .75, y + .75, w - 1.5, hh - 1.5);
+      if (door) {
+        const dx = door.x * TS, dw = door.w * TS, dy = door.side === 'top' ? y : y + hh;
+        c.fillStyle = COL.bg; c.fillRect(dx, dy - 2, dw, 4);
+        if (!door.open) { c.strokeStyle = COL.steelLight; c.lineWidth = 1.5; c.beginPath(); c.moveTo(dx, dy); c.lineTo(dx + dw, dy); c.stroke(); }
       }
+      return;
+    }
+    wallSeg(c, x, y + WALL, WALL, hh - 2 * WALL); wallSeg(c, x + w - WALL, y + WALL, WALL, hh - 2 * WALL);
+    for (const side of ['top', 'bottom']) {
+      const yy = side === 'top' ? y : y + hh - WALL;
+      if (door && door.side === side) {
+        const dx = door.x * TS, dw = door.w * TS;
+        wallSeg(c, x, yy, dx - x, WALL); wallSeg(c, dx + dw, yy, x + w - dx - dw, WALL);
+        c.fillStyle = COL.deskDark; c.fillRect(dx, yy, dw, WALL); // seuil
+        c.fillStyle = COL.floorLine; c.fillRect(dx + 1, yy + 1, dw - 2, WALL - 2);
+        if (!door.open) { c.fillStyle = COL.desk; c.fillRect(dx, yy, dw, WALL); c.fillStyle = COL.deskLight; c.fillRect(dx + 1, yy + 1, dw - 2, 1); }
+      } else wallSeg(c, x, yy, w, WALL);
     }
   }
 
-  function drawMachine(c, m, t) {
+  function drawHall(c, W, t) {
+    const H = W.hall, x = H.x * TS, y = H.y * TS, w = H.w * TS, hh = H.h * TS;
+    flags(c, x, y, w, hh, COL.hall);
+    if (!SC) { // tapis rouge le long du couloir, jusqu'a la forge
+      c.fillStyle = COL.carpet; c.fillRect(x + TS, y + hh / 2 - 9, w - 2 * TS, 18);
+      c.fillStyle = COL.carpetEdge; c.fillRect(x + TS, y + hh / 2 - 9, w - 2 * TS, 2); c.fillRect(x + TS, y + hh / 2 + 7, w - 2 * TS, 2);
+      wallSeg(c, x + w - WALL, y, WALL, hh); // fond du couloir
+      c.fillStyle = COL.carpetEdge; c.fillRect(0, y + hh / 2 - 9, x + TS, 18); // paillasson de l'entree
+      c.fillStyle = shade(COL.carpetEdge, -.35); for (let k = 2; k < x + TS; k += 4) c.fillRect(k, y + hh / 2 - 7, 2, 14);
+    } else {
+      c.strokeStyle = COL.steelLight; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x + w, y); c.lineTo(x + w, y + hh); c.stroke();
+      c.setLineDash([3, 4]); c.strokeStyle = 'rgba(232,241,255,.35)'; c.beginPath(); c.moveTo(x, y + hh / 2); c.lineTo(x + w, y + hh / 2); c.stroke(); c.setLineDash([]);
+    }
+    // les ailes : une arche au debut de chacune
+    for (const wg of W.wings) {
+      const ax = wg.x * TS - (wg === W.wings[0] ? 0 : TS / 2);
+      if (SC) { c.strokeStyle = 'rgba(232,241,255,.4)'; c.setLineDash([2, 3]); c.beginPath(); c.moveTo(ax, y); c.lineTo(ax, y + hh); c.stroke(); c.setLineDash([]); continue; }
+      wallSeg(c, ax - 3, y, 6, 6); wallSeg(c, ax - 3, y + hh - 6, 6, 6);
+    }
+  }
+  // Reserve : une piece sans porte qui ferme la rangee d'une aile ; « libre » quand il n'y a encore aucune session.
+  function drawFiller(c, f) {
+    const x = f.x * TS, y = f.y * TS, w = f.w * TS, hh = f.h * TS;
+    if (f.free) { planks(c, x, y, w, hh); walls(c, f, { side: f.y === TOP ? 'bottom' : 'top', x: f.x + f.w - 2.2, w: 1.6, open: false }); return; }
+    flags(c, x, y, w, hh, shade(COL.hall, -.12));
+    walls(c, f, null);
+    if (SC || w < 2 * TS) return;
+    for (let i = 0; i < Math.min(3, Math.floor(f.w / 2)); i++) { // caisses rangees le long du mur
+      const cx = x + 10 + i * 22, cy = f.y === TOP ? y + 9 : y + hh - 25;
+      c.fillStyle = COL.shadow; c.fillRect(cx + 2, cy + 3, 16, 14);
+      c.fillStyle = '#a0723c'; c.fillRect(cx, cy, 16, 14);
+      c.fillStyle = '#7a5428'; c.fillRect(cx, cy + 6, 16, 2); c.fillRect(cx + 7, cy, 2, 14);
+    }
+  }
+  function pillar(c, x, y) {
+    if (SC) { c.strokeStyle = COL.steelLight; c.lineWidth = 1.5; c.strokeRect(x * TS + .75, y * TS + .75, TS - 1.5, ROOM_H * TS - 1.5); return; }
+    c.fillStyle = COL.wallDark; c.fillRect(x * TS, y * TS, TS, ROOM_H * TS);
+    for (let r = 0; r < ROOM_H * 2; r++) { c.fillStyle = r % 2 ? COL.wall : shade(COL.wall, -.08); c.fillRect(x * TS + 1, y * TS + r * 8 + 1, TS - 2, 7); }
+  }
+
+  // ---------- la salle d'une session ----------
+  // Le bureau de l'agent principal a gauche (il est assis derriere, son ecran a cote), la table des
+  // sous-agents a droite, la porte sur le couloir. Hors de sa salle quand il est a la forge ou dans la file.
+  function roomDoor(m) { return { side: m.top ? 'bottom' : 'top', x: m.x + m.w - 2.2, w: 1.6 }; }
+  function drawRoom(c, m, t, away) {
     const a = m.a, x = m.x * TS, y = m.y * TS, w = m.w * TS, hh = m.h * TS;
-    if (a.st === 'ended') { // fantome bleu : la machine a ete demontee
-      c.strokeStyle = COL.ghost; c.setLineDash([4, 3]); c.lineWidth = 2; c.strokeRect(x + 1, y + 1, w - 2, hh - 2); c.setLineDash([]);
-      c.fillStyle = 'rgba(110,170,255,.12)'; c.fillRect(x, y, w, hh);
+    if (a.st === 'ended') { // salle fermee : contour bleu en pointilles
+      c.fillStyle = 'rgba(110,170,255,.1)'; c.fillRect(x, y, w, hh);
+      c.strokeStyle = COL.ghost; c.setLineDash([4, 3]); c.lineWidth = 2; c.strokeRect(x + 2, y + 2, w - 4, hh - 4); c.setLineDash([]);
       return;
     }
     const on = a.st === 'working' || a.holds;
-    box(c, x, y, w, hh, a.st === 'silent' ? shade(COL.machine, -.15) : COL.machine, COL.steelLight, COL.steelDark);
-    gear(c, x + w / 2, y + hh / 2 - 2, 11, on && !reduced ? t * 2.2 : 0.3, on ? COL.steelLight : shade(COL.steelLight, -.2));
-    // bras articule qui pose les pieces sur le tapis : il se balance quand la machine tourne
-    const ax = x + w / 2, ay = y + hh;
-    const swing = on && !reduced ? Math.sin(t * 3 + m.x) * .5 : 0;
-    c.save(); c.translate(ax, ay); c.rotate(swing);
-    if (SC) { c.strokeStyle = COL.steelLight; c.lineWidth = 1.5; c.strokeRect(-2, 0, 4, TS * 2.2); }
-    else { c.fillStyle = COL.steelDark; c.fillRect(-2, 0, 4, TS * 2.2); c.fillStyle = COL.warn; c.fillRect(-4, TS * 2.2 - 4, 8, 4); }
-    c.restore();
-    // voyant d'etat (lumineux : il reste visible la nuit)
+    planks(c, x, y, w, hh, a.st === 'silent' ? shade(COL.floor, -.18) : COL.floor);
+    const subs = subsOf(a), shown = subs.slice(0, MAX_SUBS);
+    // tapis sous la table des sous-agents
+    if (shown.length && !SC) { c.fillStyle = shade(COL.carpet, .1); c.fillRect(x + 4.3 * TS, y + 1.6 * TS, w - 4.9 * TS, 4.5 * TS); c.fillStyle = shade(COL.carpet, -.15); c.fillRect(x + 4.3 * TS + 3, y + 1.6 * TS + 3, w - 4.9 * TS - 6, 4.5 * TS - 6); }
+    else if (!SC) { // une plante dans le coin
+      const px = x + w - 1.4 * TS, py = m.top ? y + .9 * TS : y + hh - 2.2 * TS;
+      c.fillStyle = '#8a5a3c'; c.fillRect(px + 3, py + 10, 12, 9);
+      c.fillStyle = '#3f8f3a'; c.fillRect(px, py + 2, 8, 9); c.fillRect(px + 8, py, 9, 10); c.fillStyle = '#56a84a'; c.fillRect(px + 4, py - 3, 8, 8);
+    }
+    walls(c, m, Object.assign(roomDoor(m), { open: true }));
+    // l'agent, assis derriere son bureau
+    if (!away) person(c, a.look, poseOf(a), x + 1.0 * TS, y + .4 * TS, t);
+    const dx = x + .6 * TS, dy = y + 2.5 * TS, dw = 3.7 * TS, dh = 1.1 * TS;
+    box(c, dx, dy, dw, dh, COL.desk, COL.deskLight, COL.deskDark);
+    // ecran : il defile quand l'agent travaille, orange quand il t'attend
+    const sx = dx + 2.4 * TS, sy = dy - .95 * TS, sw = 1.1 * TS, sh = .85 * TS;
+    if (!SC) { c.fillStyle = '#26282b'; c.fillRect(sx + sw / 2 - 2, sy + sh, 4, .2 * TS); c.fillRect(sx - 1, sy - 1, sw + 2, sh + 2); }
+    const scr = a.st === 'waiting' ? COL.warn : a.st === 'idle' ? COL.ok : on ? COL.blue : null;
+    if (SC) { c.strokeStyle = COL.steelLight; c.lineWidth = 1; c.strokeRect(sx + .5, sy + .5, sw - 1, sh - 1); }
+    else { c.fillStyle = COL.screen; c.fillRect(sx, sy, sw, sh); }
+    if (scr) G.emit.push(() => {
+      c.globalAlpha = .9; c.fillStyle = scr; c.fillRect(sx + 1, sy + 1, sw - 2, sh - 2); c.globalAlpha = 1;
+      c.fillStyle = COL.screen;
+      const off = on && !reduced ? Math.floor(t * 6) % 4 : 0;
+      for (let k = 0; k < 4; k++) c.fillRect(sx + 3, sy + 2 + ((k + off) % 4) * 3, 4 + (h2(k + off, m.x) % 9), 1);
+    });
+    if (TH.machineOverlay) TH.machineOverlay(c, dx, dy, dw, dh, a, on, t);
+    // les sous-agents autour de la table : une rangee derriere, une devant
+    if (shown.length) {
+      const tx = x + 4.6 * TS, tw = w - 5.4 * TS, ty = y + 3.35 * TS;
+      const spot = (i) => ({ px: tx + 1 + Math.floor(i / 2) * 1.7 * TS, py: y + (i % 2 ? 3.85 : 1.45) * TS });
+      const sst = a.st === 'working' ? 'working' : 'ready';
+      shown.forEach((s, i) => { if (i % 2 === 0) { const p = spot(i); person(c, subLook(s), sst, p.px, p.py, t, SUB); } });
+      box(c, tx, ty, tw, .85 * TS, COL.table, shade(COL.table, .2), shade(COL.table, -.35));
+      if (!SC) for (let i = 0; i < shown.length; i++) { c.fillStyle = '#e8e4da'; c.fillRect(tx + 6 + Math.floor(i / 2) * 1.7 * TS + (i % 2) * 7, ty + 4, 6, 5); } // feuilles sur la table
+      shown.forEach((s, i) => { if (i % 2 === 1) { const p = spot(i); person(c, subLook(s), sst, p.px, p.py, t, SUB); } });
+    }
+    // voyant d'etat a cote de la porte, et plafonnier (lumineux : ils restent visibles la nuit)
     const lamp = a.st === 'waiting' ? COL.warn : a.st === 'idle' ? COL.ok : on ? COL.blue : '#6f747a';
-    c.fillStyle = '#1e1f22'; c.fillRect(x + w - 10, y + 5, 6, 6);
-    G.emit.push(() => { c.fillStyle = lamp; c.fillRect(x + w - 9, y + 6, 4, 4); });
-    light(x + w / 2, y + hh / 2, on ? 60 : 40, on ? COL.blue : lamp, on ? .9 : .6);
-    if (TH.machineOverlay) TH.machineOverlay(c, x, y, w, hh, a, on, t);
-    // fumee quand ca tourne
-    if (on && !reduced && !SC) for (let i = 0; i < 3; i++) {
-      const p = ((t * .6 + i / 3) % 1);
-      c.fillStyle = TH.smoke ? TH.smoke(1 - p) : `rgba(200,200,200,${.35 * (1 - p)})`;
-      const s = 4 + p * 8;
-      c.fillRect(x + 8 - s / 2 + p * 6, y - p * 26, s, s);
-    }
+    const D = roomDoor(m), lx = (D.x + D.w) * TS + 3, ly = m.top ? y + hh - WALL : y;
+    c.fillStyle = '#1e1f22'; c.fillRect(lx, ly - .5, 6, 6);
+    G.emit.push(() => { c.fillStyle = lamp; c.fillRect(lx + 1, ly + .5, 4, 4); });
+    light(x + w / 2, y + hh / 2, on ? 80 : 56, on ? COL.blue : '#ffe3a8', on ? .95 : .7);
+    light(lx + 3, ly + 2, 26, lamp, .8);
   }
-
-  // Tapis : chevrons qui avancent, et des pieces posees dessus quand il roule.
-  function belt(c, x1, x2, y, t, moving, items) {
-    const yy = y * TS - 6;
-    if (SC) {
-      c.strokeStyle = COL.belt; c.lineWidth = 1.5;
-      c.beginPath(); c.moveTo(x1 * TS, yy + .75); c.lineTo(x2 * TS, yy + .75); c.moveTo(x1 * TS, yy + 11.25); c.lineTo(x2 * TS, yy + 11.25); c.stroke();
-    } else {
-      c.fillStyle = COL.beltDark; c.fillRect(x1 * TS, yy, (x2 - x1) * TS, 12);
-      c.fillStyle = COL.belt; c.fillRect(x1 * TS, yy + 2, (x2 - x1) * TS, 8);
-    }
-    const off = moving && !reduced ? (t * 24) % 8 : 0;
-    c.fillStyle = SC ? COL.belt : COL.beltDark;
-    for (let x = x1 * TS + off; x < x2 * TS - 4; x += 8) { c.fillRect(Math.floor(x), yy + 3, 2, 2); c.fillRect(Math.floor(x) + 2, yy + 5, 2, 2); c.fillRect(Math.floor(x), yy + 7, 2, 2); }
-    if (moving && items) {
-      const len = (x2 - x1) * TS, step = 22;
-      for (let d = (reduced ? 0 : (t * 24) % step); d < len - 6; d += step) { c.fillStyle = items; c.fillRect(Math.floor(x1 * TS + d), yy + 3, 5, 5); }
-    }
-  }
-  function vbelt(c, x, y1, y2, t, color) {
-    const xx = x * TS - 3;
-    if (SC) { c.strokeStyle = COL.belt; c.lineWidth = 1; c.strokeRect(xx + .5, y1 * TS, 5, (y2 - y1) * TS); }
-    else { c.fillStyle = COL.beltDark; c.fillRect(xx, y1 * TS, 6, (y2 - y1) * TS); c.fillStyle = COL.belt; c.fillRect(xx + 1, y1 * TS, 4, (y2 - y1) * TS); }
-    if (!reduced) for (let i = 0; i < 3; i++) {
-      const p = (t * .35 + i / 3) % 1;
-      c.fillStyle = color; c.fillRect(xx + 1, (y1 + (y2 - y1) * p) * TS - 2, 4, 4);
-    }
-  }
-  function hbelt(c, xa, xb, y) {
-    const x1 = Math.min(xa, xb), x2 = Math.max(xa, xb);
-    if (SC) { c.strokeStyle = COL.belt; c.lineWidth = 1; c.strokeRect(x1 * TS, y * TS - 2.5, (x2 - x1) * TS + 3, 5); return; }
-    c.fillStyle = COL.beltDark; c.fillRect(x1 * TS, y * TS - 3, (x2 - x1) * TS + 3, 6);
-    c.fillStyle = COL.belt; c.fillRect(x1 * TS, y * TS - 2, (x2 - x1) * TS + 3, 4);
-  }
-
-  function crate(c, x, y, look) {
-    if (SC) { c.strokeStyle = COL.steelLight; c.lineWidth = 1.2; c.strokeRect(x - 6.5, y - 6.5, 13, 11); c.beginPath(); c.moveTo(x - 6, y - 6); c.lineTo(x + 6, y + 4); c.stroke(); return; }
-    c.fillStyle = COL.shadow; c.fillRect(x - 6, y - 4, 14, 12);
-    c.fillStyle = '#a0723c'; c.fillRect(x - 7, y - 7, 14, 12);
-    c.fillStyle = '#7a5428'; c.fillRect(x - 7, y - 2, 14, 2); c.fillRect(x - 1, y - 7, 2, 12);
-    c.fillStyle = (look && look.shirt) || COL.blue; c.fillRect(x - 5, y - 5, 4, 3);
-  }
+  const poseOf = (a) => (a.holds ? 'working' : a.st);
 
   function drawForge(c, W, t) {
     const f = W.forge, x = f.x * TS, y = f.y * TS, w = f.w * TS, hh = f.h * TS;
@@ -381,31 +458,46 @@
     c.closePath(); c.fill();
   }
 
-  // Poteaux et fils electriques : la machine qui tourne a du courant, le fil vibre.
-  function drawPoles(c, W, t) {
-    const P = W.poles;
-    c.strokeStyle = SC ? 'rgba(232,241,255,.5)' : COL.wire; c.lineWidth = 1;
-    for (let i = 1; i < P.length; i++) {
-      const a = P[i - 1], b = P[i];
-      const ax = a.x * TS, ay = a.y * TS - 14, bx = b.x * TS, by = b.y * TS - 14;
-      c.beginPath(); c.moveTo(ax, ay); c.quadraticCurveTo((ax + bx) / 2, Math.max(ay, by) + 10, bx, by); c.stroke();
-    }
-    for (const p of P) {
-      const x = p.x * TS, y = p.y * TS;
-      if (SC) { c.strokeStyle = COL.steelLight; c.lineWidth = 1.2; c.beginPath(); c.moveTo(x, y); c.lineTo(x, y - 14); c.moveTo(x - 4, y - 13); c.lineTo(x + 4, y - 13); c.stroke(); continue; }
-      c.fillStyle = COL.shadow; c.fillRect(x + 1, y - 1, 6, 3);
-      c.fillStyle = COL.pole; c.fillRect(x - 1, y - 15, 3, 16); c.fillRect(x - 5, y - 15, 11, 2);
-    }
-  }
-  function drawLamps(c, W, t) {
+  // Plafonniers du couloir (ils eclairent la nuit).
+  function drawLamps(c, W) {
     if (!TH.lamps) return;
     for (const l of W.lamps) {
       const x = l.x * TS, y = l.y * TS;
-      c.fillStyle = COL.shadow; c.fillRect(x - 2, y + 1, 7, 3);
-      c.fillStyle = COL.steelDark; c.fillRect(x, y - 9, 3, 10);
-      G.emit.push(() => { c.fillStyle = TH.lamps; c.fillRect(x - 1, y - 12, 5, 4); });
-      light(x + 1, y - 6, 90, TH.lamps, .9);
+      c.fillStyle = COL.steelDark; c.fillRect(x - 4, y - 2, 9, 4);
+      G.emit.push(() => { c.fillStyle = TH.lamps; c.fillRect(x - 3, y - 1, 7, 2); });
+      light(x, y, 70, TH.lamps, .8);
     }
+  }
+
+  // La forge : une salle au bout du couloir. Le four, les coffres des builds, et l'agent qui compile.
+  function drawForgeRoom(c, W, t) {
+    const R = W.froom, M = G.M;
+    flags(c, R.x * TS, R.y * TS, R.w * TS, R.h * TS, shade(COL.hall, -.05));
+    walls(c, R, { side: 'top', x: R.door, w: 1.6, open: true });
+    drawForge(c, W, t);
+    const okN = M.builds.filter(b => b.ok).length;
+    drawChest(c, W.okChest, true, okN);
+    drawChest(c, W.koChest, false, M.builds.length - okN);
+    // le dernier build termine glisse jusqu'a son coffre pendant quelques secondes
+    const last = M.builds[0];
+    if (last && !reduced && !SC) {
+      const age = (Date.now() - last.endedAt) / 1000;
+      if (age >= 0 && age < 4) {
+        const ch = last.ok ? W.okChest : W.koChest, k = age / 4, fx = (W.forge.x + W.forge.w) * TS, cx = fx + k * (ch.x * TS - fx), cy = (ch.y + 1) * TS;
+        c.fillStyle = COL.shadow; c.fillRect(cx - 5, cy - 3, 12, 10);
+        c.fillStyle = '#a0723c'; c.fillRect(cx - 6, cy - 6, 12, 10); c.fillStyle = '#7a5428'; c.fillRect(cx - 6, cy - 2, 12, 2);
+      }
+    }
+    if (M.lock && M.lock.agent) person(c, M.lock.agent.look, 'working', (W.forge.x + W.forge.w + .2) * TS, (W.forge.y - .2) * TS, t);
+    light((R.x + R.w / 2) * TS, (R.y + R.h / 2) * TS, 60, '#ffe3a8', .6);
+  }
+  // La salle de lancement : le pas de tir de la version au milieu.
+  function drawVersionRoom(c, W, t) {
+    const R = W.vroom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS;
+    flags(c, x, y, w, hh, shade(COL.hall, -.05));
+    if (!SC) for (let i = 0; i < R.w * 2; i++) { c.fillStyle = i % 2 ? COL.stripeA : COL.stripeB; c.fillRect(x + i * 8, y + hh - WALL - 4, 8, 4); }
+    walls(c, R, { side: 'bottom', x: R.x + .6, w: 1.2, open: true });
+    drawSilo(c, W, t);
   }
 
   // Coins de selection facon jeu : quatre equerres qui respirent autour de l'element choisi.
@@ -423,16 +515,21 @@
     const W = G.world; if (!sel || !W) return null;
     if (sel.kind === 'agent') {
       const m = W.machines.find(q => q.a.id === sel.id);
-      if (m) return { x: m.x - 1.5, y: m.y - .3, w: m.w + 1.5, h: m.h + .3 };
-      const L = G.M.lock; return L && L.agent && L.agent.id === sel.id ? W.forge : null;
+      if (m) return m;
+      const L = G.M.lock; return L && L.agent && L.agent.id === sel.id ? W.froom : null;
     }
-    if (sel.kind === 'forge') return W.forge;
-    if (sel.kind === 'silo') return W.silo;
+    if (sel.kind === 'forge') return W.froom;
+    if (sel.kind === 'silo') return W.vroom;
     if (sel.kind === 'ok') return W.okChest;
     if (sel.kind === 'ko') return W.koChest;
-    if (sel.kind === 'patch') return W.patches.find(p => p.r.id === sel.id) || null;
     return null;
   }
+
+  // Ceux qui attendent la forge font la queue dans le couloir, devant sa porte.
+  function queueSpots(W) {
+    return G.M.queue.map((q, i) => ({ q, x: W.froom.door - 1.9 - i * 1.9, y: CY + .1 }));
+  }
+  const ALI = { hat: 'casquette', hatColor: '#78a6ff', accessory: 'casque-audio', tool: 'clavier', shirt: '#334155' };
 
   function drawWorld(c, W, t) {
     const M = G.M;
@@ -444,59 +541,21 @@
       const x0 = G.cam.x / TS - 1, y0 = G.cam.y / TS - 1, x1 = (G.cam.x + vw) / TS + 1, y1 = (G.cam.y + vh) / TS + 1;
       for (const a of R.anim) if (a.x >= x0 && a.x <= x1 && a.y >= y0 && a.y <= y1) TH.animTile(c, a, t, G.emit, light);
     }
-    for (const p of W.patches) drawPatch(c, p, t);
-    // tapis d'alimentation : du gisement touche jusqu'a la machine de l'agent qui y travaille
-    W.machines.forEach((m, i) => {
-      if (m.a.st !== 'working' || !m.a.room) return;
-      const p = W.patches.find(q => q.r.id === m.a.room);
-      if (!p) return;
-      const px = p.x + p.w / 2, mx = m.x + 1.5, lane = 7 + (i % 3) * .5;
-      vbelt(c, px, p.y + p.h, lane, t, p.r.color);
-      hbelt(c, px, mx, lane);
-      vbelt(c, mx, lane, m.y, t, p.r.color);
-    });
-    // tapis principal vers la forge, puis sorties vers les coffres
-    const busy = !!M.lock;
-    belt(c, W.x0 - 1, W.forge.x, W.beltY + .5, t, busy || M.queue.length > 0);
-    belt(c, W.forge.x + W.forge.w, W.okChest.x, W.okChest.y + 1, t, busy);
-    belt(c, W.forge.x + W.forge.w, W.koChest.x, W.koChest.y + 1, t, busy);
-    if (SC) { c.strokeStyle = COL.belt; c.lineWidth = 1; c.strokeRect((W.forge.x + W.forge.w + 1.5) * TS - 3, (W.okChest.y + 1) * TS, 6, (W.koChest.y - W.okChest.y) * TS); }
-    else { c.fillStyle = COL.beltDark; c.fillRect((W.forge.x + W.forge.w + 1.5) * TS - 3, (W.okChest.y + 1) * TS, 6, (W.koChest.y - W.okChest.y) * TS); }
-    drawLamps(c, W, t);
-    for (const m of W.machines) drawMachine(c, m, t);
-    // caisses en attente sur le tapis, devant la forge
-    M.queue.forEach((q, i) => crate(c, (W.forge.x - 1 - i * 1.6) * TS, (W.beltY + .5) * TS, q.agent && q.agent.look));
-    drawForge(c, W, t);
-    const okN = M.builds.filter(b => b.ok).length, koN = M.builds.length - okN;
-    drawChest(c, W.okChest, true, okN);
-    drawChest(c, W.koChest, false, koN);
-    // le dernier build termine roule vers son coffre pendant quelques secondes
-    const last = M.builds[0];
-    if (last && !reduced) {
-      const age = (Date.now() - last.endedAt) / 1000;
-      if (age >= 0 && age < 4) {
-        const ch = last.ok ? W.okChest : W.koChest, k = age / 4;
-        crate(c, (W.forge.x + W.forge.w + k * (ch.x - W.forge.x - W.forge.w)) * TS, (ch.y + 1) * TS, last.agent && last.agent.look);
-      }
-    }
-    drawSilo(c, W, t);
-    drawPoles(c, W, t);
-    // personnages : devant leur machine ; celui qui compile a la forge
-    const people = [];
-    for (const m of W.machines) {
-      if (m.a.st === 'ended') continue;
-      if (m.a.holds) people.push({ a: m.a, x: (W.forge.x - .2) * TS, y: (W.forge.y + .6) * TS });
-      else people.push({ a: m.a, x: (m.x - 1.4) * TS, y: (m.y + .2) * TS });
-    }
-    people.push({ you: true, x: W.you.x * TS, y: W.you.y * TS });
-    people.sort((p, q) => p.y - q.y);
-    for (const p of people) {
-      const st = p.you ? 'ready' : p.a.st;
-      const im = p.you ? avatarImg({ hat: 'casquette', hatColor: '#78a6ff', accessory: 'casque-audio', tool: 'clavier', shirt: '#334155' }, st) : avatarImg(p.a.look, p.a.holds ? 'working' : st);
-      const bob = st === 'working' && !reduced ? Math.round(Math.sin(t * 9 + p.x) * 1) : 0;
-      c.fillStyle = 'rgba(0,0,0,.35)'; c.beginPath(); c.ellipse(p.x + 11, p.y + 34, 9, 3, 0, 0, Math.PI * 2); c.fill();
-      if (im.complete && im.naturalWidth) c.drawImage(im, p.x, p.y - 2 + bob, 22, 35);
-    }
+    drawHall(c, W, t);
+    for (const f of W.fillers) drawFiller(c, f);
+    for (const px of W.pillars) { pillar(c, px, TOP); pillar(c, px, BOT); }
+    // un agent a la forge ou dans la file a quitte son bureau
+    const away = new Set(M.queue.filter(q => q.agent).map(q => q.agent.id));
+    if (M.lock && M.lock.agent) away.add(M.lock.agent.id);
+    for (const m of W.machines) drawRoom(c, m, t, away.has(m.a.id));
+    drawForgeRoom(c, W, t);
+    drawVersionRoom(c, W, t);
+    drawLamps(c, W);
+    // dans le couloir : la file devant la forge, et toi a l'entree
+    const people = queueSpots(W).map(p => ({ look: p.q.agent ? p.q.agent.look : {}, st: 'ready', x: p.x * TS, y: p.y * TS }));
+    people.push({ look: ALI, st: 'ready', x: W.you.x * TS, y: W.you.y * TS });
+    people.sort((p, q) => p.x - q.x);
+    for (const p of people) person(c, p.look, p.st, p.x, p.y, t);
     // selection
     const b = boundsOf(G.sel);
     if (b) brackets(c, b, t);
@@ -504,13 +563,13 @@
     if (hv) { c.globalAlpha = .45; brackets(c, hv, 0); c.globalAlpha = 1; }
   }
 
-  // Alertes facon jeu, dessinees apres la nuit pour rester visibles : triangle qui clignote au-dessus des machines.
+  // Alertes facon jeu, dessinees apres la nuit pour rester visibles : triangle qui clignote au-dessus de l'ecran.
   function drawAlerts(c, W, t) {
     for (const m of W.machines) {
       if (m.a.st !== 'waiting' && m.a.st !== 'idle') continue;
       const blink = reduced || Math.floor(t * 2) % 2 === 0;
       if (!blink && m.a.st === 'waiting') continue;
-      const x = (m.x + 1.5) * TS, y = m.y * TS - 14;
+      const x = (m.x + 3.55) * TS, y = (m.y + .95) * TS;
       c.fillStyle = m.a.st === 'waiting' ? COL.warn : COL.ok;
       c.beginPath(); c.moveTo(x, y - 10); c.lineTo(x + 10, y + 7); c.lineTo(x - 10, y + 7); c.closePath(); c.fill();
       c.fillStyle = '#1e1f22'; c.fillRect(x - 1, y - 4, 2, 6); c.fillRect(x - 1, y + 3, 2, 2);
@@ -556,6 +615,11 @@
   // Textes en coordonnees ecran (nets a tout zoom).
   function label(c, text, sx, sy, opts = {}) {
     c.font = `${opts.weight || 600} ${opts.size || 13}px ${TH.labelFont || '"Barlow Condensed", "Segoe UI", sans-serif'}`;
+    // trop long pour sa place : on coupe avec des points de suspension
+    if (opts.max && c.measureText(text).width + 10 > opts.max) {
+      while (text.length > 4 && c.measureText(text + '…').width + 10 > opts.max) text = text.slice(0, -1);
+      text = text.trimEnd() + '…';
+    }
     const w = c.measureText(text).width + 10;
     c.fillStyle = opts.bg || COL.labelBg;
     c.fillRect(Math.round(sx - w / 2), Math.round(sy - 9), Math.round(w), 18);
@@ -563,27 +627,44 @@
     c.fillStyle = opts.color || COL.text; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText(text, Math.round(sx), Math.round(sy));
   }
+  const edgeOf = (a) => (a.st === 'waiting' ? COL.warn : a.st === 'idle' ? COL.ok : a.st === 'working' ? COL.blue : '#777');
   function drawLabels(c, W) {
     const z = G.cam.z, S = (x, y) => [(x * TS - G.cam.x) * z, (y * TS - G.cam.y) * z];
     const small = z < 1.4;
-    if (z >= .9) for (const p of W.patches) {
-      const [sx, sy] = S(p.x + p.w / 2, p.y + p.h + .9);
-      label(c, small ? p.r.name : `${p.r.name} ${T.num(p.r.count)}${p.r.recent ? '  +' + p.r.recent : ''}`, sx, sy, { edge: p.r.color, size: small ? 11 : 13 });
+    // ailes : le nom du projet (ou du dossier) dans le couloir
+    if (z >= .5) for (const wg of W.wings) {
+      const [sx, sy] = S(wg.x + wg.w / 2, CY + 1.5);
+      label(c, wg.name, sx, sy, { edge: wg.project ? COL.blue : '#999', size: small ? 11 : 13, max: wg.w * TS * z, color: COL.text, weight: 600, bg: 'rgba(20,20,22,.55)' });
     }
+    // plaque de chaque salle, dehors contre le mur : le personnage, puis sa tache ou le titre de la session
     for (const m of W.machines) {
-      const [sx, sy] = S(m.x + 1.5, m.y + m.h + .7);
-      const sel = G.sel && G.sel.kind === 'agent' && G.sel.id === m.a.id;
-      label(c, m.a.name, sx, sy, { edge: m.a.st === 'waiting' ? COL.warn : m.a.st === 'idle' ? COL.ok : m.a.st === 'working' ? COL.blue : '#777', color: sel ? COL.select : COL.text, size: small ? 11 : 14, weight: 700 });
+      const a = m.a, [sx, sy] = S(m.x + m.w / 2, m.top ? m.y - .55 : m.y + m.h + .55);
+      const sel = G.sel && G.sel.kind === 'agent' && G.sel.id === a.id;
+      const subject = a.task ? a.task.title : a.role;
+      label(c, !small && subject ? `${a.name} · ${subject}` : a.name, sx, sy, { edge: edgeOf(a), color: sel ? COL.select : COL.text, size: small ? 11 : 14, weight: 700, max: Math.max(70, (m.w - .3) * TS * z) });
+      const subs = subsOf(a);
+      if (a.st === 'ended' || !subs.length) continue;
+      if (z >= 2.2) subs.slice(0, MAX_SUBS).forEach((s, i) => {
+        const [px, py] = S(m.x + 4.6 + .78 + Math.floor(i / 2) * 1.7, m.y + (i % 2 ? 6.35 : 1.2));
+        label(c, s.type, px, py, { size: 10, weight: 600, max: 1.7 * TS * z });
+      });
+      if (subs.length > MAX_SUBS && z >= .9) { const [px, py] = S(m.x + m.w - 1, m.y + 3.75); label(c, `+${subs.length - MAX_SUBS}`, px, py, { size: 11, weight: 700 }); }
     }
-    const [fx, fy] = S(W.forge.x + 2, W.forge.y + W.forge.h + .8);
-    label(c, G.M.lock ? `Forge : ${G.M.lock.agent ? G.M.lock.agent.name : G.M.lock.label}` : 'Forge libre', fx, fy, { edge: G.M.lock ? COL.fire : '#777', weight: 700 });
-    const [ox, oy] = S(W.okChest.x + 1, W.okChest.y - .6);
-    label(c, `Réussis ${G.M.builds.filter(b => b.ok).length}`, ox, oy, { edge: COL.ok, size: 12 });
-    const [kx, ky] = S(W.koChest.x + 1, W.koChest.y + W.koChest.h + .7);
-    label(c, `Échecs ${G.M.builds.filter(b => !b.ok).length}`, kx, ky, { edge: COL.ko, size: 12 });
+    const L = G.M.lock;
+    const [fx, fy] = S(W.froom.x + W.froom.w / 2, W.froom.y + W.froom.h + .55);
+    label(c, L ? `Forge : ${L.agent ? L.agent.name : L.label}` : 'Forge libre', fx, fy, { edge: L ? COL.fire : '#777', weight: 700 });
+    if (z >= 1.1) {
+      const [ox, oy] = S(W.okChest.x + 1, W.okChest.y + W.okChest.h + .3);
+      label(c, `Réussis ${G.M.builds.filter(b => b.ok).length}`, ox, oy, { edge: COL.ok, size: 11 });
+      const [kx, ky] = S(W.koChest.x + 1, W.koChest.y + W.koChest.h + .3);
+      label(c, `Échecs ${G.M.builds.filter(b => !b.ok).length}`, kx, ky, { edge: COL.ko, size: 11 });
+    }
+    if (z >= .8) queueSpots(W).forEach((p, i) => { if (p.q.agent) { const [qx, qy] = S(p.x + .9, CY + 2.75); label(c, i ? `${i + 1}e` : 'suivant', qx, qy, { size: 10, edge: COL.fire }); } });
     const camp = G.M.campaign;
-    const [qx, qy] = S(W.silo.x + W.silo.w / 2, W.silo.y + W.silo.h + .8);
-    label(c, camp ? (camp.won ? `${camp.name} lancée` : `Fusée ${camp.name} : ${camp.proven}/${camp.total}`) : 'Silo vide : prépare une version', qx, qy, { edge: camp && camp.won ? COL.ok : COL.blue, weight: 700 });
+    const [vx, vy] = S(W.vroom.x + W.vroom.w / 2, W.vroom.y - .55);
+    label(c, camp ? (camp.won ? `${camp.name} lancée` : `Version ${camp.name} : ${camp.proven}/${camp.total}`) : 'Lancement : prépare une version', vx, vy, { edge: camp && camp.won ? COL.ok : COL.blue, weight: 700 });
+    const [yx, yy] = S(W.you.x + .9, CY + 2.75);
+    if (z >= 1.1) label(c, 'Toi', yx, yy, { size: 10, edge: COL.select });
   }
 
   // ---------- boucle ----------
@@ -600,7 +681,7 @@
     const W = G.world; if (!W) return;
     const vw = G.canvas.width / G.dpr, vh = G.canvas.height / G.dpr;
     const wide = vw > 900;
-    // Sur grand ecran, le HUD du mode prend des bords : on cadre l'usine dans la zone libre.
+    // Sur grand ecran, le HUD du mode prend des bords : on cadre le batiment dans la zone libre.
     const P = wide && MODE.pads ? MODE.pads(!!G.sel || !!G.side) : { l: 8, r: 8, t: 8, b: 8 };
     const padL = P.l, padR = P.r, padT = P.t, padB = P.b;
     const z = Math.min((vw - padL - padR) / (W.w * TS), (vh - padT - padB) / (W.h * TS));
@@ -612,7 +693,7 @@
     G.cam.y = W.h * TS / 2 - (padT + (vh - padT - padB) / 2) / G.cam.z;
     G.goal = null;
   }
-  // La camera ne s'eloigne jamais au point de perdre l'usine de vue.
+  // La camera ne s'eloigne jamais au point de perdre le batiment de vue.
   function clampCam() {
     const W = G.world; if (!W) return;
     const { vw, vh } = view();
@@ -661,11 +742,12 @@
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.fillStyle = COL.mini; c.fillRect(0, 0, m.width, m.height);
     c.setTransform(s, 0, 0, s, 0, 0);
-    c.fillStyle = COL.concrete; c.fillRect(TS, 8 * TS, (W.w - 2) * TS, 14 * TS);
-    for (const p of W.patches) { c.fillStyle = p.r.color; c.fillRect(p.x * TS, p.y * TS, p.w * TS, p.h * TS); }
-    for (const mm of W.machines) { c.fillStyle = mm.a.st === 'waiting' ? COL.warn : mm.a.st === 'idle' ? COL.ok : mm.a.st === 'working' ? COL.blue : '#777'; c.fillRect(mm.x * TS, mm.y * TS, mm.w * TS, mm.h * TS); }
-    c.fillStyle = G.M.lock ? COL.fire : COL.forge; c.fillRect(W.forge.x * TS, W.forge.y * TS, W.forge.w * TS, W.forge.h * TS);
-    c.fillStyle = COL.steelLight; c.fillRect(W.silo.x * TS, W.silo.y * TS, W.silo.w * TS, W.silo.h * TS);
+    c.fillStyle = COL.concrete; c.fillRect(0, TS, (W.w - 1) * TS, (W.h - 2) * TS);
+    c.fillStyle = COL.hall; c.fillRect(W.hall.x * TS, W.hall.y * TS, W.hall.w * TS, W.hall.h * TS);
+    for (const f of W.fillers) { c.fillStyle = COL.wallDark; c.fillRect(f.x * TS, f.y * TS, f.w * TS, f.h * TS); }
+    for (const mm of W.machines) { c.fillStyle = mm.a.st === 'ended' ? COL.ghost : edgeOf(mm.a); c.fillRect(mm.x * TS + 6, mm.y * TS + 6, mm.w * TS - 12, mm.h * TS - 12); }
+    c.fillStyle = G.M.lock ? COL.fire : COL.forge; c.fillRect(W.froom.x * TS + 6, W.froom.y * TS + 6, W.froom.w * TS - 12, W.froom.h * TS - 12);
+    c.fillStyle = COL.steelLight; c.fillRect(W.vroom.x * TS + 6, W.vroom.y * TS + 6, W.vroom.w * TS - 12, W.vroom.h * TS - 12);
     const { vw, vh } = view();
     c.strokeStyle = '#fff'; c.lineWidth = 2 / s; c.strokeRect(Math.max(G.cam.x, 0), Math.max(G.cam.y, 0), Math.min(vw, W.w * TS - Math.max(G.cam.x, 0)), Math.min(vh, W.h * TS - Math.max(G.cam.y, 0)));
   }
@@ -677,26 +759,28 @@
   }
   function hit(p) {
     const W = G.world, inR = (o, pad = 0) => p.x >= (o.x - pad) * TS && p.x <= (o.x + o.w + pad) * TS && p.y >= (o.y - pad) * TS && p.y <= (o.y + o.h + pad) * TS;
-    for (const m of W.machines) {
-      if (inR({ x: m.x - 1.6, y: m.y - .2, w: m.w + 1.6, h: m.h + 1.2 })) return { kind: 'agent', id: m.a.id };
-    }
-    if (G.M.lock) { const a = G.M.lock.agent; if (a && inR({ x: W.forge.x - .4, y: W.forge.y + .4, w: 1.6, h: 2.4 })) return { kind: 'agent', id: a.id }; }
-    if (inR(W.forge, .3)) return { kind: 'forge' };
-    if (inR(W.okChest, .3)) return { kind: 'ok' };
-    if (inR(W.koChest, .3)) return { kind: 'ko' };
-    if (inR(W.silo)) return { kind: 'silo' };
-    for (const pt of W.patches) if (inR(pt, .2)) return { kind: 'patch', id: pt.r.id };
+    for (const q of queueSpots(W)) if (q.q.agent && inR({ x: q.x, y: q.y, w: 1.8, h: 2.9 })) return { kind: 'agent', id: q.q.agent.id };
+    for (const m of W.machines) if (inR(m)) return { kind: 'agent', id: m.a.id };
+    const L = G.M.lock;
+    if (L && L.agent && inR({ x: W.forge.x + W.forge.w + .2, y: W.forge.y - .2, w: 1.8, h: 2.9 })) return { kind: 'agent', id: L.agent.id };
+    if (inR(W.okChest, .2)) return { kind: 'ok' };
+    if (inR(W.koChest, .2)) return { kind: 'ko' };
+    if (inR(W.froom)) return { kind: 'forge' };
+    if (inR(W.vroom)) return { kind: 'silo' };
     return null;
   }
   // Infobulle facon jeu : le nom de ce qu'on survole et son etat en une ligne.
   function tipOf(s) {
     const M = G.M;
-    if (s.kind === 'agent') { const a = M.agents.find(x => x.id === s.id); return a && [a.name, a.holds ? `${a.stText}, à la forge` : a.stText]; }
+    if (s.kind === 'agent') {
+      const a = M.agents.find(x => x.id === s.id);
+      return a && [a.name, [a.holds ? `${a.stText}, à la forge` : a.queuePos ? `${a.stText}, ${a.queuePos}e devant la forge` : a.stText,
+        a.subs ? T.plural(a.subs, 'sous-agent', 'sous-agents') : ''].filter(Boolean).join(', ')];
+    }
     if (s.kind === 'forge') return ['Forge', M.lock ? `${M.lock.kindText} de ${M.lock.agent ? M.lock.agent.name : M.lock.label}` : 'Libre'];
     if (s.kind === 'ok') return ['Coffre des réussis', T.plural(M.builds.filter(b => b.ok).length, 'build', 'builds')];
     if (s.kind === 'ko') return ['Coffre des échecs', T.plural(M.builds.filter(b => !b.ok).length, 'build', 'builds')];
-    if (s.kind === 'silo') return ['Silo à fusée', M.campaign ? `${M.campaign.name} : ${M.campaign.proven} sur ${M.campaign.total}` : 'Aucune version'];
-    if (s.kind === 'patch') { const r = M.inv && T.room(M.inv, s.id); return r && [`Gisement ${r.name}`, `${T.num(r.count)} éléments${r.recent ? `, ${r.recent} modifiés` : ''}`]; }
+    if (s.kind === 'silo') return ['Salle de lancement', M.campaign ? `${M.campaign.name} : ${M.campaign.proven} sur ${M.campaign.total}` : 'Aucune version'];
     return null;
   }
   function showTip(e, s) {
@@ -818,7 +902,7 @@
   function rowsOf(pairs) { return h('dl', { class: 'us-dl' }, pairs.filter(Boolean).map(([k, v]) => [h('dt', null, k), h('dd', null, v)])); }
   function resultTxt(b) { return b ? [h('span', { class: b.ok ? 'us-t-ok' : 'us-t-ko' }, b.ok ? 'réussi' : 'en échec'), ' ', b.summary || '', ', ', T.agoEl(b.endedAt)] : null; }
 
-  // La version : liste des features et de leurs preuves, reutilisee par la fiche du silo et par le mode « La version ».
+  // La version : liste des features et de leurs preuves, reutilisee par la fiche de la salle de lancement et par le mode « La version ».
   function featureList(c) {
     const verb = (k) => h('span', { class: k.ok === true ? 'us-t-ok' : k.ok === false ? 'us-t-ko' : 'us-dim' }, k.verb);
     return h('ul', { class: 'us-feats' },
@@ -860,8 +944,8 @@
         rowsOf([
           a.prompt && ['Demande', a.prompt],
           a.tool && ['Dernière action', [h('b', null, a.tool.name), ' ', a.tool.summary, ', ', T.agoEl(a.tool.at)]],
-          a.roomName && ['Gisement', a.roomName],
-          a.subs && ['Aides', T.plural(a.subs, 'sous-agent', 'sous-agents')],
+          a.roomName && ['Domaine touché', a.roomName],
+          a.subs && ['Dans sa salle', `${T.plural(a.subs, 'sous-agent', 'sous-agents')} : ${[...new Set(a.subList.map(x => x.type))].join(', ')}`],
           a.lastBuild && ['Compilation', resultTxt(a.lastBuild)],
           a.lastTest && ['Tests', resultTxt(a.lastTest)],
           a.docs && ['Doc UE', h('span', { class: a.docs.tone === 'warn' ? 'us-t-warn' : a.docs.tone === 'ok' ? 'us-t-ok' : 'us-dim' }, a.docs.text)],
@@ -873,9 +957,9 @@
     } else if (s.kind === 'patch') {
       const r = M.inv && T.room(M.inv, s.id);
       if (!r) return null;
-      title = `Gisement ${r.name}`;
+      title = `Domaine ${r.name}`;
       body = [
-        h('p', null, h('b', null, T.num(r.count)), ' éléments. ', r.recent ? h('span', { class: 'us-t-warn' }, `${r.recent} modifiés ces 3 derniers jours : la foreuse tourne.`) : 'Rien de modifié ces 3 derniers jours.'),
+        h('p', null, h('b', null, T.num(r.count)), ' éléments. ', r.recent ? h('span', { class: 'us-t-warn' }, `${r.recent} modifiés ces 3 derniers jours.`) : 'Rien de modifié ces 3 derniers jours.'),
         r.workers.length ? h('p', null, 'Y travaille : ', h('b', null, r.workers.join(', '))) : null,
         rowsOf([['Rangé dans', r.folders.slice(0, 5).map(f => `${f.name} (${T.num(f.n)})`).join(', ')], ['Derniers', r.latest.slice(0, 5).map(l => l.name).join(', ')]]),
         h('div', { class: 'us-actions' }, btn('Recompter le projet', T.act.refreshMap)),
@@ -884,11 +968,11 @@
       const L = M.lock;
       title = 'La forge';
       body = [
-        h('p', { class: 'us-dim' }, 'Un seul build, test ou package Unreal à la fois sur le PC. Les autres attendent sur le tapis.'),
+        h('p', { class: 'us-dim' }, 'Un seul build, test ou package Unreal à la fois sur le PC. Les autres font la queue dans le couloir, devant la porte.'),
         L ? [h('p', null, h('b', null, `${L.kindText} de ${L.agent ? L.agent.name : L.label}`), L.target ? ` (${L.target})` : '', ', depuis ', T.forEl(L.since)),
           h('code', { class: 'us-code' }, L.command), h('div', { class: 'us-actions' }, btn('Libérer la forge', T.act.release, 'us-danger', { title: 'Si le build est bloqué' }))]
           : h('p', { class: 'us-t-ok' }, 'Libre : le prochain agent qui compile passe tout de suite.'),
-        M.queue.length ? [h('div', { class: 'us-sub' }, 'Sur le tapis'), h('ol', { class: 'us-list' }, M.queue.map(q => h('li', null, h('b', null, q.agent ? q.agent.name : q.label), ` : ${T.lower(q.kindText)}, attend depuis `, T.forEl(q.since))))] : null,
+        M.queue.length ? [h('div', { class: 'us-sub' }, 'Dans la file'), h('ol', { class: 'us-list' }, M.queue.map(q => h('li', null, h('b', null, q.agent ? q.agent.name : q.label), ` : ${T.lower(q.kindText)}, attend depuis `, T.forEl(q.since))))] : null,
         M.chantiers.length ? [h('div', { class: 'us-sub' }, 'Zones réservées par les agents'), h('ul', { class: 'us-list' }, M.chantiers.map(x => h('li', null, h('b', null, x.file), ` ${x.text} `, h('span', { class: 'us-dim' }, T.agoEl(x.mtime)))))] : null,
       ];
     } else if (s.kind === 'ok' || s.kind === 'ko') {
@@ -901,7 +985,7 @@
       ];
     } else if (s.kind === 'silo') {
       const c = M.campaign;
-      title = c ? `Silo : ${c.name}` : 'Silo à fusée';
+      title = c ? `Lancement : ${c.name}` : 'Salle de lancement';
       if (!c) body = [h('p', null, 'Chaque version est une fusée : ses features en sont les pièces, et l\'épreuve finale (le package) est le lancement.'), h('div', { class: 'us-actions' }, btn('Préparer une version', T.act.openBuilder, 'us-go'))];
       else if (c.won) body = [h('p', { class: 'us-t-ok' }, h('b', null, 'Fusée lancée : version validée.')), wonRows(c), h('div', { class: 'us-actions' }, btn('Ranger', T.act.archive), btn('Préparer la suivante', T.act.next, 'us-go'))];
       else body = [
@@ -934,7 +1018,7 @@
   function worldSwitch() {
     const sel = h('select', { name: 'ambiance', 'aria-label': 'Ambiance du jeu', onchange: (e) => {
       try { localStorage.setItem('tower.world', e.target.value); } catch { /* stockage bloque */ }
-      loadWorld(e.target.value, () => { G.dirty = true; G.canvas.setAttribute('aria-label', `L'usine (${TH.name}) : agents, forge et version, en direct`); renderHud(); });
+      loadWorld(e.target.value, () => { G.dirty = true; G.canvas.setAttribute('aria-label', `La tour (${TH.name}) : une salle par session, ses agents, la forge et la version, en direct`); renderHud(); });
     } }, WORLDS.map(([id, name]) => h('option', { value: id, selected: TH && TH.id === id }, name)));
     return h('label', { class: 'tw-switch' }, h('span', null, 'Ambiance'), sel);
   }
@@ -956,21 +1040,21 @@
     agent: {
       atraiter: 'Quand il a fini, une carte « … a fini » arrive dans la liste à gauche.',
       equipe: 'Sa carte apparaît en bas, avec ce qu\'il fait et depuis quand.',
-      version: 'Il apparaît sur l\'usine ; la version n\'est pas touchée.',
+      version: 'Sa salle apparaît dans la tour ; la version n\'est pas touchée.',
       coupdoeil: 'La phrase du bas passe à « Tout tourne », puis une notification dit qu\'il a fini.',
       clavier: 'Tape son nom dans la barre du haut : Entrée ouvre sa fiche.',
     },
     question: {
       atraiter: 'Sa question arrive en haut de la liste à gauche, en orange.',
       equipe: 'Sa carte passe en orange : « attend ta réponse ».',
-      version: 'L\'usine le montre en orange ; l\'onglet du navigateur affiche (1).',
+      version: 'Sa salle passe en orange ; l\'onglet du navigateur affiche (1).',
       coupdoeil: 'La phrase du bas dit « … t\'attend » et une notification s\'affiche.',
       clavier: 'La barre propose sa question en premier.',
     },
   };
   const TUTO_LOOK = {
-    forge: 'Regarde le tapis : les caisses partent à la forge une par une, la seconde attend devant.',
-    echec: 'La caisse finit au coffre rouge ; clique dessus pour lire l\'erreur.',
+    forge: 'Regarde le couloir : un agent entre dans la forge, le second fait la queue devant la porte.',
+    echec: 'Le build finit au coffre rouge de la forge ; clique dessus pour lire l\'erreur.',
     vrai: 'Ouvre un terminal dans le dossier du projet, lance claude et demande : « Liste les dossiers de Content, sans rien modifier. »',
   };
   let tutoFocus = '';
@@ -981,13 +1065,13 @@
     const builds = (pre) => M.builds.filter(b => String(b.raw.sessionId).startsWith(pre));
     if (id === 'agent') {
       const a = ag('tuto-agent');
-      return [['Sa machine apparaît dans l\'usine', !!a], [`Elle est rattachée à ${proj}`, !!a && a.project === proj],
+      return [['Sa salle apparaît dans la tour', !!a], [`Elle est dans l\'aile de ${proj}`, !!a && a.project === proj],
         ['Il lit des fichiers : la fiche montre l\'outil', !!a && !!a.tool], ['Il a fini : la tour te le dit', !!a && a.st === 'idle']];
     }
     if (id === 'question') {
       const a = ag('tuto-question');
       const done = !!a && a.st === 'idle';
-      return [['Sa machine apparaît dans l\'usine', !!a], ['Il attend ta réponse', !!a && (a.st === 'waiting' || done)], ['Tu as vu sa question', done]];
+      return [['Sa salle apparaît dans la tour', !!a], ['Il attend ta réponse', !!a && (a.st === 'waiting' || done)], ['Tu as vu sa question', done]];
     }
     if (id === 'forge') {
       const bs = builds('tuto-forge'), b2 = bs.find(b => b.raw.sessionId === 'tuto-forge-b');
@@ -999,7 +1083,7 @@
     if (id === 'echec') {
       const b = builds('tuto-echec')[0];
       return [['Le faux build passe à la forge', !!b || (!!M.lock && M.lock.raw.sessionId === 'tuto-echec')],
-        ['Il échoue : la caisse va au coffre rouge', !!b && !b.ok], ['La tour a lu l\'erreur de compilation', !!b && b.lines.length > 0]];
+        ['Il échoue : le build va au coffre rouge', !!b && !b.ok], ['La tour a lu l\'erreur de compilation', !!b && b.lines.length > 0]];
     }
     const real = M.agents.find(a => !a.id.startsWith('tuto-') && a.project === proj && (a.raw.firstSeen || 0) >= t.startedAt);
     return [[`Un nouvel agent apparaît sur ${proj}`, !!real], ['Il travaille : la fiche montre son outil', !!real && !!real.tool], ['Il a fini', !!real && real.st === 'idle']];
@@ -1313,15 +1397,16 @@
     // Un mode peut rendre les memes noeuds d'une fois sur l'autre (un champ de saisie garde alors son focus).
     const nodes = (MODE.hud ? MODE.hud(M, api) : []).filter(Boolean);
     if (!same(nodes, [...G.hud.mode.children])) G.hud.mode.replaceChildren(...nodes);
-    if (!M.inv) G.hud.empty.replaceChildren(h('p', null, M.projects.length ? 'La tour compte le projet : les gisements apparaissent dans un instant.' : 'Connecte un projet Unreal : ses domaines deviennent les gisements de l\'usine.'));
-    G.hud.empty.hidden = !!M.inv;
+    const none = !G.world || !G.world.machines.length;
+    if (none) G.hud.empty.replaceChildren(h('p', null, M.projects.length ? 'Aucune session ouverte. Lance Claude Code (ou une tâche) : sa salle apparaît ici, avec son personnage et ses sous-agents.' : 'Connecte ton projet Unreal (bouton en haut), puis lance Claude Code : chaque session aura sa salle ici.'));
+    G.hud.empty.hidden = !none;
     G.hud.tutoBtn.classList.toggle('on', G.side === 'tuto');
     G.hud.taskBtn.classList.toggle('on', G.side === 'taches');
     G.hud.tutoBtn.classList.toggle('run', !!(M.S.tuto && M.S.tuto.running));
   }
 
   function build(root) {
-    G.canvas = h('canvas', { class: 'us-canvas', role: 'img', 'aria-label': `L'usine (${TH.name}) : agents, forge et version, en direct` });
+    G.canvas = h('canvas', { class: 'us-canvas', role: 'img', 'aria-label': `La tour (${TH.name}) : une salle par session, ses agents, la forge et la version, en direct` });
     G.mini = h('canvas', { class: 'us-mini', width: 220, height: 120, 'aria-label': 'Mini-carte : clique pour déplacer la vue' });
     G.ctx = G.canvas.getContext('2d');
     G.hud = {
