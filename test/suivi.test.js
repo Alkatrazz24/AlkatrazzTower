@@ -68,6 +68,16 @@ test('une demande injectee (balise avec _) ne devient pas la demande affichee', 
   assert.strictEqual(s.agents.P.prompt, '');
 });
 
+test('une tache lancee avant le suivi garde son rapport lisible', () => {
+  const s = new TowerState();
+  s.load({ agents: { B: { sessionId: 'B', status: 'idle', lastSeen: 50, task: { id: 'relecture', title: 'Relecture', at: 10 },
+    lastFile: { path: 'C:\\CTB\\Saved\\Tour\\rapports\\relecture.md', at: 40, tool: 'Write' } } } });
+  const k = s.agents.B.task;
+  assert.strictEqual(k.files[0].path, 'C:\\CTB\\Saved\\Tour\\rapports\\relecture.md');
+  assert.strictEqual(k.doneAt, 50);
+  assert.deepStrictEqual(k.counts, { reads: 0, edits: 0, cmds: 0 });
+});
+
 test('l\'ancien nom « Forge » est renomme au chargement', () => {
   const s = new TowerState();
   s.load({ characters: { c1: { id: 'c1', name: 'Forge', look: {} } } });

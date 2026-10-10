@@ -655,6 +655,14 @@ class TowerState {
     if (Array.isArray(saved.projects)) this.projects = saved.projects;
     if (Array.isArray(saved.tasks)) this.tasks = saved.tasks;
     for (const a of Object.values(this.agents)) delete a.building; // aucun verrou ne survit a un redemarrage
+    // Tache lancee avant le suivi : on la complete, et son dernier fichier ecrit dans Saved/Tour (son rapport) se lit.
+    for (const a of Object.values(this.agents)) {
+      if (!a.task || a.task.counts) continue;
+      a.task = { ...suivi.start(a.task.id, a.task.title, a.task.at), ...a.task, counts: { reads: 0, edits: 0, cmds: 0 } };
+      const f = a.lastFile;
+      if (f && suivi.isTowerFile(f.path) && f.at >= a.task.at) a.task.files = [{ path: f.path, tool: f.tool, at: f.at, tower: true, n: 1 }];
+      if (a.status === 'idle' || a.status === 'ended') a.task.doneAt = a.lastSeen;
+    }
   }
 }
 
