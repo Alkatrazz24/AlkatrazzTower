@@ -9,7 +9,9 @@
 //   - au bout du couloir, la forge : un seul build a la fois, les autres agents font la queue devant
 //     sa porte ; dedans, un coffre des builds reussis et un coffre des echecs ;
 //   - en face, la salle de lancement : la version a sortir est une fusee, chaque feature prete l'eleve,
-//     l'epreuve finale est le lancement.
+//     l'epreuve finale est le lancement ;
+//   - a cote, la bibliotheque : un livre par skill installe, rouge s'il est casse, poussiereux s'il ne
+//     sert jamais.
 // Par-dessus, un HUD : compteurs en haut, version a gauche, mini-carte et alertes a droite, barre
 // rapide en bas, et la fiche de ce qu'on a selectionne (clic sur le jeu, ou touches 1 a 9).
 
@@ -128,13 +130,16 @@
     const okChest = { x: fx + 7.2, y: BOT + 1.4, w: 2, h: 2 }, koChest = { x: fx + 7.2, y: BOT + 4.2, w: 2, h: 2 };
     const vroom = { x: fx, y: TOP, w: 10, h: ROOM_H };
     const silo = { x: fx + 2, y: TOP + .5, w: 6, h: 6 };
-    const right = fx + 10;
+    // la bibliotheque des skills, apres la salle de lancement ; une reserve en face
+    const lroom = { x: fx + 10, y: TOP, w: 8, h: ROOM_H };
+    fillers.push({ x: fx + 10, y: BOT, w: 8, h: ROOM_H });
+    const right = fx + 18;
     const hall = { x: 1, y: CY, w: right - 1, h: CH };
     // Plafonniers du couloir : ils eclairent la nuit.
     const lamps = [];
     for (let lx = 2.5; lx < right - 1; lx += 6) lamps.push({ x: lx, y: CY + 1.5 });
     const you = { x: 1.2, y: CY + .1 };
-    return { machines, fillers, wings: wingList, pillars, forge, froom, okChest, koChest, silo, vroom, hall, lamps, you, w: right + 2, h: BOT + ROOM_H + 2, x0: 3 };
+    return { machines, fillers, wings: wingList, pillars, forge, froom, okChest, koChest, silo, vroom, lroom, hall, lamps, you, w: right + 2, h: BOT + ROOM_H + 2, x0: 3 };
   }
 
   // ---------- terrain : calcule une fois par taille de batiment, hors de la boucle ----------
@@ -500,6 +505,40 @@
     drawSilo(c, W, t);
   }
 
+  // La bibliotheque : un livre par skill sur les etageres du fond. Couleur vive : il sert ; poussiereux :
+  // jamais appele en 30 jours ; orange : a revoir ; rouge : casse (Claude Code ne peut pas s'en servir).
+  const BOOK = ['#2f6db5', '#3d8b4f', '#7a4fa3', '#1f8a8a', '#b5652f', '#5a6fb5', '#8a3d6b', '#4f7a2f'];
+  function bookColor(s) { return s.status === 'ko' ? COL.ko : s.status === 'warn' ? COL.warn : s.status === 'unused' ? '#8a8172' : BOOK[hash(s.call) % BOOK.length]; }
+  function drawLibrary(c, W, t) {
+    const R = W.lroom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS;
+    const L = G.M.S.skills;
+    planks(c, x, y, w, hh, shade(COL.floor, -.12));
+    if (!SC) { c.fillStyle = shade(COL.carpet, -.05); c.fillRect(x + 1.6 * TS, y + 3.6 * TS, w - 3.2 * TS, 2.4 * TS); c.fillStyle = COL.carpetEdge; c.fillRect(x + 1.6 * TS, y + 3.6 * TS, w - 3.2 * TS, 1); c.fillRect(x + 1.6 * TS, y + 6 * TS - 1, w - 3.2 * TS, 1); }
+    walls(c, R, { side: 'bottom', x: R.x + R.w - 2.2, w: 1.6, open: true });
+    // etageres : trois rangees contre le mur du fond
+    const sx = x + WALL + 3, sw = w - 2 * WALL - 6, rows = 3, rowH = 15, sy = y + WALL + 2;
+    box(c, sx - 2, sy - 2, sw + 4, rows * rowH + 5, COL.deskDark, COL.desk, shade(COL.deskDark, -.3));
+    const books = L ? L.skills : [];
+    const per = Math.floor(sw / 5);
+    books.slice(0, per * rows).forEach((b, i) => {
+      const r = Math.floor(i / per), k = i % per;
+      const bh = 9 + (hash(b.call) % 4), bx = sx + 1 + k * 5, by = sy + r * rowH + (rowH - 2 - bh);
+      const col = bookColor(b);
+      if (SC) { c.strokeStyle = col; c.lineWidth = 1; c.strokeRect(bx + .5, by + .5, 3, bh - 1); return; }
+      c.fillStyle = col; c.fillRect(bx, by, 4, bh);
+      c.fillStyle = shade(col, .25); c.fillRect(bx, by, 1, bh);
+      if (b.status === 'unused') { c.fillStyle = 'rgba(230,225,210,.35)'; c.fillRect(bx, by, 4, 2); } // poussiere
+    });
+    if (!SC) for (let r = 1; r <= rows; r++) { c.fillStyle = COL.deskLight; c.fillRect(sx - 1, sy + r * rowH - 2, sw + 2, 2); }
+    // un livre casse fait clignoter l'etagere
+    if (L && L.ko && (reduced || Math.floor(t * 2) % 2 === 0)) light(x + w / 2, sy + 20, 40, COL.ko, .7);
+    // pupitre de lecture et son livre ouvert, sous une lampe
+    const tx = x + w / 2 - 1.3 * TS, ty = y + 4.1 * TS;
+    box(c, tx, ty, 2.6 * TS, 1.1 * TS, COL.table, shade(COL.table, .2), shade(COL.table, -.35));
+    if (!SC) { c.fillStyle = '#efe9da'; c.fillRect(tx + 11, ty + 4, 9, 8); c.fillRect(tx + 21, ty + 4, 9, 8); c.fillStyle = '#b9b09c'; c.fillRect(tx + 20, ty + 4, 1, 8); for (let k = 0; k < 3; k++) { c.fillRect(tx + 13, ty + 6 + k * 2, 5, 1); c.fillRect(tx + 23, ty + 6 + k * 2, 5, 1); } }
+    light(x + w / 2, ty + 6, 70, '#ffe3a8', .9);
+  }
+
   // Coins de selection facon jeu : quatre equerres qui respirent autour de l'element choisi.
   function brackets(c, b, t) {
     const pad = 4 + (reduced ? 0 : Math.sin(t * 5) * 1.5), x = b.x * TS - pad, y = b.y * TS - pad, w = b.w * TS + pad * 2, hh = b.h * TS + pad * 2, k = 8;
@@ -520,6 +559,7 @@
     }
     if (sel.kind === 'forge') return W.froom;
     if (sel.kind === 'silo') return W.vroom;
+    if (sel.kind === 'skills') return W.lroom;
     if (sel.kind === 'ok') return W.okChest;
     if (sel.kind === 'ko') return W.koChest;
     return null;
@@ -550,6 +590,7 @@
     for (const m of W.machines) drawRoom(c, m, t, away.has(m.a.id));
     drawForgeRoom(c, W, t);
     drawVersionRoom(c, W, t);
+    drawLibrary(c, W, t);
     drawLamps(c, W);
     // dans le couloir : la file devant la forge, et toi a l'entree
     const people = queueSpots(W).map(p => ({ look: p.q.agent ? p.q.agent.look : {}, st: 'ready', x: p.x * TS, y: p.y * TS }));
@@ -665,6 +706,9 @@
     const camp = G.M.campaign;
     const [vx, vy] = S(W.vroom.x + W.vroom.w / 2, W.vroom.y - .55);
     label(c, camp ? (camp.won ? `${camp.name} lancée` : `Version ${camp.name} : ${camp.proven}/${camp.total}`) : 'Lancement : prépare une version', vx, vy, { edge: camp && camp.won ? COL.ok : COL.blue, weight: 700 });
+    const SK = G.M.S.skills;
+    const [bx, by] = S(W.lroom.x + W.lroom.w / 2, W.lroom.y - .55);
+    label(c, !SK ? 'Skills : lecture…' : SK.ko ? `Skills : ${SK.ko} cassé${SK.ko > 1 ? 's' : ''}` : `Skills : ${SK.total}`, bx, by, { edge: !SK ? '#777' : SK.ko ? COL.ko : SK.warn ? COL.warn : COL.ok, weight: 700, max: Math.max(90, W.lroom.w * TS * z) });
     const [yx, yy] = S(W.you.x + .9, CY + 2.75);
     if (z >= 1.1) label(c, 'Toi', yx, yy, { size: 10, edge: COL.select });
   }
@@ -750,6 +794,7 @@
     for (const mm of W.machines) { c.fillStyle = mm.a.st === 'ended' ? COL.ghost : edgeOf(mm.a); c.fillRect(mm.x * TS + 6, mm.y * TS + 6, mm.w * TS - 12, mm.h * TS - 12); }
     c.fillStyle = G.M.lock ? COL.fire : COL.forge; c.fillRect(W.froom.x * TS + 6, W.froom.y * TS + 6, W.froom.w * TS - 12, W.froom.h * TS - 12);
     c.fillStyle = COL.steelLight; c.fillRect(W.vroom.x * TS + 6, W.vroom.y * TS + 6, W.vroom.w * TS - 12, W.vroom.h * TS - 12);
+    c.fillStyle = G.M.S.skills && G.M.S.skills.ko ? COL.ko : COL.desk; c.fillRect(W.lroom.x * TS + 6, W.lroom.y * TS + 6, W.lroom.w * TS - 12, W.lroom.h * TS - 12);
     const { vw, vh } = view();
     c.strokeStyle = '#fff'; c.lineWidth = 2 / s; c.strokeRect(Math.max(G.cam.x, 0), Math.max(G.cam.y, 0), Math.min(vw, W.w * TS - Math.max(G.cam.x, 0)), Math.min(vh, W.h * TS - Math.max(G.cam.y, 0)));
   }
@@ -769,6 +814,7 @@
     if (inR(W.koChest, .2)) return { kind: 'ko' };
     if (inR(W.froom)) return { kind: 'forge' };
     if (inR(W.vroom)) return { kind: 'silo' };
+    if (inR(W.lroom)) return { kind: 'skills' };
     return null;
   }
   // Infobulle facon jeu : le nom de ce qu'on survole et son etat en une ligne.
@@ -782,6 +828,7 @@
     if (s.kind === 'forge') return ['Forge', M.lock ? `${M.lock.kindText} de ${M.lock.agent ? M.lock.agent.name : M.lock.label}` : 'Libre'];
     if (s.kind === 'ok') return ['Coffre des réussis', T.plural(M.builds.filter(b => b.ok).length, 'build', 'builds')];
     if (s.kind === 'ko') return ['Coffre des échecs', T.plural(M.builds.filter(b => !b.ok).length, 'build', 'builds')];
+    if (s.kind === 'skills') { const L = M.S.skills; return ['Bibliothèque des skills', L ? `${T.plural(L.total, 'skill', 'skills')}, ${L.ko} à réparer, ${L.unused} jamais utilisés` : 'Lecture en cours']; }
     if (s.kind === 'silo') return ['Salle de lancement', M.campaign ? `${M.campaign.name} : ${M.campaign.proven} sur ${M.campaign.total}` : 'Aucune version'];
     return null;
   }
@@ -862,6 +909,7 @@
       else if (e.key === 'Escape') { if (G.side) sideToggle(G.side, false); else select(null); }
       else if (e.key === 'f' || e.key === 'F') select({ kind: 'forge' }, true);
       else if (e.key === 'v' || e.key === 'V') select({ kind: 'silo' }, true);
+      else if (e.key === 'b' || e.key === 'B') select({ kind: 'skills' }, true);
       else if (e.key === 'j' || e.key === 'J') select({ kind: G.M.builds.some(b => !b.ok) ? 'ko' : 'ok' }, true);
       else if (e.key === 'Home' || e.key === '0') { G.userMoved = false; fit(); G.dirty = true; }
       else if (e.key.startsWith('Arrow')) {
@@ -985,6 +1033,9 @@
         h('div', { class: 'us-actions' }, btn(ok ? 'Voir les échecs' : 'Voir les réussis', () => select({ kind: ok ? 'ko' : 'ok' }))),
         list.length ? buildList(list) : h('p', { class: 'us-dim' }, ok ? 'Aucun build réussi pour l\'instant.' : 'Aucun échec récent.'),
       ];
+    } else if (s.kind === 'skills') {
+      title = 'Bibliothèque des skills';
+      body = skillsBody(M);
     } else if (s.kind === 'silo') {
       const c = M.campaign;
       title = c ? `Lancement : ${c.name}` : 'Salle de lancement';
@@ -1380,6 +1431,150 @@
         teams.length ? teams.map(projBlock) : h('p', { class: 'us-dim' }, 'Connecte d\'abord ton projet Unreal (bouton du projet en haut).')));
   }
 
+  // ---------- la bibliotheque des skills ----------
+  // Ce qui est installe (perso, compte claude.ai, projets, plugins), ce qui cloche, ce qui sert. Le serveur
+  // relit tout toutes les 2 minutes (lib/skills.js) ; « Ajouter un skill » ecrit un SKILL.md.
+  const skillUi = { filter: null, open: new Set() };
+  const STATUS_TXT = { ko: 'Cassé', warn: 'À revoir', unused: 'Jamais utilisé', ok: 'Utilisé' };
+  const DOT = { ko: 'ko', warn: 'warn', unused: 'none', ok: 'ok' };
+  function skillsBody(M) {
+    const L = M.S.skills;
+    if (!L) return [h('p', { class: 'us-dim' }, 'La tour lit les skills installés et les journaux des sessions…')];
+    const todo = L.ko + L.warn;
+    const filter = skillUi.filter || (todo ? 'todo' : 'all');
+    const FILTERS = [['todo', 'À réparer', todo, (x) => x.status === 'ko' || x.status === 'warn'], ['unused', 'Jamais utilisés', L.unused, (x) => x.status === 'unused'],
+      ['ok', 'Utilisés', L.ok, (x) => x.status === 'ok'], ['all', 'Tous', L.total, () => true]];
+    const keep = FILTERS.find(f => f[0] === filter)[3];
+    const shown = L.skills.filter(keep);
+    const groups = [...new Set(shown.map(x => x.where))];
+    const used = L.skills.filter(x => x.uses).length;
+    const row = (x) => {
+      const open = skillUi.open.has(x.id);
+      return h('li', { class: `us-task us-skill us-sk-${x.status}` },
+        h('button', { type: 'button', class: 'us-runbtn', 'aria-expanded': String(open), onclick: () => { if (open) skillUi.open.delete(x.id); else skillUi.open.add(x.id); renderHud(); } },
+          h('span', { class: `us-dot us-d-${DOT[x.status]}` }), h('code', null, x.call),
+          h('span', { class: `us-skst us-t-${x.status === 'ko' ? 'ko' : x.status === 'warn' ? 'warn' : x.status === 'ok' ? 'ok' : 'unused'}` }, x.uses ? `${x.uses}×` : STATUS_TXT[x.status])),
+        x.issues.length ? h('ul', { class: 'us-skissues' }, x.issues.map(i => h('li', { class: i.level === 'ko' ? 'us-t-ko' : 'us-t-warn' }, i.text))) : null,
+        open ? [
+          x.description ? h('p', { class: 'us-dim' }, x.description) : h('p', { class: 'us-t-ko' }, 'Pas de description.'),
+          h('p', null, x.uses ? [`${T.plural(x.uses, 'appel', 'appels')} dans ${T.plural(x.sessions, 'session', 'sessions')}`, x.typed ? ` (dont ${x.typed} tapé${x.typed > 1 ? 's' : ''} en /${x.call})` : '', ', le dernier ', T.agoEl(x.lastAt), x.usedIn.length ? `, dans ${x.usedIn.join(', ')}` : '', '.']
+            : `Aucune session ne s'en est servie ces ${L.days} derniers jours.${x.manual ? ' Il ne se déclenche pas tout seul (disable-model-invocation) : tape /' + x.call + '.' : ''}`),
+          h('div', { class: 'us-actions' }, btn('Lire le SKILL.md', () => skillFile(x), '', M.demo ? { disabled: true } : {}))] : null);
+    };
+    return [
+      h('p', null, `${T.plural(L.total, 'skill installé', 'skills installés')} : ${used} utilisé${used > 1 ? 's' : ''} ces ${L.days} derniers jours, ${L.unused} jamais, `,
+        h('span', { class: L.ko ? 'us-t-ko' : L.warn ? 'us-t-warn' : 'us-t-ok' }, todo ? `${todo} à réparer ou revoir` : 'aucun à réparer'), '.'),
+      h('div', { class: 'us-actions' }, btn('Ajouter un skill', () => skillDialog(M), 'us-go', M.demo ? { disabled: true } : {}),
+        btn('Relire', async () => { const r = await T.api('/api/skills/refresh'); if (r) T.toast(r.ok ? 'Skills relus.' : 'Lecture impossible.'); }),
+        h('span', { class: 'us-dim' }, 'lu ', T.agoEl(L.scannedAt))),
+      h('div', { class: 'us-filters', role: 'group', 'aria-label': 'Filtrer les skills' }, FILTERS.map(([id, text, n]) =>
+        h('button', { type: 'button', class: 'us-chip2' + (filter === id ? ' on' : ''), 'aria-pressed': String(filter === id), onclick: () => { skillUi.filter = id; renderHud(); } }, `${text} (${n})`))),
+      shown.length ? groups.map(g => [h('div', { class: 'us-sub' }, `${g} (${shown.filter(x => x.where === g).length})`), h('ul', { class: 'us-tuto-list' }, shown.filter(x => x.where === g).map(row))])
+        : h('p', { class: 'us-t-ok' }, filter === 'todo' ? 'Rien à réparer : chaque skill a un en-tête lisible et une description.' : 'Aucun.'),
+      L.plugins.length ? [h('div', { class: 'us-sub' }, 'Plugins'), h('ul', { class: 'us-tuto-list' }, L.plugins.map(p => h('li', { class: 'us-task' },
+        h('div', { class: 'us-tuto-head' }, h('b', null, p.name), h('span', { class: 'us-dim' }, p.installed ? T.plural(p.skills, 'skill', 'skills') : 'pas téléchargé')),
+        h('small', { class: p.enabled.length ? 'us-dim' : 'us-t-warn' }, p.enabled.length ? `Activé : ${p.enabled.join(', ')}` : 'Activé nulle part'),
+        p.issues.map(i => h('small', { class: i.level === 'ko' ? 'us-t-ko' : 'us-t-warn' }, i.text)))))] : null,
+      L.unknown.length ? [h('div', { class: 'us-sub' }, 'Appelés mais pas sur le disque'),
+        h('p', { class: 'us-dim' }, 'Souvent des skills intégrés à Claude Code (simplify, code-review…) : rien à réparer s\'ils ont marché. Sinon, le skill a été supprimé ou renommé.'),
+        h('ul', { class: 'us-list' }, L.unknown.map(u => h('li', null, h('code', null, u.name), ` ${u.uses}×, le dernier `, T.agoEl(u.lastAt))))] : null,
+      h('div', { class: 'us-sub' }, 'Où Claude Code les cherche'),
+      h('p', { class: 'us-dim' }, 'Perso : ~/.claude/skills (tous tes projets). Projet : <projet>/.claude/skills. Compte : ceux de claude.ai. Plugin : appelé « plugin:nom », seulement là où le plugin est activé. Chaque skill est un dossier avec un SKILL.md : un en-tête (name, description) puis ses consignes. La description décide quand Claude le charge.'),
+    ];
+  }
+
+  let fileDlg = null, fileDlg_h2, fileDlg_path, fileDlg_pre;
+  async function skillFile(x) {
+    if (!fileDlg) {
+      fileDlg = h('dialog', { class: 'us-dialog us-wide', 'aria-label': 'SKILL.md' },
+        h('form', { method: 'dialog' }, fileDlg_h2 = h('h2', null), fileDlg_path = h('p', { class: 'us-dim us-path' }), fileDlg_pre = h('pre', { class: 'us-code us-skilltext' }),
+          h('div', { class: 'us-actions' }, h('button', { type: 'submit', class: 'us-btn' }, 'Fermer'))));
+      document.body.append(fileDlg);
+    }
+    fileDlg_h2.textContent = x.call;
+    fileDlg_path.textContent = x.file;
+    fileDlg_pre.textContent = 'Lecture…';
+    fileDlg.showModal();
+    try {
+      const r = await fetch('/api/skills/file?id=' + encodeURIComponent(x.id)).then(res => res.json());
+      fileDlg_pre.textContent = r && r.ok ? r.text : (r && r.error) || 'Lecture impossible.';
+    } catch { fileDlg_pre.textContent = 'Tour injoignable.'; }
+  }
+
+  // Ajouter un skill : depuis le modele (nom, quand s'en servir, consignes), ou depuis une adresse GitHub.
+  // Un skill recupere dehors est montre en entier, et ne s'installe qu'une fois lu et confirme.
+  let skillDlg = null;
+  function skillDialog(M) {
+    const L = M.S.skills || { projects: [] };
+    if (!skillDlg) {
+      const f = {};
+      const setMode = (m) => {
+        f.mode = m;
+        f.tabTpl.setAttribute('aria-pressed', String(m === 'tpl')); f.tabUrl.setAttribute('aria-pressed', String(m === 'url'));
+        f.tabTpl.classList.toggle('on', m === 'tpl'); f.tabUrl.classList.toggle('on', m === 'url');
+        f.tpl.hidden = m !== 'tpl'; f.url.hidden = m !== 'url';
+        f.err.textContent = '';
+        f.submit.textContent = m === 'tpl' ? 'Créer le skill' : 'Installer ce skill';
+        f.submit.disabled = m === 'url' && !(f.got && f.ok.checked);
+      };
+      const fetchIt = async () => {
+        f.err.textContent = ''; f.preview.hidden = true; f.got = null; setMode('url');
+        f.fetchBtn.disabled = true; f.fetchBtn.textContent = 'Récupération…';
+        const r = await T.api('/api/skills/fetch', { url: f.addr.value });
+        f.fetchBtn.disabled = false; f.fetchBtn.textContent = 'Récupérer';
+        if (!r || !r.ok) { f.err.textContent = (r && r.error) || 'Tour injoignable.'; return; }
+        f.got = r;
+        f.from.textContent = r.url;
+        f.text.textContent = r.text;
+        if (!f.name.value) f.name.value = r.name;
+        f.notes.replaceChildren(...[
+          ...r.problems.map(p => h('li', { class: 'us-t-warn' }, `En-tête : ${p}.`)),
+          r.links.length ? h('li', { class: 'us-t-warn' }, `Il cite aussi ${r.links.join(', ')} : seul SKILL.md est copié, ces fichiers manqueront.`) : null,
+          h('li', { class: 'us-dim' }, 'Un skill donne des consignes à Claude dans tes sessions : lis-le en entier avant de l\'installer.')].filter(Boolean));
+        f.ok.checked = false;
+        f.preview.hidden = false;
+        setMode('url');
+      };
+      skillDlg = h('dialog', { class: 'us-dialog us-wide', 'aria-label': 'Ajouter un skill' },
+        h('form', { method: 'dialog', onsubmit: async (e) => {
+          e.preventDefault();
+          const where = f.where.value;
+          const body = { scope: where === '__perso' ? 'perso' : 'projet', project: where === '__perso' ? undefined : where, name: f.name.value.trim() };
+          if (f.mode === 'tpl') Object.assign(body, { description: f.desc.value, body: f.steps.value });
+          else { if (!f.got || !f.ok.checked) { f.err.textContent = 'Récupère le skill et lis-le avant de l\'installer.'; return; } body.text = f.got.text; }
+          const r = await T.api('/api/skills/create', body);
+          if (r && r.ok) { skillDlg.close(); skillUi.filter = 'all'; T.toast(`Skill créé : ${r.path}`); } else if (r) f.err.textContent = r.error || 'Création impossible.';
+        } },
+          h('h2', null, 'Ajouter un skill'),
+          h('div', { class: 'us-filters', role: 'group', 'aria-label': 'Comment' },
+            f.tabTpl = h('button', { type: 'button', class: 'us-chip2', onclick: () => setMode('tpl') }, 'Partir d\'un modèle'),
+            f.tabUrl = h('button', { type: 'button', class: 'us-chip2', onclick: () => setMode('url') }, 'Depuis GitHub')),
+          h('label', null, 'Où le ranger', f.where = h('select', { class: 'us-select', name: 'skill-where' })),
+          h('label', null, 'Nom (minuscules et tirets)', f.name = h('input', { maxlength: 64, name: 'skill-name', pattern: '[a-z0-9][a-z0-9\\-]*', required: true, placeholder: 'ex. lecture-logs-build', autocomplete: 'off' })),
+          f.tpl = h('div', { class: 'us-dlgpart' },
+            h('label', null, 'Quand Claude doit-il s\'en servir ?', f.desc = h('textarea', { name: 'skill-description', rows: 3, maxlength: 1024, placeholder: 'Utilise ce skill quand un build Unreal échoue : lis le log complet avant de corriger.' })),
+            h('p', { class: 'us-dim' }, 'C\'est la description : Claude la lit à chaque session pour décider de charger le skill. Dis quand, avec les mots que tu emploies.'),
+            h('label', null, 'Ce qu\'il doit faire (facultatif, sinon un plan à compléter)', f.steps = h('textarea', { name: 'skill-body', rows: 6, maxlength: 100000, placeholder: '1. Ouvre le log complet du build, sans le couper.\n2. Trouve la première erreur.\n3. Corrige-la, puis relance un seul build.' }))),
+          f.url = h('div', { class: 'us-dlgpart' },
+            h('label', null, 'Adresse du skill', h('span', { class: 'us-row' }, f.addr = h('input', { type: 'url', name: 'skill-url', placeholder: 'https://github.com/…/skills/mon-skill', autocomplete: 'off' }), f.fetchBtn = btn('Récupérer', fetchIt))),
+            h('p', { class: 'us-dim' }, 'La page GitHub du dossier du skill ou de son SKILL.md. Rien n\'est installé avant que tu l\'aies lu.'),
+            f.preview = h('div', { class: 'us-dlgpart', hidden: true },
+              f.from = h('p', { class: 'us-dim us-path' }), f.notes = h('ul', { class: 'us-skissues' }),
+              f.text = h('pre', { class: 'us-code us-skilltext' }),
+              h('label', { class: 'us-check' }, f.ok = h('input', { type: 'checkbox', name: 'skill-read', onchange: () => setMode('url') }), 'J\'ai lu ce SKILL.md et je veux l\'installer'))),
+          f.err = h('p', { class: 'us-t-ko' }),
+          h('div', { class: 'us-actions' }, btn('Annuler', () => skillDlg.close()), f.submit = h('button', { type: 'submit', class: 'us-btn us-go' }, 'Créer le skill'))));
+      skillDlg.f = f; f.setMode = setMode;
+      document.body.append(skillDlg);
+    }
+    const f = skillDlg.f;
+    f.where.replaceChildren(h('option', { value: '__perso' }, 'Perso : ~/.claude/skills (tous tes projets)'), ...L.projects.map(p => h('option', { value: p }, `${p} : .claude/skills (ce projet seulement)`)));
+    f.name.value = ''; f.desc.value = ''; f.steps.value = ''; f.addr.value = ''; f.preview.hidden = true; f.got = null;
+    f.setMode('tpl');
+    skillDlg.showModal();
+    f.name.focus();
+  }
+
   let taskDlg = null;
   function taskDialog(task) {
     if (!taskDlg) {
@@ -1509,6 +1704,8 @@
     G.hud.tutoBtn.classList.toggle('on', G.side === 'tuto');
     G.hud.taskBtn.classList.toggle('on', G.side === 'taches');
     G.hud.teamBtn.classList.toggle('on', G.side === 'equipe');
+    G.hud.skillBtn.classList.toggle('on', !G.side && !!G.sel && G.sel.kind === 'skills');
+    G.hud.skillBtn.classList.toggle('alert', !!(M.S.skills && M.S.skills.ko));
     G.hud.tutoBtn.classList.toggle('run', !!(M.S.tuto && M.S.tuto.running));
   }
 
@@ -1523,7 +1720,7 @@
     };
     G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
-      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
+      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
       G.hud.mode,
       G.hud.entity);
     root.replaceChildren(G.app);

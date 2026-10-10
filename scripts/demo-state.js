@@ -209,6 +209,48 @@ const inv = inventory({ name: 'ConquerTheBackrooms', root: PROJ, engine: '5.8' }
 inv.scannedAt = T0 - 2 * 60_000;
 state.inventories.ConquerTheBackrooms = inv;
 
+// La bibliotheque des skills : un faux ~/.claude (perso, compte, plugin) et les skills du projet,
+// lus par le vrai lib/skills.js, avec des journaux de sessions pour l'usage.
+async function demoSkills() {
+  const skills = require('../lib/skills');
+  const CFG = path.join(ROOT, 'claude');
+  const put = (f, text) => { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
+  const md = (name, desc, body = '\n# Étapes\n\n1. Lis le code concerné.\n2. Applique la règle.\n') => `---\nname: ${name}\ndescription: ${JSON.stringify(desc)}\n---\n${body}`;
+  for (const [n, d] of [
+    ['ue-cpp-conventions', 'Conventions C++ Unreal du PC : UPROPERTY, UFUNCTION, GC, noms. Utilise ce skill avant d\'écrire ou relire du C++ UE.'],
+    ['ue-replication', 'Réplication réseau Unreal : RPC serveur, propriétés répliquées, autorité. Utilise ce skill pour tout ce qui touche au multijoueur.'],
+    ['ue-tests-auto', 'Écrire et lancer les tests automatiques Unreal (tools\\tests.ps1) et lire leur résultat.'],
+    ['ue-build-logs', 'Lire le log complet d\'un build UBT quand il échoue, sans le couper, et trouver la première vraie erreur.'],
+    ['ue-blueprints', 'Lire et modifier des Blueprints par script Python dans l\'éditeur.'],
+    ['ue-animation', 'Montages, slots et Anim Blueprints : ajouter une animation jouée par le code.'],
+  ]) put(path.join(CFG, 'skills', n, 'SKILL.md'), md(n, d));
+  put(path.join(CFG, 'skills', 'ue-niagara', 'SKILL.md'), '---\nname: ue-niagara\n---\n\nEffets Niagara.\n'); // sans description : casse
+  put(path.join(CFG, 'skills', 'revue-perf', 'SKILL.md'), '---\nname: revue-perf\ndescription: Profiler: lire un Unreal Insights et proposer des gains\n---\n\nVoir [la méthode](methode.md).\n');
+  for (const [n, d] of [['docx', 'Create, read and edit Word documents (.docx).'], ['pdf', 'Read, fill, merge and create PDF files.'], ['skill-creator', 'Create new skills, improve existing ones and measure how well they trigger.']]) put(path.join(CFG, 'skills', 'synced', 'compte', n, 'SKILL.md'), md(n, d));
+  for (const [n, d] of [['spec-driven-development', 'Write a spec before coding any non-trivial feature.'], ['test-driven-development', 'Write the failing test first, then the code.'], ['code-review-and-quality', 'Review a change for correctness, readability and risk before merging.'], ['frontend-ui-engineering', 'Build accessible, fast UI without a framework when asked.']]) put(path.join(CFG, 'plugins', 'cache', 'addy-agent-skills', 'agent-skills', '1.2.0', 'skills', n, 'SKILL.md'), md(n, d));
+  put(path.join(CFG, 'plugins', 'cache', 'claude-plugins-official', 'frontend-design', 'b8e5', 'skills', 'frontend-design', 'SKILL.md'), md('frontend-design', 'Distinctive, intentional visual design for new UI.'));
+  put(path.join(PROJ, '.claude', 'skills', 'ctb-portes', 'SKILL.md'), md('ctb-portes', 'Les portes de CTB : ouverture, coup de pied, réplication et tests CTB.Portes.'));
+  put(path.join(PROJ, '.claude', 'skills', 'ctb-version', 'SKILL.md'), md('ctb-version', 'Monter la version de CTB (ProjectVersion), écrire le changelog et la décision.'));
+  put(path.join(TOWER, '.claude', 'settings.json'), JSON.stringify({ enabledPlugins: { 'agent-skills@addy-agent-skills': true, 'frontend-design@claude-plugins-official': true } }));
+  const lines = [];
+  const call = (skill, minAgo, sid, cwd, typed) => lines.push(JSON.stringify(typed
+    ? { type: 'user', sessionId: sid, cwd, timestamp: new Date(T0 - minAgo * 60_000).toISOString(), message: { role: 'user', content: `<command-name>/${skill}</command-name>` } }
+    : { type: 'assistant', sessionId: sid, cwd, timestamp: new Date(T0 - minAgo * 60_000).toISOString(), message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Skill', input: { skill } }] } }));
+  const usesOf = { 'ue-cpp-conventions': 23, 'ue-replication': 9, 'ue-build-logs': 4, 'ue-tests-auto': 12, 'ctb-portes': 3, 'agent-skills:spec-driven-development': 2, 'frontend-design:frontend-design': 5, docx: 1 };
+  let k = 0;
+  for (const [n, c] of Object.entries(usesOf)) for (let i = 0; i < c; i++) {
+    const tower = n.includes(':');
+    call(n, 30 + (k++ * 397) % (9 * 24 * 60), `demo-${i % 4}`, tower ? TOWER : PROJ, n === 'ctb-portes' && i === 0);
+  }
+  call('simplify', 90, 'demo-1', TOWER);
+  put(path.join(CFG, 'projects', 'C--demo', 'journal.jsonl'), lines.join('\n') + '\n');
+  const inv = skills.scan({ cfg: CFG, projects: [{ name: 'ConquerTheBackrooms', root: PROJ }, { name: 'Alkatrazz Tower', root: TOWER }] });
+  state.skills = skills.withUsage(inv, await skills.readUsage({ cfg: CFG, now: T0 }), { now: T0 });
+}
+
+(async () => {
+await demoSkills();
+
 // Les chemins du dossier temporaire deviennent des chemins Windows plausibles.
 const WIN = 'C:\\Users\\Alkatrazz\\Documents\\Unreal Projects';
 const winify = (v) => {
@@ -217,9 +259,10 @@ const winify = (v) => {
   if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, winify(x)]));
   return v;
 };
-const json = JSON.stringify(winify(JSON.parse(JSON.stringify(state.snapshot()))));
+const json = JSON.stringify(winify(JSON.parse(JSON.stringify(state.snapshot())))).split(JSON.stringify(WIN + '\\claude').slice(1, -1)).join(JSON.stringify('C:\\Users\\Alkatrazz\\.claude').slice(1, -1));
 const out = path.join(__dirname, '..', 'web', 'demo', 'state.json');
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.writeFileSync(out, json);
 fs.rmSync(ROOT, { recursive: true, force: true });
 console.log(`demo : ${out} (${json.length} octets)`);
+})();
