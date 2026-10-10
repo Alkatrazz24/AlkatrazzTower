@@ -279,6 +279,8 @@ h1, h2, h3, p { margin: 0; }
 .us-dialog form { display: grid; gap: 10px; }
 .us-dialog h2 { margin: 0; font: 600 20px/1.2 var(--us-cond); color: var(--us-orange); }
 .us-dialog label { display: grid; gap: 4px; font-size: 14px; }
+.us-dialog label.us-check { display: flex; align-items: flex-start; gap: 8px; }
+.us-dialog label.us-check input { width: auto; margin-top: 3px; }
 .us-dialog input, .us-dialog textarea { background: var(--us-inset); color: var(--us-ink); border: 1px solid var(--us-edge); border-radius: var(--us-radius); padding: 6px 8px; font: inherit; }
 .us-dialog textarea { resize: vertical; min-height: 140px; font-size: 13px; line-height: 1.45; }
 .us-dialog .us-t-ko:empty { display: none; }

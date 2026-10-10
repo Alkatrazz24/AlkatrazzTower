@@ -1103,13 +1103,14 @@
       taskDlg = h('dialog', { class: 'us-dialog', 'aria-label': 'Tâche' },
         h('form', { method: 'dialog', onsubmit: async (e) => {
           e.preventDefault();
-          const r = await T.api('/api/tasks/save', { id: taskDlg.dataset.id || undefined, title: f.title.value, text: f.text.value, prompt: f.prompt.value });
+          const r = await T.api('/api/tasks/save', { id: taskDlg.dataset.id || undefined, title: f.title.value, text: f.text.value, prompt: f.prompt.value, readonly: f.ro.checked });
           if (r && r.ok) { taskDlg.close(); T.toast('Tâche enregistrée.'); } else if (r) f.err.textContent = r.error || 'Enregistrement impossible.';
         } },
           f.head = h('h2', null, 'Nouvelle tâche'),
           h('label', null, 'Titre', f.title = h('input', { maxlength: 80, required: true, placeholder: 'ex. Assets orphelins' })),
           h('label', null, 'En une ligne (facultatif)', f.text = h('input', { maxlength: 200, placeholder: 'ce que la tâche apporte' })),
           h('label', null, 'Consigne pour Claude Code', f.prompt = h('textarea', { rows: 10, maxlength: 8000, required: true, placeholder: 'Ce que l\'agent doit faire, étape par étape. {projet} est remplacé par le nom du projet, {date} par la date du jour.' })),
+          h('label', { class: 'us-check' }, f.ro = h('input', { type: 'checkbox' }), 'Ne modifie pas le code : peut tourner en fond (lecture du projet, écriture dans Saved/Tour seulement)'),
           f.err = h('p', { class: 'us-t-ko' }),
           h('div', { class: 'us-actions' }, btn('Annuler', () => taskDlg.close()), h('button', { type: 'submit', class: 'us-btn us-go' }, 'Enregistrer'))));
       taskDlg.f = f;
@@ -1121,6 +1122,7 @@
     f.title.value = task ? (task.builtin ? `${task.title} (perso)` : task.title) : '';
     f.text.value = task ? task.text || '' : '';
     f.prompt.value = task ? task.prompt : '';
+    f.ro.checked = !!(task && task.readonly);
     f.err.textContent = '';
     taskDlg.showModal();
     f.title.focus();
@@ -1134,9 +1136,9 @@
     try { await navigator.clipboard.writeText(promptText(t, proj)); T.toast('Consigne copiée : colle-la dans une session Claude Code ouverte sur le projet.'); }
     catch { T.toast('Copie impossible dans ce navigateur.'); }
   }
-  async function launchTask(t, proj) {
-    const r = await T.api('/api/tasks/launch', { id: t.id, project: proj });
-    if (r && r.ok) T.toast(`Claude Code s'ouvre dans une nouvelle fenêtre avec « ${t.title} ».`);
+  async function launchTask(t, proj, background = false) {
+    const r = await T.api('/api/tasks/launch', { id: t.id, project: proj, background });
+    if (r && r.ok) T.toast(background ? `« ${t.title} » tourne en fond : son agent arrive dans l'usine, son journal est dans ${r.log}.` : `Claude Code s'ouvre dans une nouvelle fenêtre avec « ${t.title} ».`);
     // Sans la commande claude (Claude Code utilise depuis l'application de bureau), on copie la consigne.
     else if (r && (r.code === 'noclaude' || /Windows/.test(r.error || ''))) {
       try { await navigator.clipboard.writeText(promptText(t, proj)); T.toast(`Consigne copiée : colle-la dans une session Claude Code ouverte sur ${proj || 'le projet'}.`); }
@@ -1157,7 +1159,8 @@
       h('div', { class: 'us-tuto-head' }, h('b', null, t.title), t.builtin ? null : h('span', { class: 'us-dim' }, 'perso')),
       t.text ? h('p', { class: 'us-dim' }, t.text) : null,
       h('div', { class: 'us-actions' },
-        btn('Lancer', () => launchTask(t, proj), 'us-go', M.demo || !proj ? { disabled: true } : { title: 'Ouvre Claude Code dans le dossier du projet avec cette consigne' }),
+        btn('Lancer', () => launchTask(t, proj), 'us-go', M.demo || !proj ? { disabled: true } : { title: 'Ouvre Claude Code dans une fenêtre, dans le dossier du projet, avec cette consigne' }),
+        t.readonly ? btn('En fond', () => launchTask(t, proj, true), '', M.demo || !proj ? { disabled: true } : { title: 'Sans fenêtre : tu suis l\'agent dans la tour. Il lit le projet et écrit son rapport dans Saved/Tour, sans rien modifier d\'autre.' }) : null,
         btn('Copier la consigne', () => copyPrompt(t, proj)),
         t.builtin ? btn('Copier en perso', () => taskDialog(t), '', M.demo ? { disabled: true } : { title: 'Crée une tâche perso à partir de celle-ci' })
           : [btn('Modifier', () => taskDialog(t), '', M.demo ? { disabled: true } : {}),
@@ -1166,7 +1169,7 @@
     return h('section', { class: 'us-panel us-entity us-taches', 'aria-label': 'Tâches' },
       h('div', { class: 'us-ehead' }, h('h2', null, proj ? `Tâches sur ${proj}` : 'Tâches'), close),
       h('div', { class: 'us-ebody' },
-        h('p', null, proj ? `« Lancer » ouvre Claude Code dans le dossier de ${proj} avec la consigne. Tu valides ses modifications comme d'habitude, et la tour suit la session et ses tokens.`
+        h('p', null, proj ? `« Lancer » ouvre Claude Code dans une fenêtre, dans le dossier de ${proj} : tu lui réponds et valides ses modifications. « En fond » le fait tourner sans fenêtre pour les tâches qui ne touchent pas au code. Dans les deux cas, la tour suit la session et ses tokens.`
           : 'Connecte d\'abord ton projet Unreal (bouton du projet en haut) : les tâches se lancent dans son dossier.'),
         h('ul', { class: 'us-tuto-list' }, tasks.map(card)),
         btn('Nouvelle tâche', () => taskDialog(null), 'us-go', M.demo ? { disabled: true } : {}),

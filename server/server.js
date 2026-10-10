@@ -345,7 +345,7 @@ const server = http.createServer(async (req, res) => {
   if (key === 'POST /api/tasks/launch') {
     const b = await readBody(req);
     if (!b) return send(res, 400, { error: 'JSON invalide' });
-    const r = await taches.launch({ id: b.id, project: projectFor(b.project) }).catch(e => ({ ok: false, error: e.message }));
+    const r = await taches.launch({ id: b.id, project: projectFor(b.project), background: !!b.background }).catch(e => ({ ok: false, error: e.message }));
     return send(res, 200, r);
   }
 

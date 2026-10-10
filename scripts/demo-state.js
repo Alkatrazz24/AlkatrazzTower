@@ -147,7 +147,7 @@ state.agents['s-old'] = { ...state.agents['s-ui'], sessionId: 's-old', status: '
 at(-35); ev('s-relec', 'UserPromptSubmit', { prompt: 'Tache de la tour [relecture] : lis la consigne dans Saved/Tour/taches/relecture.md et suis-la.' });
 state.agents['s-relec'].characterId = state.createCharacter({ name: 'Clothilde', look: { hat: 'aucun', tool: 'loupe', accessory: 'lunettes', shirt: '#7c3aed', hairStyle: 'chignon', hair: '#d6d3d1' } }).id;
 at(-2); tool('s-relec', 'Read', { file_path: P('Source/ConquerTheBackrooms/Raid/CTBRaidSubsystem.cpp') });
-state.tasks.push({ id: 'perso-assets-orphelins', title: 'Assets orphelins', text: 'Liste les assets que plus rien ne référence.', prompt: 'Liste les assets de Content/ que plus rien ne référence dans {projet}, sans rien supprimer.', createdAt: T0 - 86400_000 });
+state.tasks.push({ id: 'perso-assets-orphelins', title: 'Assets orphelins', text: 'Liste les assets que plus rien ne référence.', prompt: 'Liste les assets de Content/ que plus rien ne référence dans {projet}, sans rien supprimer.', readonly: true, createdAt: T0 - 86400_000 });
 
 // Tokens : ce que la tour lirait dans les journaux de Claude Code.
 const day = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
