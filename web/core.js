@@ -539,6 +539,7 @@
     skew = DEMO ? 0 : Date.now() - S.now;
     rerender();
   }
+  let pageVersion = null;
   function connect() {
     if (DEMO) {
       connected = true;
@@ -548,6 +549,12 @@
     const es = new EventSource('/api/stream');
     es.onmessage = (m) => { connected = true; onState(JSON.parse(m.data)); };
     es.onerror = () => { if (connected) { connected = false; rerender(); } };
+    // La tour a ete mise a jour pendant que la page etait ouverte : on recharge la nouvelle page.
+    es.addEventListener('version', (m) => {
+      const v = JSON.parse(m.data);
+      if (pageVersion && v !== pageVersion) location.reload();
+      pageVersion = v;
+    });
   }
 
   // Les personnages sont animes : on ne redessine qu'a chaque nouvelle donnee et toutes les 15 s
