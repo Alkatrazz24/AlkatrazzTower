@@ -190,6 +190,13 @@ utilisé. **Ajouter un skill** écrit un `SKILL.md` dans le dossier perso ou dan
 projet, à partir d'un modèle, ou depuis une adresse GitHub : le fichier est montré en entier et ne
 s'installe qu'une fois lu et confirmé.
 
+Pour donner à un projet Unreal les skills qu'ont les sessions de la tour, plus ceux de ponytail :
+`node scripts/skills-ctb.js "<projet>"` montre ce qui serait copié dans `<projet>/.claude/skills`, ce qui
+y est déjà, ce qu'une session du projet a déjà (perso, compte, plugin activé) et ce qui est écarté avec
+la raison ; `--apply` copie. Les skills viennent de leurs dépôts GitHub publics (ceux d'Epic de
+`vendor/unreal-mcp-skills`), rien n'est écrasé ni commité. ponytail arrive sans ses hooks, et son skill
+principal ne se lance qu'à la main (`/ponytail`) sauf avec `--ponytail-auto`. graphify reste exclu.
+
 ## Le quartier des agents
 
 En face de la bibliothèque, le **quartier des agents** : un casier par agent que Claude Code peut appeler
@@ -410,6 +417,7 @@ chaque changement de `web/` au lieu de deviner.
 | `web/classique.html` | l'ancienne page, gardée en secours |
 | `scripts/install-hooks.js` | branchement des hooks |
 | `scripts/doc-ctb.js` | écrit la règle « doc obligatoire » dans le `CLAUDE.md` et les agents d'un projet |
+| `scripts/skills-ctb.js`, `lib/skills-ctb.js` | copie dans un projet Unreal les skills des sessions de la tour et ceux de ponytail |
 | `.mcp.json`, `scripts/chrome-devtools-mcp.js` | Chrome DevTools MCP : Claude voit la page qu'il construit |
 | `scripts/setup.js`, `setup.cmd`, `uninstall.cmd` | installation et retrait sur un PC |
 | `lib/characters.js`, `web/avatar.js` | personnages : allure, validation, dessin en pixels |
@@ -426,3 +434,4 @@ chaque changement de `web/` au lieu de deviner.
 | `unreal/AlkatrazzTower`, `scripts/install-plugin.js` | plugin d'éditeur Unreal et son installation dans un projet |
 | `skills/alkatrazz-tower-personnages` | skill qui apprend aux agents à modifier un personnage |
 | `vendor/unreal-engine-skills` | 31 skills Unreal de quodsoler (MIT, commit f3742d7) |
+| `vendor/unreal-mcp-skills` | 3 skills du plugin MCP de l'éditeur Unreal d'Epic Games (MIT) |
