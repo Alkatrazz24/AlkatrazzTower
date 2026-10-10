@@ -279,6 +279,9 @@ const discussion = require('../lib/discussion').create(state, { launchEnv: requi
 // Mise en place des sessions core (lib/miseenplace.js) : un sujet apres l'autre, en fond et en lecture seule.
 const misePlace = require('../lib/miseenplace').create(state, discussion, { projectFor: (n) => projectFor(n) });
 state.miseView = misePlace.view;
+// Le chef (lib/chef.js) : ses envois deposes dans Saved/Tour/chef/envois/, transmis aux sessions core ou feature.
+const chef = require('../lib/chef').create(state, discussion, { projectFor: (n) => projectFor(n), prepare: (o) => taches.prepare(o) });
+setInterval(() => { try { chef.scan(); } catch (e) { console.error('[tower] envois du chef :', e.message); } }, 10_000).unref();
 const usage = require('../lib/usage');
 const usageTimers = new Map();
 function usageSoon(sid, ms = 2500) {
@@ -401,6 +404,9 @@ const routes = {
   },
   'POST /api/miseenplace': (b) => misePlace.start({ ids: b.ids, budget: b.budget }),
   'POST /api/miseenplace/stop': () => misePlace.stop(),
+  // Le chef : valider ou ignorer un envoi propose, et choisir s'il faut valider ses envois avant.
+  'POST /api/chef/envoi': (b) => chef.decide(String(b.id || ''), b.go !== false),
+  'POST /api/chef/ask': (b) => chef.setAsk(!!b.ask),
   // Sessions feature : une nouvelle idee, creee depuis la tour, puis lancee en discussion (ou dans une fenetre).
   'POST /api/features': (b) => {
     const p = projectFor(b.project);

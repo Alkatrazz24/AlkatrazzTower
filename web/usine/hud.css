@@ -421,3 +421,11 @@ h1, h2, h3, p { margin: 0; }
 .us-md table { border-collapse: collapse; font-size: 14px; }
 .us-md th, .us-md td { border: 1px solid var(--us-hi); padding: 3px 8px; text-align: left; vertical-align: top; }
 .us-md th { background: var(--us-panel2); }
+
+/* le chef : ses envois, avec ou ils en sont */
+.us-envois { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.us-envoi { border-left: 3px solid var(--us-edge); padding: 2px 0 2px 8px; }
+.us-envoi-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.us-envoi-text { font-size: 13px; max-height: 6.5em; overflow: auto; margin: 4px 0; }
+.us-envoi .us-actions { margin-top: 4px; }
+.us-chef-ask { margin: 6px 0; }

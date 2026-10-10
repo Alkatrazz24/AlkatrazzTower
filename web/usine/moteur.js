@@ -155,7 +155,9 @@
     // Un sujet ou une feature sans session ouverte garde sa salle, en sommeil : on la relance d'un clic.
     for (const s of M.sujets || []) if (!s.session) shown.push(sujetRoom(s));
     for (const s of M.features || []) if (!s.session && (!s.done || T.ui.showEnded)) shown.push(sujetRoom(s));
-    const kindOf = (a) => a.asleep ? a.def.kind : a.kind;
+    if (M.chef && !M.chef.session) shown.push(sujetRoom(M.chef));
+    // le chef en place a son batiment ; ses anciennes sessions restent dans le batiment principal
+    const kindOf = (a) => { const k = a.asleep ? a.def.kind : a.kind; return k === 'chef' && a.old ? '' : k; };
     const B = { machines: [], fillers: [], wings: [], pillars: [], halls: [], lamps: [], blds: [] };
     const x = rooms(B, wingsOf(shown.filter(a => !kindOf(a))), 0, 0, 'main');
     const fx = x;
@@ -178,6 +180,17 @@
     const groom = { x: gx0 + 1, y: TOP, w: 10, h: ROOM_H }, hroom = { x: gx0 + 1, y: BOT, w: 10, h: ROOM_H };
     hallOf(B, gx0, gx0 + 11, 0, 'git');
     right = gx0 + 11;
+    // Le chef, au bout de la rue : sa salle en haut (tu lui confies tes demandes), en bas le bureau des
+    // envois (ce qu'il a confie a qui).
+    let eroom = null;
+    const chefA = shown.find(a => kindOf(a) === 'chef');
+    if (chefA) {
+      const cx0 = right + GAP, cw = Math.max(10, roomW(chefA));
+      B.machines.push({ a: chefA, x: cx0 + 1, y: TOP, w: cw, h: ROOM_H, top: true, wing: 'Chef' });
+      eroom = { x: cx0 + 1, y: BOT, w: cw, h: ROOM_H };
+      hallOf(B, cx0, cx0 + cw + 1, 0, 'chef');
+      right = cx0 + cw + 1;
+    }
     let h = BOT + ROOM_H + 2;
     // Les batiments core et feature, des qu'un projet a des sujets (ou qu'une session core ou feature existe).
     const core = shown.filter(a => kindOf(a) === 'core'), feat = shown.filter(a => kindOf(a) === 'feature');
@@ -192,7 +205,7 @@
       h = oy + BOT + ROOM_H + 2;
     }
     const you = { x: 1.2, y: CY + .1 };
-    return { ...B, forge, froom, okChest, koChest, silo, vroom, lroom, aroom, droom, uroom, groom, hroom, hall: B.halls[0], you, w: right + 2, h, x0: 3 };
+    return { ...B, forge, froom, okChest, koChest, silo, vroom, lroom, aroom, droom, uroom, groom, hroom, eroom, hall: B.halls[0], you, w: right + 2, h, x0: 3 };
   }
 
   // ---------- terrain : calcule une fois par taille de batiment, hors de la boucle ----------
@@ -711,6 +724,28 @@
     if (debts.some(d => d.owed) && (reduced || Math.floor(t * 2) % 2 === 0)) light(x + w - 3.3 * TS, ty + 6, 40, COL.ko, .7);
     light(x + w / 2, ty + 6, 72, '#ffe3a8', .9);
   }
+  // Le bureau des envois du chef : un panneau de liege contre le mur du fond, une fiche epinglee par
+  // demande confiee (jaune : elle attend ton accord, rouge : erreur), et le bureau ou il les trie.
+  function drawEnvoisRoom(c, W, t) {
+    const R = W.eroom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS, E = (G.M.chef && G.M.chef.envois) || [];
+    planks(c, x, y, w, hh, shade(COL.floor, -.12));
+    walls(c, R, { side: 'top', x: R.x + .6, w: 1.6, open: true });
+    const bx = x + WALL + 6, bw = w - 2 * WALL - 12, by = y + hh - WALL - 2.2 * TS, bh = 1.9 * TS;
+    box(c, bx, by, bw, bh, '#b4844f', '#c99a63', '#7d5630');
+    const wait = E.some(e => e.status === 'proposé'), blink = reduced || Math.floor(t * 2) % 2 === 0;
+    E.slice(0, 12).forEach((e, i) => {
+      const nx = bx + 6 + (i % 6) * ((bw - 12) / 6), ny = by + 6 + Math.floor(i / 6) * (bh / 2 - 2);
+      const col = e.status === 'proposé' ? (blink ? COL.warn : '#efe8d6') : e.status === 'erreur' ? COL.ko : e.status === 'ignoré' ? '#9aa0a6' : '#efe8d6';
+      c.fillStyle = col; c.fillRect(nx, ny, 14, 16);
+      if (!SC) { c.fillStyle = 'rgba(0,0,0,.28)'; c.fillRect(nx + 2, ny + 5, 10, 1); c.fillRect(nx + 2, ny + 8, 8, 1); c.fillRect(nx + 2, ny + 11, 10, 1); c.fillStyle = '#c0392b'; c.fillRect(nx + 6, ny - 1, 3, 3); }
+    });
+    // le bureau du tri, et sa pile de demandes
+    const dx = x + w / 2 - 1.8 * TS, dy = y + 1.6 * TS;
+    box(c, dx, dy, 3.6 * TS, 1 * TS, COL.desk, COL.deskLight, COL.deskDark);
+    if (!SC) for (let k = 0; k < Math.min(5, E.length || 1); k++) { c.fillStyle = k % 2 ? '#e6dfcc' : '#f3eddc'; c.fillRect(dx + 10 - k, dy + 8 - k * 2, 16, 10); }
+    if (wait && blink) light(bx + bw / 2, by + bh / 2, 46, COL.warn, .7);
+    light(x + w / 2, y + hh / 2, 60, '#ffe3a8', .6);
+  }
   // Le rayon Unreal Engine : la doc officielle par theme, un livre bleu acier par page, et un poste en ligne.
   function drawUnrealRoom(c, W, t) {
     const R = W.uroom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS, M = G.M;
@@ -867,6 +902,7 @@
     drawUnrealRoom(c, W, t);
     drawGitRoom(c, W, t);
     drawGithubRoom(c, W, t);
+    if (W.eroom) drawEnvoisRoom(c, W, t);
     drawLamps(c, W);
     // dans le couloir : la file devant la forge, et toi a l'entree
     const people = queueSpots(W).map(p => ({ look: p.q.agent ? p.q.agent.look : {}, st: 'ready', x: p.x * TS, y: p.y * TS }));
@@ -956,8 +992,8 @@
     // les batiments core et feature : leur enseigne au-dessus de l'entree, et la salle libre des features
     for (const b of W.blds) {
       if (!b.name) continue;
-      const [bx, by] = S(b.x + b.w / 2, b.y - (b.name === 'doc' || b.name === 'git' ? 1.5 : 1.1));
-      const sign = { core: ['Core · la mémoire du jeu', COL.ok], feature: ['Features · les nouvelles idées', COL.warn], doc: ['Documentation', COL.blue], git: ['Dépôts', COL.ok] }[b.name];
+      const [bx, by] = S(b.x + b.w / 2, b.y - (b.name === 'doc' || b.name === 'git' || b.name === 'chef' ? 1.5 : 1.1));
+      const sign = { core: ['Core · la mémoire du jeu', COL.ok], feature: ['Features · les nouvelles idées', COL.warn], doc: ['Documentation', COL.blue], git: ['Dépôts', COL.ok], chef: ['Chef · toutes tes demandes', COL.select] }[b.name];
       if (sign) label(c, sign[0], bx, by, { edge: sign[1], size: small ? 12 : 14, weight: 700 });
     }
     if (z >= .6) for (const f of W.fillers) if (f.free === 'feature' && f.top) { const [fx, fy] = S(f.x + f.w / 2, f.y + f.h / 2); label(c, '+ Nouvelle feature', fx, fy, { edge: COL.warn, weight: 700, size: small ? 11 : 13 }); }
@@ -1005,6 +1041,11 @@
     label(c, !GT ? 'Git : lecture…' : !GT.git ? 'Git pas installé' : gko ? `Git : ${gko} à voir` : `Git : ${T.plural(GT.repos.length, 'dépôt', 'dépôts')}`, glx, gly, { edge: !GT ? '#777' : !GT.git || gko ? COL.ko : COL.ok, weight: 700, max: Math.max(90, W.groom.w * TS * z) });
     const [hlx, hly] = S(W.hroom.x + W.hroom.w / 2, W.hroom.y + W.hroom.h + .55);
     label(c, npr ? `GitHub : ${T.plural(npr, 'PR ouverte', 'PR ouvertes')}` : 'GitHub', hlx, hly, { edge: COL.ok, weight: 700, max: Math.max(90, W.hroom.w * TS * z) });
+    if (W.eroom && G.M.chef) {
+      const E = G.M.chef.envois, wait = E.filter(e => e.status === 'proposé').length;
+      const [elx, ely] = S(W.eroom.x + W.eroom.w / 2, W.eroom.y + W.eroom.h + .55);
+      label(c, wait ? `Envois : ${wait} à valider` : `Envois : ${E.length}`, elx, ely, { edge: wait ? COL.warn : E.some(e => e.status === 'erreur') ? COL.ko : COL.select, weight: 700, max: Math.max(90, W.eroom.w * TS * z) });
+    }
     const [ulx, uly] = S(W.uroom.x + W.uroom.w / 2, W.uroom.y + W.uroom.h + .55);
     label(c, `Unreal Engine ${DC && DC.version ? DC.version : '5'}`, ulx, uly, { edge: COL.blue, weight: 700, max: Math.max(90, W.uroom.w * TS * z) });
     const [yx, yy] = S(W.you.x + .9, CY + 2.75);
@@ -1096,6 +1137,7 @@
     c.fillStyle = G.M.S.roster && G.M.S.roster.ko ? COL.ko : COL.steel; c.fillRect(W.aroom.x * TS + 6, W.aroom.y * TS + 6, W.aroom.w * TS - 12, W.aroom.h * TS - 12);
     c.fillStyle = docDebts(G.M).some(d => d.owed) ? COL.ko : COL.desk; c.fillRect(W.droom.x * TS + 6, W.droom.y * TS + 6, W.droom.w * TS - 12, W.droom.h * TS - 12);
     c.fillStyle = gitAlert(G.M) ? COL.ko : COL.steel; c.fillRect(W.groom.x * TS + 6, W.groom.y * TS + 6, W.groom.w * TS - 12, W.groom.h * TS - 12);
+    if (W.eroom) { c.fillStyle = G.M.chef && G.M.chef.envois.some(e => e.status === 'proposé') ? COL.warn : COL.desk; c.fillRect(W.eroom.x * TS + 6, W.eroom.y * TS + 6, W.eroom.w * TS - 12, W.eroom.h * TS - 12); }
     c.fillStyle = COL.ok; c.fillRect(W.hroom.x * TS + 6, W.hroom.y * TS + 6, W.hroom.w * TS - 12, W.hroom.h * TS - 12);
     c.fillStyle = COL.blue; c.fillRect(W.uroom.x * TS + 6, W.uroom.y * TS + 6, W.uroom.w * TS - 12, W.uroom.h * TS - 12);
     const { vw, vh } = view();
@@ -1123,6 +1165,7 @@
     if (inR(W.groom)) return { kind: 'git' };
     if (inR(W.hroom)) return { kind: 'github' };
     if (inR(W.uroom)) return { kind: 'unreal' };
+    if (W.eroom && inR(W.eroom)) return chefSel();
     if (W.fillers.some(f => f.free === 'feature' && inR(f))) return { kind: 'newfeature' };
     return null;
   }
@@ -1131,6 +1174,7 @@
     const M = G.M;
     if (s.kind === 'agent') {
       const z = sujetOf(s.id);
+      if (z && z.kind === 'chef') return ['Chef', 'En sommeil : clique, puis « Discuter » pour lui confier une demande'];
       if (z) return [z.title, `${z.kind === 'feature' ? 'Feature' : 'Sujet'} en sommeil${z.notes ? ', carnet tenu' : ', pas encore de carnet'} : clique pour lancer sa session`];
       const a = M.agents.find(x => x.id === s.id);
       return a && [a.salle || a.name, [a.name, a.holds ? `${a.stText}, à la forge` : a.queuePos ? `${a.stText}, ${a.queuePos}e devant la forge` : a.stText,
@@ -1156,7 +1200,12 @@
   }
   function defOf(id) {
     const M = G.M || {};
-    return [...(M.sujets || []), ...(M.features || [])].find(z => z.id === id) || null;
+    return [...(M.sujets || []), ...(M.features || []), ...(M.chef ? [M.chef] : [])].find(z => z.id === id) || null;
+  }
+  // La salle du chef : sa session en place, sinon sa salle en sommeil.
+  function chefSel() {
+    const C = G.M && G.M.chef;
+    return C ? { kind: 'agent', id: C.session ? C.session.id : 'sujet:chef' } : null;
   }
   function showTip(e, s) {
     const tip = G.hud.tip, info = s && tipOf(s);
@@ -1240,6 +1289,7 @@
       else if (e.key === 'd' || e.key === 'D') select({ kind: 'docs' }, true);
       else if (e.key === 'g' || e.key === 'G') select({ kind: 'git' }, true);
       else if (e.key === 's' || e.key === 'S') sideToggle('sujets');
+      else if ((e.key === 'c' || e.key === 'C') && chefSel()) select(chefSel(), true);
       else if (e.key === 'n' || e.key === 'N') { e.preventDefault(); if (!G.M.demo) featureDialog(G.M); }
       else if (e.key === 'j' || e.key === 'J') select({ kind: G.M.builds.some(b => !b.ok) ? 'ko' : 'ok' }, true);
       else if (e.key === 'Home' || e.key === '0') { G.userMoved = false; fit(); G.dirty = true; }
@@ -1326,6 +1376,8 @@
             h('div', { class: 'us-dim' }, 'vu ', T.agoEl(a.lastSeen)))),
         a.pending ? askBox(a) : a.ask ? h('p', { class: 'us-ask' }, h('b', null, 'Sa question : '), a.ask, h('small', null, 'Réponds dans sa session Claude Code.')) : null,
         a.said ? h('p', { class: 'us-said' }, h('b', null, 'Il a fini : '), a.said) : null,
+        // le chef : ses envois d'abord, c'est ce qu'ali vient voir
+        a.kind === 'chef' && defOf('chef') ? sujetBody(M, defOf('chef'), a) : null,
         rowsOf([
           a.prompt && ['Demande', a.prompt],
           a.tool && ['Dernière action', [h('b', null, a.tool.name), ' ', a.tool.summary, ', ', T.agoEl(a.tool.at)]],
@@ -1335,8 +1387,8 @@
           a.lastTest && ['Tests', resultTxt(a.lastTest)],
           a.docs && ['Doc UE', h('span', { class: a.docs.tone === 'warn' ? 'us-t-warn' : a.docs.tone === 'ok' ? 'us-t-ok' : 'us-dim' }, a.docs.text)],
         ]),
-        a.task ? [h('div', { class: 'us-sub' }, `Suivi : ${a.task.title}`), suiviBlock(a)] : null,
-        a.sujet && defOf(a.sujet) ? [h('div', { class: 'us-sub' }, a.kind === 'feature' ? 'Sa feature' : 'Son sujet (core)'), sujetBody(M, defOf(a.sujet), a)] : null,
+        a.task && a.kind !== 'chef' ? [h('div', { class: 'us-sub' }, `Suivi : ${a.task.title}`), suiviBlock(a)] : null,
+        a.sujet && a.kind !== 'chef' && defOf(a.sujet) ? [h('div', { class: 'us-sub' }, a.kind === 'feature' ? 'Sa feature' : 'Son sujet (core)'), sujetBody(M, defOf(a.sujet), a)] : null,
         usageBlock(a),
         a.old ? h('p', { class: 'us-dim' }, a.hidden ? 'Salle rangée : elle n\'apparaît qu\'avec les anciennes sessions.' : 'Ancienne session : elle n\'apparaît qu\'avec les anciennes sessions.') : null,
         h('div', { class: 'us-actions' }, btn(canChat(a) ? 'Discuter' : 'Lire la discussion', () => chatDialog(a.id), canChat(a) ? 'us-go' : '', { title: canChat(a) ? 'Lui écrire depuis la tour, sans fenêtre' : 'Elle tourne dans sa fenêtre : tu lis ici, tu lui écris là-bas' }),
@@ -2530,6 +2582,7 @@
     else if (r) T.toast(r.error || 'Mise en place impossible.');
   }
   function sujetBody(M, z, live) {
+    if (z.kind === 'chef') return chefBody(M, z, live);
     const feat = z.kind === 'feature';
     const n = z.notes, mail = feat ? [] : (M.board || []).filter(e => forSujet(z, e)).slice(-4);
     const proj = encodeURIComponent(M.sujetsProject || '');
@@ -2562,6 +2615,47 @@
         }, z.done ? '' : 'us-danger', M.demo ? { disabled: true } : { title: 'L\'idée est en place : sa salle quitte le bâtiment, rien n\'est effacé' }) : null),
     ];
   }
+  // ---------- le chef (lib/chef.js) ----------
+  // Une session a qui ali confie toutes ses demandes : elle verifie en lisant, repond, et confie les
+  // changements aux sessions core ou a une nouvelle feature. Ses envois s'affichent ici, avec ou ils en sont.
+  function envoiItem(M, e) {
+    const a = e.sessionId ? M.agents.find(x => x.id === e.sessionId) : null;
+    const z = !a && e.to ? defOf(e.to) : null;
+    const target = a ? a.id : z ? (z.session ? z.session.id : 'sujet:' + z.id) : '';
+    const where = e.status === 'envoyé' ? (a ? `${a.name}, ${a.stText}` : 'transmis')
+      : e.status === 'au tableau' ? 'au tableau : sa session tourne dans sa fenêtre'
+        : e.status === 'proposé' ? 'attend ton accord' : e.status === 'ignoré' ? 'ignoré' : `erreur : ${e.error || 'inconnue'}`;
+    const dot = e.status === 'proposé' ? 'warn' : e.status === 'erreur' ? 'ko' : e.status === 'ignoré' ? 'grey' : a ? dotFor(a.st) : 'ok';
+    const decide = async (go) => {
+      const r = await T.api('/api/chef/envoi', { id: e.id, go });
+      if (r && r.ok) T.toast(go ? `Envoyé à ${e.toTitle || e.to}.` : 'Envoi ignoré.'); else if (r) T.toast(r.error || 'Impossible.');
+    };
+    return h('li', { class: 'us-envoi' },
+      h('div', { class: 'us-envoi-head' }, h('span', { class: `us-dot us-d-${dot}` }), h('b', null, `→ ${e.toTitle || e.to || '?'}`), h('span', { class: 'us-dim' }, ` ${where}, `, T.agoEl(e.at))),
+      e.text ? h('div', { class: 'us-pre us-envoi-text' }, e.text) : null,
+      e.status === 'proposé' || target ? h('div', { class: 'us-actions' },
+        e.status === 'proposé' ? [btn('Envoyer', () => decide(true), 'us-go', M.demo ? { disabled: true } : {}), btn('Ignorer', () => decide(false), '', M.demo ? { disabled: true } : {})] : null,
+        target ? btn('Voir la salle', () => select({ kind: 'agent', id: target }, true)) : null) : null);
+  }
+  function chefBody(M, z, live) {
+    const E = z.envois || [], wait = E.filter(e => e.status === 'proposé').length;
+    const can = !M.demo && !!M.sujetsProject;
+    return [
+      h('p', null, 'Confie-lui tout ce qui touche au jeu : une animation qui ne marche pas, des assets que tu viens d\'importer, une idée, un bug. Il vérifie ce qu\'il peut en lisant le projet et ses journaux, te répond, et confie les changements à la session core du sujet, ou à une nouvelle feature pour une idée neuve. Il ne modifie pas le jeu lui-même.'),
+      live ? null : h('p', { class: 'us-dim' }, 'En sommeil : « Discuter » le lance ici. Il lit les carnets, le tableau et le suivi de ses envois, puis prend ta demande.'),
+      live ? null : h('div', { class: 'us-actions' },
+        btn('Discuter', () => sujetLaunch(M, z), 'us-go', can ? { title: 'Lance le chef dans la tour : tu lui parles ici, sans fenêtre' } : { disabled: true }),
+        btn('Dans une fenêtre', () => sujetLaunch(M, z, true), '', can ? { title: 'Ouvre Claude Code dans une fenêtre, dans le dossier du projet' } : { disabled: true })),
+      h('label', { class: 'us-check us-chef-ask' }, h('input', { type: 'checkbox', checked: !!z.ask, ...(M.demo ? { disabled: true } : {}),
+        onchange: async (ev) => { const r = await T.api('/api/chef/ask', { ask: ev.target.checked }); if (r && r.ok) T.toast(r.ask ? 'Ses envois t\'attendent : tu les valides ici avant qu\'ils partent.' : 'Ses envois partent tout seuls vers les sessions.'); } }),
+        'Me demander avant chaque envoi'),
+      h('div', { class: 'us-sub' }, wait ? `Ses envois · ${wait} à valider` : 'Ses envois'),
+      E.length ? h('ul', { class: 'us-envois' }, E.slice(0, 20).map(e => envoiItem(M, e)))
+        : h('p', { class: 'us-dim' }, 'Rien de confié pour l\'instant. Chaque demande qu\'il confie s\'affiche ici : à quelle session, et où elle en est. Elle est aussi écrite au tableau.'),
+      rulesBlock(M, z),
+    ];
+  }
+
   function sujetsPanel(M) {
     const close = btn('Fermer', () => sideToggle('sujets', false), 'us-x', { 'aria-label': 'Fermer les sujets', title: 'Échap' });
     const zs = M.sujets || [];
@@ -2777,6 +2871,7 @@
     G.hud.agentBtn.classList.toggle('alert', !!(M.S.roster && M.S.roster.ko));
     G.hud.docBtn.classList.toggle('on', !G.side && !!G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal'));
     G.hud.docBtn.classList.toggle('alert', docDebts(M).some(d => d.owed));
+    { const cs = chefSel(); G.hud.chefBtn.classList.toggle('on', !G.side && !!cs && !!G.sel && G.sel.kind === 'agent' && G.sel.id === cs.id); }
     G.hud.gitBtn.classList.toggle('on', !G.side && !!G.sel && (G.sel.kind === 'git' || G.sel.kind === 'github'));
     G.hud.gitBtn.classList.toggle('alert', gitAlert(M));
     G.hud.tutoBtn.classList.toggle('run', !!(M.S.tuto && M.S.tuto.running));
@@ -2793,7 +2888,7 @@
     };
     G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
-      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions core : une par sujet du jeu (animation, interface, menus, armes...), sa mémoire, ses règles, et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Core'), G.hud.featBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions feature : une par nouvelle idée, à créer ici (touche N pour une nouvelle)', onclick: () => sideToggle('features') }, 'Features'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.docBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La documentation du jeu : à lire, à chercher ; les sessions y écrivent la leur. Et la doc Unreal Engine par thème (touche D)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal') ? null : { kind: 'docs' }, true); } }, 'Doc'), G.hud.gitBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les dépôts : l\'état git de chaque projet et ce qui se passe sur GitHub ; initialiser git dans un dossier (touche G)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'git' || G.sel.kind === 'github') ? null : { kind: 'git' }, true); } }, 'Git'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
+      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.chefBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le chef : tu lui confies toutes tes demandes sur le jeu ; il vérifie, te répond, et confie les changements aux sessions core ou à une feature (touche C)', onclick: () => { if (G.side) sideToggle(G.side, false); const cs = chefSel(); if (!cs) { T.toast('Connecte d\'abord ton projet Unreal : le chef travaille dans son dossier.'); return; } select(G.sel && G.sel.kind === 'agent' && G.sel.id === cs.id ? null : cs, true); } }, 'Chef'), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions core : une par sujet du jeu (animation, interface, menus, armes...), sa mémoire, ses règles, et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Core'), G.hud.featBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions feature : une par nouvelle idée, à créer ici (touche N pour une nouvelle)', onclick: () => sideToggle('features') }, 'Features'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.docBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La documentation du jeu : à lire, à chercher ; les sessions y écrivent la leur. Et la doc Unreal Engine par thème (touche D)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal') ? null : { kind: 'docs' }, true); } }, 'Doc'), G.hud.gitBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les dépôts : l\'état git de chaque projet et ce qui se passe sur GitHub ; initialiser git dans un dossier (touche G)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'git' || G.sel.kind === 'github') ? null : { kind: 'git' }, true); } }, 'Git'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
       G.hud.mode,
       G.hud.entity);
     root.replaceChildren(G.app);
