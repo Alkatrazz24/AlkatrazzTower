@@ -75,12 +75,36 @@ test('les hooks installes : la question et les permissions passent par tower-ask
   assert.deepStrictEqual(left, { PermissionRequest: [{ matcher: '*', hooks: [mine] }] });
 });
 
+function runHook(env, ev) {
+  const { execFile } = require('child_process');
+  const path = require('path');
+  return new Promise((resolve) => {
+    const p = execFile(process.execPath, [path.join(__dirname, '..', 'hooks', 'tower-ask.js')], { env: { ...process.env, ...env } }, (e, out) => resolve({ code: e ? e.code : 0, out }));
+    p.stdin.end(JSON.stringify(ev));
+  });
+}
+
+test('seules les sessions lancees par la tour passent par la tour ; les autres gardent leur fenetre', async () => {
+  assert.strictEqual(require('../lib/taches').launchEnv({}).TOWER_ASK, '1');
+  const http = require('http');
+  let hits = 0;
+  const srv = http.createServer((req, res) => { hits++; res.end('{}'); });
+  await new Promise(r => srv.listen(0, '127.0.0.1', r));
+  const port = String(srv.address().port);
+  const ev = { session_id: 'x', hook_event_name: 'PermissionRequest', tool_name: 'Bash', tool_input: { command: 'ls' } };
+  const r = await runHook({ TOWER_PORT: port, TOWER_ASK: '' }, ev);
+  assert.deepStrictEqual([r.code, r.out, hits], [0, '', 0]);
+  await runHook({ TOWER_PORT: port, TOWER_ASK: '1' }, ev);
+  assert.strictEqual(hits, 1); // la session lancee par la tour ouvre bien sa question
+  srv.close();
+});
+
 test('le hook ne bloque jamais quand la tour est eteinte', async () => {
   const { execFile } = require('child_process');
   const path = require('path');
   const t0 = Date.now();
   const code = await new Promise((resolve) => {
-    const p = execFile(process.execPath, [path.join(__dirname, '..', 'hooks', 'tower-ask.js')], { env: { ...process.env, TOWER_PORT: '1' } }, (e) => resolve(e ? e.code : 0));
+    const p = execFile(process.execPath, [path.join(__dirname, '..', 'hooks', 'tower-ask.js')], { env: { ...process.env, TOWER_PORT: '1', TOWER_ASK: '1' } }, (e) => resolve(e ? e.code : 0));
     p.stdin.end(JSON.stringify({ session_id: 'x', hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: Q } }));
   });
   assert.strictEqual(code, 0);
