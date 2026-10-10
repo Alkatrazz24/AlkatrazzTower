@@ -932,7 +932,7 @@
     const s = document.createElement('script'); s.src = `usine/mondes/${id}.js`; document.body.append(s);
   }
   function worldSwitch() {
-    const sel = h('select', { 'aria-label': 'Ambiance du jeu', onchange: (e) => {
+    const sel = h('select', { name: 'ambiance', 'aria-label': 'Ambiance du jeu', onchange: (e) => {
       try { localStorage.setItem('tower.world', e.target.value); } catch { /* stockage bloque */ }
       loadWorld(e.target.value, () => { G.dirty = true; G.canvas.setAttribute('aria-label', `L'usine (${TH.name}) : agents, forge et version, en direct`); renderHud(); });
     } }, WORLDS.map(([id, name]) => h('option', { value: id, selected: TH && TH.id === id }, name)));

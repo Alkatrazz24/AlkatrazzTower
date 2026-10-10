@@ -209,6 +209,22 @@ un agent qui donne un délai court à sa commande peut expirer pendant qu'il att
 npm test
 ```
 
+## Voir la page en développement : Chrome DevTools MCP
+
+`.mcp.json` branche le serveur MCP [Chrome DevTools](https://github.com/ChromeDevTools/chrome-devtools-mcp)
+pour toute session Claude Code ouverte dans ce dossier (sur le PC comme dans le cloud). Claude ouvre
+la page dans un navigateur, la regarde (captures, arbre de la page), lit la console et le réseau,
+clique et tape comme un utilisateur, lance Lighthouse et mesure les performances. Il vérifie ainsi
+chaque changement de `web/` au lieu de deviner.
+
+- Sur le PC : Chrome installé (sinon Edge) s'ouvre dans une fenêtre à part, avec un profil propre à
+  l'outil, sans tes comptes. La tour en marche est sur http://127.0.0.1:4777.
+- Dans le cloud : le Chromium de Playwright, sans fenêtre, profil jetable. Claude lance une tour
+  d'essai à part (`TOWER_PORT=4799 TOWER_DATA=<dossier temporaire> npm start`) ou ouvre `?demo`.
+- `CHROME_DEVTOOLS_EXECUTABLE` force un autre navigateur. Le premier lancement télécharge le paquet
+  avec npx (version épinglée dans `scripts/chrome-devtools-mcp.js`) ; rien n'entre dans le dépôt.
+- `/mcp` dans Claude Code montre si le serveur est connecté.
+
 ## Fichiers
 
 | Chemin | Rôle |
@@ -227,6 +243,7 @@ npm test
 | `web/fonts/` | polices servies en local (SIL Open Font License) |
 | `web/classique.html` | l'ancienne page, gardée en secours |
 | `scripts/install-hooks.js` | branchement des hooks |
+| `.mcp.json`, `scripts/chrome-devtools-mcp.js` | Chrome DevTools MCP : Claude voit la page qu'il construit |
 | `scripts/setup.js`, `setup.cmd`, `uninstall.cmd` | installation et retrait sur un PC |
 | `lib/characters.js`, `web/avatar.js` | personnages : allure, validation, dessin en pixels |
 | `lib/projects.js` | recherche et connexion des projets Unreal |
