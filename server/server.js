@@ -245,6 +245,9 @@ for (const a of Object.values(state.agents)) if (a.status !== 'ended') usageSoon
 // La bibliotheque des skills (lib/skills.js) : perso, compte, projets connus, plugins, et leur usage
 // lu dans les journaux de Claude Code. Relue toutes les 2 minutes, et tout de suite apres un ajout.
 const skillsLib = require('../lib/skills');
+// Le quartier des agents (lib/agents.js) : relu en meme temps, avec les memes journaux.
+const agentsLib = require('../lib/agents');
+let rosterInv = null;
 let skillsInv = null;
 let skillsBusy = null;
 function skillProjects() {
@@ -264,9 +267,14 @@ function refreshSkills() {
     const calls = await skillsLib.readUsage();
     const next = skillsLib.withUsage(inv, calls);
     skillsInv = inv;
+    const ainv = agentsLib.scan({ projects: skillProjects(), skills: inv });
+    const roster = agentsLib.withUsage(ainv, await skillsLib.readAgentUsage());
+    rosterInv = ainv;
     const strip = (v) => v && JSON.stringify({ ...v, scannedAt: 0 });
-    if (strip(next) !== strip(state.skills)) { state.skills = next; state.changed(); }
-    else state.skills.scannedAt = next.scannedAt;
+    let moved = false;
+    if (strip(next) !== strip(state.skills)) { state.skills = next; moved = true; } else state.skills.scannedAt = next.scannedAt;
+    if (strip(roster) !== strip(state.roster)) { state.roster = roster; moved = true; } else state.roster.scannedAt = roster.scannedAt;
+    if (moved) state.changed();
     return next;
   })().catch(e => { console.error('[tower] skills illisibles :', e.message); return null; }).finally(() => { skillsBusy = null; });
   return skillsBusy;
@@ -350,6 +358,8 @@ const routes = {
 
   'POST /api/skills/refresh': async () => ({ ok: !!(await refreshSkills()) }),
   'GET /api/skills/file': (b, url) => skillsLib.readFileOf(skillsInv, url.searchParams.get('id')),
+  'POST /api/roster/refresh': async () => ({ ok: !!(await refreshSkills()) }),
+  'GET /api/roster/file': (b, url) => agentsLib.readFileOf(rosterInv, url.searchParams.get('id')),
   'POST /api/skills/fetch': (b) => skillsLib.fetchSkill(b.url),
   'POST /api/skills/create': async (b) => {
     let root;

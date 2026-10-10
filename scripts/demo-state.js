@@ -153,6 +153,7 @@ for (const [id, type] of [['rel-1', 'Explore'], ['rel-2', 'Explore'], ['rel-3', 
   ev('s-relec', 'PreToolUse', { tool_name: 'Read', tool_input: { file_path: P('CLAUDE.md') }, agent_id: id, agent_type: type });
 }
 state.agents['s-ia'].subagents['ia-1'] = { type: 'Explore', lastSeen: T0 - 5 * 60_000 }; // Odile attend ta reponse, son sous-agent aussi
+state.agents['s-test'].subagents['anim-1'] = { type: 'ctb-animation', lastSeen: T0 - 60_000 }; // un agent du projet au travail : son casier est ouvert
 // Une session ouverte dans le dossier de la tour elle-meme : elle a son aile a part.
 const TOWER = path.join(ROOT, 'Alkatrazz Tower');
 at(-20); state.event({ session_id: 's-tour', cwd: TOWER, hook_event_name: 'SessionStart', ts: clock, session_title: 'Maintenance de la tour' });
@@ -243,9 +244,36 @@ async function demoSkills() {
     call(n, 30 + (k++ * 397) % (9 * 24 * 60), `demo-${i % 4}`, tower ? TOWER : PROJ, n === 'ctb-portes' && i === 0);
   }
   call('simplify', 90, 'demo-1', TOWER);
+  // Le quartier des agents : les agents du projet par section, un agent perso, un agent de plugin, et
+  // leurs appels (outil Agent) avec les tokens rendus par chaque appel.
+  const agentMd = (name, section, desc, extra = '', body = '') => `---\nname: ${name}\nsection: ${section}\ndescription: ${JSON.stringify(desc)}\n${extra}---\n\nTu es le spécialiste ${name}.\n${body}`;
+  for (const [n, sec, d, extra, body] of [
+    ['ctb-animation', 'Animation', 'Montages, gestes CTB.Geste.*, notifies et Anim Blueprints. À appeler pour toute nouvelle animation.', '', 'Skills utiles : ue-animation, ue-cpp-conventions.\n'],
+    ['ctb-gameplay', 'Gameplay', 'Portes, coffres, bornes et interactions du joueur.', 'model: inherit\n', 'Skills utiles : ue-replication, ctb-portes.\n'],
+    ['ctb-armes', 'Armes et combat', 'Tir, munitions, balistique et mêlée.', 'disallowedTools: Agent, Workflow\nmodel: inherit\n', 'Skills utiles : ue-armes-skg.\n'],
+    ['ctb-interface', 'Interface', 'La WebUI : inventaire, équipement, marchands, carte.', 'skills:\n  - ctb-portes\n', ''],
+    ['ctb-reseau', 'Réseau', 'Relit la réplication de toute feature : autorité serveur, RPC, OnRep.', 'skills:\n  - ue-replication\n', ''],
+    ['ctb-relecteur', 'Tests et qualité', 'Relit un travail avant qu\'il soit déclaré terminé.', 'tools: Read, Grep, Glob, Bash, PowerShell\n', 'Skills utiles : ue-tests-auto.\n'],
+    ['ctb-testeur', 'Tests et qualité', 'Lance la suite de tests complète après chaque lot et traque les régressions.', '', 'Skills utiles : ue-tests-auto.\n'],
+    ['ctb-son', 'Son', 'L\'Oreille, occlusion, réverb, radio.', '', ''],
+  ]) put(path.join(PROJ, '.claude', 'agents', `${n}.md`), agentMd(n, sec, d, extra, body));
+  put(path.join(CFG, 'agents', 'revue-cpp.md'), agentMd('revue-cpp', 'Tests et qualité', 'Relecteur C++ Unreal pour tous les projets du PC.', 'model: sonnet\n', 'Skills utiles : ue-cpp-conventions.\n'));
+  put(path.join(CFG, 'plugins', 'cache', 'addy-agent-skills', 'agent-skills', '1.2.0', 'agents', 'code-reviewer.md'), '---\nname: code-reviewer\ndescription: Senior code reviewer for correctness, readability and risk.\n---\n\nReview the diff.\n');
+  const agentCall = (type, minAgo, sid, cwd, what, tokens, k) => {
+    const ts = (m) => new Date(T0 - m * 60_000).toISOString();
+    lines.push(JSON.stringify({ type: 'assistant', sessionId: sid, cwd, timestamp: ts(minAgo), message: { role: 'assistant', content: [{ type: 'tool_use', id: `toolu_demo_${k}`, name: 'Agent', input: { subagent_type: type, description: what, prompt: what } }] } }));
+    lines.push(JSON.stringify({ type: 'user', sessionId: sid, cwd, timestamp: ts(minAgo - 3), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `toolu_demo_${k}`, content: 'ok' }] }, toolUseResult: { status: 'completed', totalTokens: tokens } }));
+  };
+  let n = 0;
+  for (const [type, c, what, tok] of [['Explore', 14, 'Chercher les appels de la porte', 38_000], ['general-purpose', 3, 'Relire le plan de la version', 61_000], ['ctb-gameplay', 4, 'Coup de pied dans les portes', 412_000],
+    ['ctb-relecteur', 6, 'Relire le lot avant « terminé »', 95_000], ['ctb-reseau', 5, 'Réplication du coup de pied', 120_000], ['ctb-animation', 2, 'Montage du coup de pied', 230_000], ['ctb-testeur', 3, 'Suite complète après le lot', 80_000], ['revue-cpp', 2, 'Relire CTBPorte.cpp', 54_000]]) {
+    for (let i = 0; i < c; i++) agentCall(type, 40 + (n++ * 331) % (6 * 24 * 60), `demo-${i % 3}`, PROJ, what, tok + i * 1000, n);
+  }
   put(path.join(CFG, 'projects', 'C--demo', 'journal.jsonl'), lines.join('\n') + '\n');
   const inv = skills.scan({ cfg: CFG, projects: [{ name: 'ConquerTheBackrooms', root: PROJ }, { name: 'Alkatrazz Tower', root: TOWER }] });
   state.skills = skills.withUsage(inv, await skills.readUsage({ cfg: CFG, now: T0 }), { now: T0 });
+  const agents = require('../lib/agents');
+  state.roster = agents.withUsage(agents.scan({ cfg: CFG, projects: [{ name: 'ConquerTheBackrooms', root: PROJ }, { name: 'Alkatrazz Tower', root: TOWER }], skills: inv }), await skills.readAgentUsage({ cfg: CFG, now: T0 }), { now: T0 });
 }
 
 (async () => {

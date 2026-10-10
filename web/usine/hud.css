@@ -352,3 +352,8 @@ h1, h2, h3, p { margin: 0; }
 .us-row input { flex: 1; min-width: 0; }
 .us-path { font: 12px/1.4 ui-monospace, Consolas, monospace; overflow-wrap: anywhere; }
 .us-skilltext { max-height: 38vh; overflow: auto; margin: 0; }
+
+/* Quartier des agents : comme la bibliothèque, avec d'où vient l'agent après son nom */
+.us-scope { padding-left: 8px; font-size: 12px; white-space: nowrap; }
+.us-skill > small { font-size: 13px; padding-left: 15px; }
+.us-skill .us-dl { font-size: 13px; }
