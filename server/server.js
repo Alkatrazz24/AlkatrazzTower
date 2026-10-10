@@ -71,7 +71,15 @@ function pushAll() {
 
 // Les tickets en attente de leur tour (long-poll /api/lock/wait).
 const waiters = new Map(); // ticket -> [resolve]
+const askWaiters = new Map(); // question -> [resolve] (long-poll /api/ask/wait de hooks/tower-ask.js)
 function wakeWaiters() {
+  for (const [id, list] of askWaiters) {
+    const st = state.askStatus(id);
+    if (st.pending) continue;
+    askWaiters.delete(id);
+    list[0](st); // une seule reponse a rendre : les autres attentes repartent en « pending »
+    for (const fn of list.slice(1)) fn({ pending: true });
+  }
   for (const [ticket, list] of waiters) {
     const st = state.ticketStatus(ticket);
     if (st.granted || st.lost) {
@@ -191,11 +199,19 @@ function readBody(req) {
   });
 }
 
-// Refuse les requetes venues d'une autre origine (une page web quelconque ouverte dans le navigateur).
+// Seule la page de la tour peut agir sur la tour. Un navigateur envoie toujours Origin avec un POST :
+// une autre page web (autre site, ou autre serveur local sur un autre port) est refusee. Les
+// programmes locaux (hooks, tower-run, plugin Unreal) n'envoient pas d'Origin.
+const OWN = new RegExp(`^(127\\.0\\.0\\.1|localhost):${PORT}$`, 'i');
 function foreignOrigin(req) {
   const o = req.headers.origin;
   if (!o) return false;
-  return !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/.test(o);
+  return !new RegExp(`^http://(127\\.0\\.0\\.1|localhost):${PORT}$`, 'i').test(o);
+}
+// Un nom d'hote inconnu = une page qui a fait pointer son domaine sur 127.0.0.1 (DNS rebinding) :
+// elle ne lit ni n'ecrit rien, pas meme l'etat.
+function foreignHost(req) {
+  return !OWN.test(String(req.headers.host || ''));
 }
 
 const MIME = {
@@ -294,6 +310,9 @@ const routes = {
   'POST /api/lock/force-release': () => ({ ok: state.forceRelease() }),
   'POST /api/report': (b) => { state.report(b.entry || {}, b.result || {}); return { ok: true }; },
   'POST /api/agents/forget': (b) => ({ ok: state.forget(b.sessionId) }),
+  'POST /api/ask/open': (b) => ({ id: state.openAsk(b) }),
+  'POST /api/ask/answer': (b) => state.answerAsk(String(b.id || ''), b),
+  'POST /api/ask/close': (b) => ({ ok: state.closeAsk(String(b.id || '')) }),
   'POST /api/agents/rename': (b) => ({ ok: state.renameRoom(String(b.sessionId || ''), b.label) }),
 
   // Personnages
@@ -372,7 +391,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${HOST}`);
   const key = `${req.method} ${url.pathname}`;
 
-  if (req.method === 'POST' && foreignOrigin(req)) return send(res, 403, { error: 'origine refusee' });
+  if (foreignHost(req) || req.method === 'POST' && foreignOrigin(req)) return send(res, 403, { error: 'origine refusee' });
 
   if (key === 'GET /api/stream') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
@@ -401,6 +420,23 @@ const server = http.createServer(async (req, res) => {
     list.push(finish);
     waiters.set(b.ticket, list);
     req.on('close', () => { if (!done) { done = true; clearTimeout(timer); } });
+    return;
+  }
+
+  if (key === 'POST /api/ask/wait') {
+    const b = await readBody(req);
+    if (!b) return send(res, 400, { error: 'JSON invalide' });
+    const id = String(b.id || '');
+    const st = state.askStatus(id);
+    if (!st.pending) return send(res, 200, st);
+    let done = false;
+    const finish = (s) => { if (done) return; done = true; clearTimeout(timer); send(res, 200, s); };
+    const timer = setTimeout(() => {
+      askWaiters.set(id, (askWaiters.get(id) || []).filter(f => f !== finish));
+      finish({ pending: true });
+    }, Math.min(Number(b.timeoutMs) || WAIT_MS, WAIT_MS));
+    askWaiters.set(id, [...(askWaiters.get(id) || []), finish]);
+    req.on('close', () => { if (!done) { done = true; clearTimeout(timer); askWaiters.set(id, (askWaiters.get(id) || []).filter(f => f !== finish)); } });
     return;
   }
 
@@ -463,4 +499,4 @@ function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
-module.exports = { server, state };
+module.exports = { server, state, foreignOrigin, foreignHost };

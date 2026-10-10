@@ -70,3 +70,31 @@ test('tour eteinte : la commande part sans verrou', { timeout: 30_000 }, async (
   assert.strictEqual(r.code, 0);
   assert.match(r.out, /Result: Succeeded/);
 });
+
+// Seule la page de la tour agit sur la tour : une autre page web ne peut ni repondre a une question
+// a la place d'ali, ni autoriser une permission, ni lire l'etat par un domaine qui pointe sur 127.0.0.1.
+function req(method, p, headers, body) {
+  return new Promise((res, rej) => {
+    const data = body ? JSON.stringify(body) : '';
+    const r = http.request({ host: '127.0.0.1', port: PORT, path: p, method, headers: { 'Content-Type': 'text/plain', 'Content-Length': Buffer.byteLength(data), ...headers } }, (x) => {
+      let raw = ''; x.on('data', c => { raw += c; }); x.on('end', () => res({ status: x.statusCode, body: raw }));
+    });
+    r.on('error', rej);
+    r.end(data);
+  });
+}
+
+test('une autre page web ne peut pas repondre a la place d\'ali', async () => {
+  const opened = JSON.parse((await req('POST', '/api/ask/open', {}, { sessionId: 'sec', kind: 'permission', tool: 'Bash', summary: 'rm -rf' })).body);
+  assert.ok(opened.id);
+  const answer = { id: opened.id, decision: 'allow' };
+  for (const origin of ['https://site-malveillant.example', 'http://localhost:3000', 'http://127.0.0.1.evil.example:' + PORT, 'null']) {
+    assert.strictEqual((await req('POST', '/api/ask/answer', { Origin: origin }, answer)).status, 403, origin);
+  }
+  assert.strictEqual((await req('GET', '/api/state', { Host: `evil.example:${PORT}` })).status, 403);
+  assert.strictEqual((await req('POST', '/api/ask/answer', { Host: `evil.example:${PORT}` }, answer)).status, 403);
+  // la page de la tour, elle, repond
+  const ok = await req('POST', '/api/ask/answer', { Origin: `http://127.0.0.1:${PORT}` }, answer);
+  assert.deepStrictEqual([ok.status, JSON.parse(ok.body).ok], [200, true]);
+  assert.strictEqual((await req('GET', '/api/health', { Host: `localhost:${PORT}` })).status, 200);
+});
