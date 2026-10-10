@@ -146,7 +146,23 @@ state.agents['s-old'] = { ...state.agents['s-ui'], sessionId: 's-old', status: '
 // Une tache lancee depuis le panneau Taches, et une tache ajoutee par l'utilisateur.
 at(-35); ev('s-relec', 'UserPromptSubmit', { prompt: 'Tache de la tour [relecture] : lis la consigne dans Saved/Tour/taches/relecture.md et suis-la.' });
 state.agents['s-relec'].characterId = state.createCharacter({ name: 'Clothilde', look: { hat: 'aucun', tool: 'loupe', accessory: 'lunettes', shirt: '#7c3aed', hairStyle: 'chignon', hair: '#d6d3d1' } }).id;
+for (const [m, f] of [[-30, 'CLAUDE.md'], [-24, 'Source/ConquerTheBackrooms/Weapons/CTBAmmoComponent.cpp'], [-15, 'Source/ConquerTheBackrooms/AI/CTBStalkerController.cpp']]) { at(m); tool('s-relec', 'Read', { file_path: P(f) }); }
 at(-2); tool('s-relec', 'Read', { file_path: P('Source/ConquerTheBackrooms/Raid/CTBRaidSubsystem.cpp') });
+
+// Une tache d'idees finie : son suivi (bloc « ## Suivi » de son dernier message) et son plan.
+at(-80); ev('s-idees', 'UserPromptSubmit', { prompt: 'Tache de la tour [features] : lis la consigne dans Saved/Tour/taches/features.md et suis-la.' });
+state.agents['s-idees'].characterId = state.createCharacter({ name: 'Basalte', look: { hat: 'casquette', hatColor: '#16a34a', tool: 'aucun', shirt: '#be185d', hairStyle: 'court', hair: '#3f2a14' } }).id;
+for (const [m, f] of [[-78, 'CLAUDE.md'], [-74, 'Source/ConquerTheBackrooms/Raid/CTBRaidSubsystem.cpp'], [-70, 'Content/Data/DT_Loot.uasset']]) { at(m); tool('s-idees', 'Read', { file_path: P(f) }); }
+at(-62); tool('s-idees', 'Write', { file_path: P('Saved/Tour/plans/feature-2026-10-09.md'), content: '# Plan' });
+at(-60); ev('s-idees', 'Stop', { last_assistant_message: [
+  '5 idées pour CTB, le plan de la meilleure est écrit.', '',
+  '## Suivi',
+  'Fait :', '- Lu le CLAUDE.md, le sous-système de raid et les tables de loot', '- Proposé 5 features (radio d\'extraction, loot maudit, coffre partagé, carte griffonnée, sprint bruyant)', '- Écrit le plan de la radio d\'extraction, la plus rentable',
+  'À faire :', '- Relire le plan et choisir si on part sur la radio d\'extraction', '- Découper le plan en 4 tâches pour ctb-armes, ctb-ui, ctb-son et ctb-testeur', '- Ajouter la feature à la version CTB 0.3',
+  'Questions pour ali :', '- Le loot maudit peut-il faire perdre des objets du coffre, ou seulement ceux du raid ?',
+  'Rapport : Saved/Tour/plans/feature-2026-10-09.md',
+].join('\n') });
+at(-2); // l'horloge de la demo reste « maintenant »
 state.tasks.push({ id: 'perso-assets-orphelins', title: 'Assets orphelins', text: 'Liste les assets que plus rien ne référence.', prompt: 'Liste les assets de Content/ que plus rien ne référence dans {projet}, sans rien supprimer.', readonly: true, createdAt: T0 - 86400_000 });
 
 // Tokens : ce que la tour lirait dans les journaux de Claude Code.
@@ -165,6 +181,7 @@ use('s-niveaux', 2210, 71, 200_000, [['Bash', 18, 11, 980], ['Edit', 9, 12, 760]
 use('s-ui', 1640, 52, 200_000, [['Write', 6, 15, 620], ['Read', 19, 3, 540], ['Bash', 7, 4, 380]]);
 use('s-son', 980, 43, 200_000, [['Edit', 5, 6, 410], ['Agent', 1, 3, 300], ['Read', 9, 1, 230]]);
 use('s-test', 2730, 96, 200_000, [['Bash', 28, 14, 1900], ['Read', 21, 3, 700]]);
+use('s-idees', 870, 96, 200_000, [['Read', 31, 4, 520], ['Write', 1, 6, 90], ['Réponse', 0, 4, 60]]);
 use('s-relec', 1260, 312, 1_000_000, [['Read', 58, 7, 980], ['Grep', 22, 2, 230], ['Réponse', 0, 3, 50]]);
 
 // L'editeur, vu par le plugin.

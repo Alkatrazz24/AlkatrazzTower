@@ -291,6 +291,7 @@ const routes = {
 
   'POST /api/tasks/save': (b) => taches.save(b),
   'POST /api/tasks/delete': (b) => ({ ok: taches.remove(b.id) }),
+  'GET /api/tasks/file': (b, url) => require('../lib/suivi').readFile(state.agents[url.searchParams.get('session')], url.searchParams.get('path')),
 
   'GET /api/tuto': () => tuto.info(),
   'POST /api/tuto/start': (b) => tuto.start(b),

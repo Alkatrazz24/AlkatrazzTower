@@ -8,6 +8,7 @@ const { docRead } = require('../lib/unreal');
 const chars = require('../lib/characters');
 const { roomForPath } = require('../lib/inventory');
 const taches = require('../lib/taches');
+const suivi = require('../lib/suivi');
 
 // Agents des tutos (lib/tuto.js) : jamais sauvegardes, jamais comptes pour une version.
 const isTuto = (id) => String(id || '').startsWith('tuto-');
@@ -127,12 +128,12 @@ class TowerState {
       case 'UserPromptSubmit':
         a.status = 'working';
         // Les messages injectes par Claude Code (fin de tache de fond...) ne sont pas une demande.
-        if (ev.prompt && !/^\s*<[a-z-]+[\s>]/i.test(ev.prompt)) a.prompt = snip(ev.prompt, 240);
+        if (ev.prompt && !/^\s*<[a-z_-]+[\s>]/i.test(ev.prompt)) a.prompt = snip(ev.prompt, 240);
         // Une session lancee depuis le panneau Taches (ou avec sa consigne collee) porte sa marque.
         const tid = taches.taskIdIn(ev.prompt);
         if (tid && (!a.task || a.task.id !== tid)) {
           const def = this.taskList().find(x => x.id === tid);
-          a.task = { id: tid, title: def ? def.title : tid, at: t };
+          a.task = suivi.start(tid, def ? def.title : tid, t);
         }
         a.message = '';
         a.promptAt = t;
@@ -157,7 +158,8 @@ class TowerState {
             a.docs.count++;
             a.docs.last = { ...d, at: t };
           }
-          if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(ev.tool_name || '')) a.edits = (a.edits || 0) + 1;
+          // Un rapport ecrit dans Saved/Tour ne compte pas comme une modification du jeu.
+          if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(ev.tool_name || '') && !suivi.isTowerFile(touched)) a.edits = (a.edits || 0) + 1;
         }
         if (ev.hook_event_name === 'PreToolUse') a.message = '';
         break;
@@ -167,9 +169,9 @@ class TowerState {
         break;
       case 'Notification':
         // idle_prompt = l'agent a fini et attend depuis un moment ; le reste demande une reponse.
-        if (ev.notification_type === 'idle_prompt') a.status = 'idle';
-        else a.status = 'waiting';
-        a.message = snip(ev.message, 200);
+        // Le rappel « en attente » ne remplace pas ce que l'agent a dit en finissant.
+        if (ev.notification_type === 'idle_prompt') { a.status = 'idle'; if (!a.message) a.message = snip(ev.message, 200); }
+        else { a.status = 'waiting'; a.message = snip(ev.message, 200); }
         break;
       case 'SubagentStart':
         break;
@@ -178,7 +180,8 @@ class TowerState {
         break;
       case 'Stop':
         a.status = 'idle';
-        a.message = snip(ev.last_assistant_message, 240);
+        // Le bloc « ## Suivi » d'une tache s'affiche a part (lib/suivi.js) : la fiche garde ce qui precede.
+        a.message = snip(String(ev.last_assistant_message || '').split(/^[ \t]*#{1,4}[ \t]*suivi\b/im)[0].trim() || ev.last_assistant_message, 240);
         a.subagents = {};
         break;
       case 'SessionEnd':
@@ -189,6 +192,7 @@ class TowerState {
       default:
         break;
     }
+    if (a.task) suivi.track(a.task, ev, t); // les sous-agents de la tache comptent aussi
     // Un sous-agent muet depuis 10 minutes est considere comme fini.
     for (const [k, v] of Object.entries(a.subagents)) if (t - v.lastSeen > 600_000) delete a.subagents[k];
     this.changed();
@@ -625,6 +629,7 @@ class TowerState {
       editors: this.editors,
       tuto: this.tuto || null,
       tasks: this.taskList(),
+      taskSuivi: suivi.CONSIGNE,
     };
   }
 
@@ -645,6 +650,8 @@ class TowerState {
     if (Array.isArray(saved.campaigns)) this.campaigns = saved.campaigns;
     if (saved.testGroups && typeof saved.testGroups === 'object') this.testGroups = saved.testGroups;
     if (saved.characters && typeof saved.characters === 'object') this.characters = saved.characters;
+    // Ancien nom donne au hasard, confondu avec la forge de la page : renomme une fois.
+    for (const c of Object.values(this.characters)) if (c && c.name === 'Forge') c.name = Object.values(this.characters).some(x => x.name === 'Quartz') ? 'Quartz 2' : 'Quartz';
     if (Array.isArray(saved.projects)) this.projects = saved.projects;
     if (Array.isArray(saved.tasks)) this.tasks = saved.tasks;
     for (const a of Object.values(this.agents)) delete a.building; // aucun verrou ne survit a un redemarrage

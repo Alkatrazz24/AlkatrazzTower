@@ -253,8 +253,28 @@ h1, h2, h3, p { margin: 0; }
 .us-task p { margin: 0; }
 .us-taches > .us-ebody > .us-btn { justify-self: start; }
 .us-runs { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.us-runs li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; }
+.us-runs > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; }
 .us-runs .us-ctx { grid-column: 1 / -1; }
+.us-runs > li.on { padding: 8px 10px; background: var(--us-inset); border: 1px solid var(--us-edge); border-radius: var(--us-radius); }
+.us-runs li > .us-suivi, .us-runs li > .us-actions { grid-column: 1 / -1; }
+/* suivi d'une tache : ou il en est, fait, a faire, questions, fichiers */
+.us-suivi { display: grid; gap: 5px; }
+.us-suivi p { margin: 0; }
+.us-suivi .us-state { font-weight: 600; }
+.us-suivi-list { list-style: disc outside; margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 14px; }
+.us-suivi-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.us-suivi-files li { display: flex; gap: 8px; align-items: center; justify-content: space-between; min-width: 0; }
+.us-suivi-files li > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.us-suivi-last { white-space: pre-wrap; font-size: 13px; max-height: 220px; overflow: auto; background: var(--us-panel); padding: 6px 8px; }
+.us-reader { width: min(820px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; }
+.us-reader .us-ehead { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.us-md { display: grid; gap: 6px; font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.us-md h3, .us-md h4 { margin: 10px 0 0; font: 600 17px/1.25 var(--us-cond); color: var(--us-orange); }
+.us-md h4 { font-size: 15px; color: var(--us-ink); }
+.us-md p, .us-md ul { margin: 0; }
+.us-md ul { list-style: disc outside; padding-left: 20px; }
+.us-md pre { margin: 0; padding: 6px 8px; background: var(--us-inset); overflow: auto; font-size: 12px; }
+.us-md code { background: var(--us-inset); padding: 0 3px; }
 .us-runbtn { all: unset; cursor: pointer; display: flex; gap: 6px; align-items: baseline; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .us-runbtn:hover b { text-decoration: underline; }
 .us-runbtn:focus-visible { outline: 2px solid var(--us-orange); outline-offset: 2px; }
