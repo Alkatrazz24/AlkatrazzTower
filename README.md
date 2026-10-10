@@ -18,11 +18,14 @@ Spécification complète : [Alkatrazz Tower — Spécification](https://claude.a
 
 ## Cinq façons de se servir de la page
 
-La page est un jeu de gestion d'usine qui tourne en fond, en direct : chaque agent est une machine
-avec son personnage, les domaines du projet sont des gisements, les builds roulent en caisses sur le
-tapis jusqu'à la forge (une seule à la fois) puis vers le coffre des réussis ou des échecs, et la
-version est une fusée à assembler dans le silo. On glisse pour se déplacer, la molette zoome, un clic
-ouvre une fiche ; touches 1 à 9 pour un agent, F la forge, V la version, 0 pour recadrer.
+La page est un jeu de gestion qui tourne en fond, en direct, vu de dessus comme un bâtiment : chaque
+session Claude Code est une salle, son agent y est assis à son bureau (un personnage en pixels) et ses
+sous-agents travaillent autour d'une table. Les salles bordent un couloir et sont regroupées en ailes,
+une par projet (ou par dossier). Au bout du couloir, la forge : un seul build à la fois, les agents
+qui attendent font la queue devant sa porte, puis le build part au coffre des réussis ou des échecs.
+En face, la salle de lancement : la version est une fusée qui monte à chaque feature prête. On glisse
+pour se déplacer, la molette zoome, un clic ouvre une fiche ; touches 1 à 9 pour un agent, F la
+forge, V la version, 0 pour recadrer.
 
 Les cinq templates ne changent pas le décor mais la façon de travailler avec la tour. Le menu
 **Fonctionnement** passe de l'un à l'autre ; le choix est retenu par le navigateur. **Galerie**
@@ -33,7 +36,7 @@ Les cinq templates ne changent pas le décor mais la façon de travailler avec l
 | À traiter (par défaut) | une liste de ce qui t'attend, un bouton par sujet ; liste vide, rien à faire |
 | L'équipe | une carte par agent (ce qu'il fait, depuis quand) ; la caméra suit celui qu'on choisit |
 | La version | la version à sortir pilote tout : la prochaine étape en grand, puis chaque feature et ses preuves |
-| Coup d'œil | pour un second écran : l'usine en grand, une phrase qui dit l'essentiel, des notifications |
+| Coup d'œil | pour un second écran : la tour en grand, une phrase qui dit l'essentiel, des notifications |
 | Au clavier | une barre de commande (`/` ou Ctrl+K) : on tape un nom ou « forge », Entrée fait l'action |
 
 Le décor se choisit à part, dans le menu **Ambiance** : Jour (par défaut), Nuit, Plan, Volcan ou

@@ -145,6 +145,7 @@
         holds: !!(S.lock && S.lock.sessionId === a.sessionId), queuePos,
         ask: st === 'waiting' ? a.message : '', said: st === 'idle' ? a.message : '',
         prompt: a.prompt, tool: a.tool, subs: Object.keys(a.subagents || {}).length,
+        subList: Object.entries(a.subagents || {}).map(([id, v]) => ({ id, type: v.type || 'agent', lastSeen: v.lastSeen })),
         lastBuild: a.lastBuild, lastTest: a.lastTest, docs: docsOf(a), error: a.lastError,
         where: folder(a.cwd), project: a.project ? a.project.name : '', lastSeen: a.lastSeen,
         room: a.room || null, roomName: a.room && R[a.room] ? R[a.room][0] : '',
