@@ -379,3 +379,20 @@ h1, h2, h3, p { margin: 0; }
 .us-act-agent { margin-left: 24px; }
 .us-chatstate { margin: 0; }
 .us-chat textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+
+/* Regles d'une session core ou feature : trois choix par action */
+.us-rules { list-style: none; margin: 4px 0 6px; padding: 0; display: grid; gap: 6px; }
+.us-rules li { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.us-rules li > span:first-child { display: flex; flex-direction: column; min-width: 0; }
+.us-seg { display: inline-flex; border: 1px solid var(--us-hi); border-radius: 4px; overflow: hidden; }
+.us-segbtn { font: inherit; font-size: 12px; padding: 3px 7px; background: transparent; color: var(--us-muted); border: 0; border-left: 1px solid var(--us-hi); cursor: pointer; }
+.us-segbtn:first-child { border-left: 0; }
+.us-segbtn:hover:not([disabled]) { color: var(--us-ink); }
+.us-segbtn:focus-visible { outline: 2px solid var(--us-orange); outline-offset: -2px; }
+.us-segbtn[aria-pressed="true"].us-lv-oui { background: #2f6f3a; color: #fff; }
+.us-segbtn[aria-pressed="true"].us-lv-demander { background: #8a6a1f; color: #fff; }
+.us-segbtn[aria-pressed="true"].us-lv-non { background: #8a2f2a; color: #fff; }
+/* Nouvelle feature : les sujets touches */
+.us-topics { border: 1px solid var(--us-hi); border-radius: 4px; padding: 6px 8px; margin: 8px 0; }
+.us-checks { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.us-check { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }

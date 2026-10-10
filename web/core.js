@@ -155,20 +155,30 @@
         where: folder(a.cwd), project: a.project ? a.project.name : '', lastSeen: a.lastSeen,
         room: a.room || null, roomName: a.room && R[a.room] ? R[a.room][0] : '',
         usage: a.usage || null, task: a.task || null,
-        sujet: a.task && String(a.task.id).startsWith('sujet-') ? a.task.id : '', hidden: !!a.hidden,
+        // session core (un sujet du jeu) ou feature (une nouvelle idee) : l'id de son sujet ou de sa feature
+        sujet: a.task && /^(sujet|feature)-/.test(String(a.task.id)) ? a.task.id : '', hidden: !!a.hidden,
+        kind: a.task && String(a.task.id).startsWith('sujet-') ? 'core' : a.task && String(a.task.id).startsWith('feature-') ? 'feature' : '',
       };
     });
     // Sujets du jeu (lib/sujets.js) : la session la plus recente de chaque sujet occupe sa salle ; les
     // precedentes, et les sessions sans rien de neuf depuis une heure, sont des anciennes sessions.
     const sujetSession = {};
     for (const x of agents) if (x.sujet && x.st !== 'ended' && !x.hidden && (!sujetSession[x.sujet] || x.lastSeen > sujetSession[x.sujet].lastSeen)) sujetSession[x.sujet] = x;
+    // Une feature terminee quitte le batiment avec ses sessions (on la retrouve dans les anciennes).
+    const doneFeature = new Set((S.features || []).filter(f => f.doneAt).map(f => f.id));
     for (const x of agents) {
       const current = x.sujet && sujetSession[x.sujet] === x;
-      x.old = x.st === 'ended' || x.hidden || (x.sujet ? !current : x.st !== 'working' && x.st !== 'waiting' && !x.holds && !x.queuePos && now() - x.lastSeen > OLD_MS);
+      x.old = x.st === 'ended' || x.hidden || doneFeature.has(x.sujet) || (x.sujet ? !current : x.st !== 'working' && x.st !== 'waiting' && !x.holds && !x.queuePos && now() - x.lastSeen > OLD_MS);
     }
     const proj0 = (S.projects || [])[0];
     const sv = (S.sujets || {})[proj0 ? proj0.name : ''] || Object.values(S.sujets || {})[0] || null;
-    const sujets = sv ? sv.topics.map(t => ({ ...t, project: sv.project, session: sujetSession[t.id] || null })) : [];
+    const sujets = sv ? sv.topics.map(t => ({ ...t, kind: 'core', project: sv.project, session: sujetSession[t.id] || null })) : [];
+    // Features (lib/features.js) : leurs agents sont ceux des sujets qu'elles touchent.
+    const features = (S.features || []).filter(f => !sv || !f.project || f.project === sv.project).map(f => {
+      const mine = sujets.filter(t => (f.sujets || []).includes(t.id));
+      return { ...f, kind: 'feature', project: f.project || (sv ? sv.project : ''), agents: [...new Set(mine.flatMap(t => t.agents))], reviewers: [...new Set(mine.flatMap(t => t.reviewers || []))],
+        topics: mine.map(t => t.title), session: sujetSession[f.id] || null, done: !!f.doneAt };
+    });
     const live = agents.filter(x => x.st !== 'ended');
     const count = (s) => agents.filter(x => x.st === s).length;
     const byId = Object.fromEntries(agents.map(x => [x.id, x]));
@@ -249,7 +259,8 @@
       S, demo: DEMO, connected, now: now(),
       template: current, templates: TEMPLATES,
       agents, liveAgents: live, visibleAgents: agents.filter(x => ui.showEnded || !x.old), endedCount: agents.filter(x => x.old).length,
-      sujets, board: sv ? sv.board.entries : [], sujetsProject: sv ? sv.project : '',
+      sujets, features, board: sv ? sv.board.entries : [], sujetsProject: sv ? sv.project : '',
+      regles: S.regles || {}, actions: S.actions || [],
       counts: { working: count('working'), waiting, idle: count('idle'), ready: count('ready'), silent: count('silent'), live: live.length },
       editor, projects: S.projects || [], campaign, past, attention, lock, queue, chantiers, builds,
       inventories: invs, inv, testGroups: S.testGroups || {},

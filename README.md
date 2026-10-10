@@ -98,9 +98,29 @@ rapport à la fenêtre (200 k, ou 1 M), et ce que coûte chaque **action** (Read
 voit dans la fiche de chaque agent, et dans le panneau Tâches : suivi des tâches et tokens du
 jour par session. Au clavier, « tâche » liste les tâches à lancer.
 
+## Sessions core et feature
+
+Sous le bâtiment principal, deux bâtiments à part :
+
+- **Core** (bouton Core, touche S) : une session par sujet du jeu, décrite plus bas. Elle garde la mémoire
+  de son sujet dans son carnet et a ses **règles** : dans sa fiche, pour chaque action (modifier les
+  fichiers du jeu, lancer des commandes, committer et pousser, chercher sur internet, appeler ses
+  agents), tu choisis « Sans demander », « Demander » ou « Interdit ». Par défaut : agents sans demander,
+  git interdit, le reste demandé. Lire le projet et écrire dans `Saved/Tour` restent toujours permis. Les
+  règles vivent dans les données de la tour (`lib/regles.js`) et partent avec la session, à chaque
+  lancement et à chaque message de la discussion (`--allowedTools`, `--disallowedTools`) ; rien n'est
+  écrit dans les réglages du projet. « Modifier interdit » protège `Source/`, `Content/`, `Config/`,
+  `Plugins/`, `tools/`, `docs/`, `.claude/` et les fichiers à la racine (`.uproject`, `CLAUDE.md`, scripts).
+- **Features** (bouton Features, touche N pour une nouvelle) : une session par nouvelle idée. « Nouvelle
+  feature » demande un nom, l'idée et les sujets touchés, puis la lance (dans la tour ou dans une
+  fenêtre). Elle lit les carnets core de ces sujets sans les réécrire, propose un plan avant de toucher
+  au jeu, laisse au tableau ce qui change pour chaque sujet, et tient son carnet dans
+  `Saved/Tour/features/<nom>.md`. « Terminer la feature » sort sa salle du bâtiment (« Anciennes » la
+  remontre). Elle a ses règles, comme une session core.
+
 ## Sujets : une session par sujet du jeu
 
-Bouton **Sujets** (touche S). Chaque sujet du jeu a sa salle dans la tour, même quand aucune session ne
+Bouton **Core** (touche S). Chaque sujet du jeu a sa salle dans la tour, même quand aucune session ne
 tourne : un sujet par section des agents du projet (`section:` de `.claude/agents/*.md` : Animation,
 Interface, Menus, Armes et combat...), plus **Items** et **Base**. Le réseau et les tests ne sont pas des
 sujets : leurs agents relisent le travail de tous.
@@ -317,6 +337,8 @@ chaque changement de `web/` au lieu de deviner.
 | `lib/skills.js`, `lib/agents.js` | bibliothèque des skills et quartier des agents : inventaire, vérification, usage |
 | `lib/taches.js`, `lib/suivi.js` | tâches prêtes à lancer, et leur suivi (fait, à faire, questions, rapport) |
 | `lib/discussion.js` | discuter avec une session depuis la tour : sa conversation lue dans le journal, un message = un `claude -p --resume` |
+| `lib/features.js` | sessions feature : une par nouvelle idée, créée depuis la tour, sa consigne et son carnet |
+| `lib/regles.js` | règles d'une session core ou feature : sans demander, en demandant, interdit ; ses options de lancement |
 | `lib/sujets.js` | sujets du jeu : leur consigne, leur carnet et le tableau partagé, dans `Saved/Tour/` |
 | `lib/inventory.js`, `web/map.js` | carte du projet : comptage des assets et dessin de la ville |
 | `unreal/AlkatrazzTower`, `scripts/install-plugin.js` | plugin d'éditeur Unreal et son installation dans un projet |

@@ -98,41 +98,62 @@
     const n = Math.min(MAX_SUBS, (a.subList || []).length);
     return n ? Math.max(7, Math.round(6.2 + Math.ceil(n / 2) * 1.7)) : 6;
   }
-  function layout(M) {
-    const shown = M.agents.filter(a => !a.old || T.ui.showEnded);
-    // Un sujet sans session ouverte garde sa salle, en sommeil : on y relance une session d'un clic.
-    for (const s of M.sujets || []) if (!s.session) shown.push(sujetRoom(s));
-    // Ailes : un projet Unreal, sinon le dossier de la session. L'aile qui a le plus urgent passe en premier.
+  const byState = (a, b) => (ORDER[a.st] - ORDER[b.st]) || a.name.localeCompare(b.name);
+  // Ailes : un projet Unreal, sinon le dossier de la session. L'aile qui a le plus urgent passe en premier.
+  function wingsOf(as) {
     const wings = new Map();
-    for (const a of shown) {
+    for (const a of as) {
       const k = a.project || a.where || 'Autres';
       if (!wings.has(k)) wings.set(k, []);
       wings.get(k).push(a);
     }
-    const byState = (a, b) => (ORDER[a.st] - ORDER[b.st]) || a.name.localeCompare(b.name);
-    const list = [...wings].map(([name, as]) => ({ name, as: as.sort(byState), project: !!as[0].project }));
-    list.sort((p, q) => byState(p.as[0], q.as[0]) || p.name.localeCompare(q.name));
-    const machines = [], fillers = [], wingList = [];
-    let x = 3;
-    for (const wg of list) {
+    const list = [...wings].map(([name, xs]) => ({ name, as: xs.sort(byState), project: !!xs[0].project }));
+    return list.sort((p, q) => byState(p.as[0], q.as[0]) || p.name.localeCompare(q.name));
+  }
+  // Un batiment : un couloir horizontal, une salle par session de part et d'autre, regroupees en ailes,
+  // et un hall d'entree a gauche. x0 : son bord gauche, oy : son decalage vers le bas. Renvoie le x ou
+  // ses salles s'arretent ; la suite du batiment (forge...) se pose a partir de la.
+  function rooms(B, list, x0, oy, free) {
+    let x = x0 + 3;
+    B.fillers.push({ x: x0 + 1, y: TOP + oy, w: 2, h: ROOM_H, top: true }, { x: x0 + 1, y: BOT + oy, w: 2, h: ROOM_H, top: false }); // le hall d'entree
+    list.forEach((wg, i) => {
+      if (i) B.pillars.push({ x: x - 1, oy }); // un pas entre les ailes : un pilier plein
       const x0w = x;
       let tx = x, bx = x;
       for (const a of wg.as) {
         const w = roomW(a), top = tx <= bx;
-        machines.push({ a, x: top ? tx : bx, y: top ? TOP : BOT, w, h: ROOM_H, top, wing: wg.name });
+        B.machines.push({ a, x: top ? tx : bx, y: (top ? TOP : BOT) + oy, w, h: ROOM_H, top, wing: wg.name });
         if (top) tx += w; else bx += w;
       }
       const end = Math.max(tx, bx);
       // la rangee la plus courte se termine par une reserve, pour que l'aile reste d'un seul bloc
-      if (tx < end) fillers.push({ x: tx, y: TOP, w: end - tx, h: ROOM_H });
-      if (bx < end) fillers.push({ x: bx, y: BOT, w: end - bx, h: ROOM_H });
-      wingList.push({ name: wg.name, project: wg.project, x: x0w, w: end - x0w });
+      if (tx < end) B.fillers.push({ x: tx, y: TOP + oy, w: end - tx, h: ROOM_H, top: true });
+      if (bx < end) B.fillers.push({ x: bx, y: BOT + oy, w: end - bx, h: ROOM_H, top: false });
+      B.wings.push({ name: wg.name, project: wg.project, x: x0w, w: end - x0w, cy: CY + oy, first: !i });
       x = end + 1;
-    }
-    fillers.push({ x: 1, y: TOP, w: 2, h: ROOM_H }, { x: 1, y: BOT, w: 2, h: ROOM_H }); // le hall d'entree
-    if (!machines.length) { fillers.push({ x, y: TOP, w: 6, h: ROOM_H, free: true }, { x, y: BOT, w: 6, h: ROOM_H, free: true }); x += 7; }
-    // Gap d'un pas entre les ailes : un pilier plein.
-    const pillars = wingList.slice(1).map(wg => wg.x - 1);
+    });
+    // un batiment vide garde une salle libre ; celui des features en garde toujours une, pour en creer une
+    if (!list.length || free === 'feature') { B.fillers.push({ x, y: TOP + oy, w: 6, h: ROOM_H, top: true, free }, { x, y: BOT + oy, w: 6, h: ROOM_H, top: false, free }); x += 7; }
+    return x;
+  }
+  function hallOf(B, x0, right, oy, name) {
+    const hall = { x: x0 + 1, y: CY + oy, w: right - x0 - 1, h: CH, wings: B.wings.filter(wg => wg.cy === CY + oy && wg.x > x0 && wg.x < right) };
+    for (let lx = x0 + 2.5; lx < right - 1; lx += 6) B.lamps.push({ x: lx, y: CY + oy + 1.5 }); // plafonniers : ils eclairent la nuit
+    B.halls.push(hall);
+    B.blds.push({ x: x0, y: oy + 1, w: right - x0 + 1, h: BOT + ROOM_H, name, oy });
+  }
+  // Le batiment principal : les sessions, puis au bout du couloir la forge (en bas), la salle de lancement
+  // (en haut), la bibliotheque des skills et le quartier des agents. En dessous, deux batiments a part :
+  // le core (une salle par sujet du jeu, sa memoire et ses regles) et les features (une par nouvelle idee).
+  const GAP = 3; // l'herbe entre les batiments
+  function layout(M) {
+    const shown = M.agents.filter(a => !a.old || T.ui.showEnded);
+    // Un sujet ou une feature sans session ouverte garde sa salle, en sommeil : on la relance d'un clic.
+    for (const s of M.sujets || []) if (!s.session) shown.push(sujetRoom(s));
+    for (const s of M.features || []) if (!s.session && (!s.done || T.ui.showEnded)) shown.push(sujetRoom(s));
+    const kindOf = (a) => a.asleep ? a.def.kind : a.kind;
+    const B = { machines: [], fillers: [], wings: [], pillars: [], halls: [], lamps: [], blds: [] };
+    const x = rooms(B, wingsOf(shown.filter(a => !kindOf(a))), 0, 0, 'main');
     const fx = x;
     const froom = { x: fx, y: BOT, w: 10, h: ROOM_H, door: fx + 1.2 };
     const forge = { x: fx + 1, y: BOT + 1.8, w: 4, h: 4 };
@@ -142,17 +163,27 @@
     // la bibliotheque des skills, apres la salle de lancement ; le quartier des agents en face
     const lroom = { x: fx + 10, y: TOP, w: 8, h: ROOM_H };
     const aroom = { x: fx + 10, y: BOT, w: 8, h: ROOM_H };
-    const right = fx + 18;
-    const hall = { x: 1, y: CY, w: right - 1, h: CH };
-    // Plafonniers du couloir : ils eclairent la nuit.
-    const lamps = [];
-    for (let lx = 2.5; lx < right - 1; lx += 6) lamps.push({ x: lx, y: CY + 1.5 });
+    let right = fx + 18;
+    hallOf(B, 0, right, 0, '');
+    let h = BOT + ROOM_H + 2;
+    // Les batiments core et feature, des qu'un projet a des sujets (ou qu'une session core ou feature existe).
+    const core = shown.filter(a => kindOf(a) === 'core'), feat = shown.filter(a => kindOf(a) === 'feature');
+    if ((M.sujets || []).length || core.length || feat.length) {
+      const oy = BOT + ROOM_H + GAP;
+      const cr = rooms(B, wingsOf(core), 0, oy, 'core');
+      hallOf(B, 0, cr, oy, 'core');
+      const x2 = cr + GAP + 1;
+      const fr = rooms(B, wingsOf(feat), x2, oy, 'feature');
+      hallOf(B, x2, fr, oy, 'feature');
+      right = Math.max(right, fr);
+      h = oy + BOT + ROOM_H + 2;
+    }
     const you = { x: 1.2, y: CY + .1 };
-    return { machines, fillers, wings: wingList, pillars, forge, froom, okChest, koChest, silo, vroom, lroom, aroom, hall, lamps, you, w: right + 2, h: BOT + ROOM_H + 2, x0: 3 };
+    return { ...B, forge, froom, okChest, koChest, silo, vroom, lroom, aroom, hall: B.halls[0], you, w: right + 2, h, x0: 3 };
   }
 
   // ---------- terrain : calcule une fois par taille de batiment, hors de la boucle ----------
-  const inBase = (x, y, W) => x >= 0 && x < W.w - 1 && y >= 1 && y < W.h - 1;
+  const inBase = (x, y, W, m = 0) => W.blds.some(b => x >= b.x - m && x < b.x + b.w + m && y >= b.y - m && y < b.y + b.h + m);
   function buildTerrain(W) {
     const x0 = -MARGIN, y0 = -MARGIN, cols = W.w + 2 * MARGIN, rows = W.h + 2 * MARGIN;
     const cv = document.createElement('canvas');
@@ -164,26 +195,28 @@
       if (inBase(x, y, W)) continue;
       let r = TH.tile ? TH.tile(x, y, fbm(x, y), h2(x, y)) : (h2(x, y) & 7) < 2 ? COL.ground2 : COL.ground;
       // ni eau ni lave au ras du batiment : on y pose le sol du monde
-      if (r.anim && x >= -2 && x <= W.w + 1 && y >= -1 && y <= W.h) r = TH.safe || COL.ground;
+      if (r.anim && inBase(x, y, W, 2)) r = TH.safe || COL.ground;
       const color = typeof r === 'string' ? r : r.c;
       c.fillStyle = color; c.fillRect(x * TS, y * TS, TS, TS);
       if (r.anim) anim.push({ x, y, kind: r.anim, c: color });
     }
     // Decor autour du batiment (arbres, rochers...), a l'ecart de ses murs.
     if (TH.deco) for (let y = y0; y < y0 + rows; y++) for (let x = x0; x < x0 + cols; x++) {
-      if (x >= -1 && x < W.w && y >= 0 && y < W.h) continue;
+      if (inBase(x, y, W, 1)) continue;
       if (anim.length && TH.tile && TH.tile(x, y, fbm(x, y), h2(x, y)).anim) continue;
       TH.deco(c, x * TS, y * TS, fbm(x, y), h2(x, y));
     }
     // Soubassement du batiment : une dalle qui deborde d'une case.
-    c.fillStyle = COL.concrete; c.fillRect(0, TS, (W.w - 1) * TS, (W.h - 2) * TS);
-    if (!SC) {
-      for (let y = 1; y < W.h - 1; y++) for (let x = 0; x < W.w - 1; x++) if ((h2(x, y) & 7) === 0) { c.fillStyle = COL.concrete2; c.fillRect(x * TS, y * TS, TS, TS); }
-      c.fillStyle = COL.shadow; c.fillRect(TS, (W.h - 1) * TS, (W.w - 1) * TS, 4); c.fillRect((W.w - 1) * TS, 2 * TS, 4, (W.h - 3) * TS);
-    } else {
-      c.strokeStyle = COL.steelLight; c.setLineDash([8, 6]); c.lineWidth = 1.5; c.strokeRect(.5, TS + .5, (W.w - 1) * TS, (W.h - 2) * TS); c.setLineDash([]);
+    for (const b of W.blds) {
+      c.fillStyle = COL.concrete; c.fillRect(b.x * TS, b.y * TS, b.w * TS, b.h * TS);
+      if (!SC) {
+        for (let y = b.y; y < b.y + b.h; y++) for (let x = b.x; x < b.x + b.w; x++) if ((h2(x, y) & 7) === 0) { c.fillStyle = COL.concrete2; c.fillRect(x * TS, y * TS, TS, TS); }
+        c.fillStyle = COL.shadow; c.fillRect((b.x + 1) * TS, (b.y + b.h) * TS, b.w * TS, 4); c.fillRect((b.x + b.w) * TS, (b.y + 1) * TS, 4, (b.h - 1) * TS);
+      } else {
+        c.strokeStyle = COL.steelLight; c.setLineDash([8, 6]); c.lineWidth = 1.5; c.strokeRect(b.x * TS + .5, b.y * TS + .5, b.w * TS, b.h * TS); c.setLineDash([]);
+      }
     }
-    G.terrain = { cv, x0, y0, cols, rows, anim, w: W.w, theme: TH.id };
+    G.terrain = { cv, x0, y0, cols, rows, anim, w: W.w, h: W.h, key: W.blds.map(b => `${b.x},${b.y},${b.w}`).join(';'), theme: TH.id };
   }
 
   // ---------- dessin ----------
@@ -284,22 +317,22 @@
     }
   }
 
-  function drawHall(c, W, t) {
-    const H = W.hall, x = H.x * TS, y = H.y * TS, w = H.w * TS, hh = H.h * TS;
+  function drawHall(c, H) {
+    const x = H.x * TS, y = H.y * TS, w = H.w * TS, hh = H.h * TS;
     flags(c, x, y, w, hh, COL.hall);
     if (!SC) { // tapis rouge le long du couloir, jusqu'a la forge
       c.fillStyle = COL.carpet; c.fillRect(x + TS, y + hh / 2 - 9, w - 2 * TS, 18);
       c.fillStyle = COL.carpetEdge; c.fillRect(x + TS, y + hh / 2 - 9, w - 2 * TS, 2); c.fillRect(x + TS, y + hh / 2 + 7, w - 2 * TS, 2);
       wallSeg(c, x + w - WALL, y, WALL, hh); // fond du couloir
-      c.fillStyle = COL.carpetEdge; c.fillRect(0, y + hh / 2 - 9, x + TS, 18); // paillasson de l'entree
-      c.fillStyle = shade(COL.carpetEdge, -.35); for (let k = 2; k < x + TS; k += 4) c.fillRect(k, y + hh / 2 - 7, 2, 14);
+      c.fillStyle = COL.carpetEdge; c.fillRect(x - TS, y + hh / 2 - 9, 2 * TS, 18); // paillasson de l'entree
+      c.fillStyle = shade(COL.carpetEdge, -.35); for (let k = 2; k < 2 * TS; k += 4) c.fillRect(x - TS + k, y + hh / 2 - 7, 2, 14);
     } else {
       c.strokeStyle = COL.steelLight; c.lineWidth = 1.5; c.beginPath(); c.moveTo(x + w, y); c.lineTo(x + w, y + hh); c.stroke();
       c.setLineDash([3, 4]); c.strokeStyle = 'rgba(232,241,255,.35)'; c.beginPath(); c.moveTo(x, y + hh / 2); c.lineTo(x + w, y + hh / 2); c.stroke(); c.setLineDash([]);
     }
     // les ailes : une arche au debut de chacune
-    for (const wg of W.wings) {
-      const ax = wg.x * TS - (wg === W.wings[0] ? 0 : TS / 2);
+    for (const wg of H.wings) {
+      const ax = wg.x * TS - (wg.first ? 0 : TS / 2);
       if (SC) { c.strokeStyle = 'rgba(232,241,255,.4)'; c.setLineDash([2, 3]); c.beginPath(); c.moveTo(ax, y); c.lineTo(ax, y + hh); c.stroke(); c.setLineDash([]); continue; }
       wallSeg(c, ax - 3, y, 6, 6); wallSeg(c, ax - 3, y + hh - 6, 6, 6);
     }
@@ -307,12 +340,12 @@
   // Reserve : une piece sans porte qui ferme la rangee d'une aile ; « libre » quand il n'y a encore aucune session.
   function drawFiller(c, f) {
     const x = f.x * TS, y = f.y * TS, w = f.w * TS, hh = f.h * TS;
-    if (f.free) { planks(c, x, y, w, hh); walls(c, f, { side: f.y === TOP ? 'bottom' : 'top', x: f.x + f.w - 2.2, w: 1.6, open: false }); return; }
+    if (f.free) { planks(c, x, y, w, hh); walls(c, f, { side: f.top ? 'bottom' : 'top', x: f.x + f.w - 2.2, w: 1.6, open: false }); return; }
     flags(c, x, y, w, hh, shade(COL.hall, -.12));
     walls(c, f, null);
     if (SC || w < 2 * TS) return;
     for (let i = 0; i < Math.min(3, Math.floor(f.w / 2)); i++) { // caisses rangees le long du mur
-      const cx = x + 10 + i * 22, cy = f.y === TOP ? y + 9 : y + hh - 25;
+      const cx = x + 10 + i * 22, cy = f.top ? y + 9 : y + hh - 25;
       c.fillStyle = COL.shadow; c.fillRect(cx + 2, cy + 3, 16, 14);
       c.fillStyle = '#a0723c'; c.fillRect(cx, cy, 16, 14);
       c.fillStyle = '#7a5428'; c.fillRect(cx, cy + 6, 16, 2); c.fillRect(cx + 7, cy, 2, 14);
@@ -656,9 +689,9 @@
       const x0 = G.cam.x / TS - 1, y0 = G.cam.y / TS - 1, x1 = (G.cam.x + vw) / TS + 1, y1 = (G.cam.y + vh) / TS + 1;
       for (const a of R.anim) if (a.x >= x0 && a.x <= x1 && a.y >= y0 && a.y <= y1) TH.animTile(c, a, t, G.emit, light);
     }
-    drawHall(c, W, t);
+    for (const H of W.halls) drawHall(c, H);
     for (const f of W.fillers) drawFiller(c, f);
-    for (const px of W.pillars) { pillar(c, px, TOP); pillar(c, px, BOT); }
+    for (const p of W.pillars) { pillar(c, p.x, TOP + p.oy); pillar(c, p.x, BOT + p.oy); }
     // un agent a la forge ou dans la file a quitte son bureau
     const away = new Set(M.queue.filter(q => q.agent).map(q => q.agent.id));
     if (M.lock && M.lock.agent) away.add(M.lock.agent.id);
@@ -750,9 +783,16 @@
     const small = z < 1.4;
     // ailes : le nom du projet (ou du dossier) dans le couloir
     if (z >= .5) for (const wg of W.wings) {
-      const [sx, sy] = S(wg.x + wg.w / 2, CY + 1.5);
+      const [sx, sy] = S(wg.x + wg.w / 2, wg.cy + 1.5);
       label(c, wg.name, sx, sy, { edge: wg.project ? COL.blue : '#999', size: small ? 11 : 13, max: wg.w * TS * z, color: COL.text, weight: 600, bg: 'rgba(20,20,22,.55)' });
     }
+    // les batiments core et feature : leur enseigne au-dessus de l'entree, et la salle libre des features
+    for (const b of W.blds) {
+      if (!b.name) continue;
+      const [bx, by] = S(b.x + b.w / 2, b.y - 1.1);
+      label(c, b.name === 'core' ? 'Core · la mémoire du jeu' : 'Features · les nouvelles idées', bx, by, { edge: b.name === 'core' ? COL.ok : COL.warn, size: small ? 12 : 14, weight: 700 });
+    }
+    if (z >= .6) for (const f of W.fillers) if (f.free === 'feature' && f.top) { const [fx, fy] = S(f.x + f.w / 2, f.y + f.h / 2); label(c, '+ Nouvelle feature', fx, fy, { edge: COL.warn, weight: 700, size: small ? 11 : 13 }); }
     // plaque de chaque salle, dehors contre le mur : ce que fait la session (son nom de salle)
     for (const m of W.machines) {
       const a = m.a, [sx, sy] = S(m.x + m.w / 2, m.top ? m.y - .55 : m.y + m.h + .55);
@@ -839,7 +879,7 @@
       if (Math.abs(G.goal.x - G.cam.x) + Math.abs(G.goal.y - G.cam.y) < .5) G.goal = null;
     }
     clampCam();
-    if (!G.terrain || G.terrain.w !== G.world.w || G.terrain.theme !== TH.id) buildTerrain(G.world);
+    if (!G.terrain || G.terrain.key !== G.world.blds.map(b => `${b.x},${b.y},${b.w}`).join(';') || G.terrain.theme !== TH.id) buildTerrain(G.world);
     const c = G.ctx, cv = G.canvas;
     G.lights = []; G.emit = [];
     c.setTransform(1, 0, 0, 1, 0, 0);
@@ -868,8 +908,8 @@
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.fillStyle = COL.mini; c.fillRect(0, 0, m.width, m.height);
     c.setTransform(s, 0, 0, s, 0, 0);
-    c.fillStyle = COL.concrete; c.fillRect(0, TS, (W.w - 1) * TS, (W.h - 2) * TS);
-    c.fillStyle = COL.hall; c.fillRect(W.hall.x * TS, W.hall.y * TS, W.hall.w * TS, W.hall.h * TS);
+    c.fillStyle = COL.concrete; for (const b of W.blds) c.fillRect(b.x * TS, b.y * TS, b.w * TS, b.h * TS);
+    c.fillStyle = COL.hall; for (const H of W.halls) c.fillRect(H.x * TS, H.y * TS, H.w * TS, H.h * TS);
     for (const f of W.fillers) { c.fillStyle = COL.wallDark; c.fillRect(f.x * TS, f.y * TS, f.w * TS, f.h * TS); }
     for (const mm of W.machines) { c.fillStyle = mm.a.st === 'ended' ? COL.ghost : edgeOf(mm.a); c.fillRect(mm.x * TS + 6, mm.y * TS + 6, mm.w * TS - 12, mm.h * TS - 12); }
     c.fillStyle = G.M.lock ? COL.fire : COL.forge; c.fillRect(W.froom.x * TS + 6, W.froom.y * TS + 6, W.froom.w * TS - 12, W.froom.h * TS - 12);
@@ -897,6 +937,7 @@
     if (inR(W.vroom)) return { kind: 'silo' };
     if (inR(W.lroom)) return { kind: 'skills' };
     if (inR(W.aroom)) return { kind: 'roster' };
+    if (W.fillers.some(f => f.free === 'feature' && inR(f))) return { kind: 'newfeature' };
     return null;
   }
   // Infobulle facon jeu : le nom de ce qu'on survole et son etat en une ligne.
@@ -904,7 +945,7 @@
     const M = G.M;
     if (s.kind === 'agent') {
       const z = sujetOf(s.id);
-      if (z) return [z.title, `Sujet en sommeil${z.notes ? ', carnet tenu' : ', pas encore de carnet'} : clique pour lancer sa session`];
+      if (z) return [z.title, `${z.kind === 'feature' ? 'Feature' : 'Sujet'} en sommeil${z.notes ? ', carnet tenu' : ', pas encore de carnet'} : clique pour lancer sa session`];
       const a = M.agents.find(x => x.id === s.id);
       return a && [a.salle || a.name, [a.name, a.holds ? `${a.stText}, à la forge` : a.queuePos ? `${a.stText}, ${a.queuePos}e devant la forge` : a.stText,
         a.subs ? T.plural(a.subs, 'sous-agent', 'sous-agents') : ''].filter(Boolean).join(', ')];
@@ -914,13 +955,18 @@
     if (s.kind === 'ko') return ['Coffre des échecs', T.plural(M.builds.filter(b => !b.ok).length, 'build', 'builds')];
     if (s.kind === 'skills') { const L = M.S.skills; return ['Bibliothèque des skills', L ? `${T.plural(L.total, 'skill', 'skills')}, ${L.ko} à réparer, ${L.unused} jamais utilisés` : 'Lecture en cours']; }
     if (s.kind === 'roster') { const A = M.S.roster; if (!A) return ['Quartier des agents', 'Lecture en cours']; const n = A.agents.filter(ag => rosterBusy(M, ag).length).length; return ['Quartier des agents', `${T.plural(A.total, 'agent', 'agents')}, ${n} au travail, ${A.ko + A.warn} à revoir`]; }
+    if (s.kind === 'newfeature') return ['Nouvelle feature', 'Une session pour mettre en place une nouvelle idée : clique pour la créer'];
     if (s.kind === 'silo') return ['Salle de lancement', M.campaign ? `${M.campaign.name} : ${M.campaign.proven} sur ${M.campaign.total}` : 'Aucune version'];
     return null;
   }
-  // Le sujet d'une salle en sommeil (id « sujet:<id> »), ou null.
+  // Le sujet (core) ou la feature d'une salle en sommeil (id « sujet:<id> »), ou null.
   function sujetOf(id) {
     if (!String(id || '').startsWith('sujet:')) return null;
-    return ((G.M && G.M.sujets) || []).find(z => z.id === String(id).slice(6)) || null;
+    return defOf(String(id).slice(6));
+  }
+  function defOf(id) {
+    const M = G.M || {};
+    return [...(M.sujets || []), ...(M.features || [])].find(z => z.id === id) || null;
   }
   function showTip(e, s) {
     const tip = G.hud.tip, info = s && tipOf(s);
@@ -969,7 +1015,7 @@
     cv.addEventListener('pointerleave', () => { G.hover = null; G.hud.tip.hidden = true; G.dirty = true; });
     cv.addEventListener('pointerup', (e) => {
       const d = G.drag; G.drag = null;
-      if (d && !d.moved) select(hit(worldAt(e)), false);
+      if (d && !d.moved) { const hv = hit(worldAt(e)); if (hv && hv.kind === 'newfeature') featureDialog(G.M); else select(hv, false); }
     });
     cv.addEventListener('wheel', (e) => {
       e.preventDefault();
@@ -1002,6 +1048,7 @@
       else if (e.key === 'b' || e.key === 'B') select({ kind: 'skills' }, true);
       else if (e.key === 'a' || e.key === 'A') select({ kind: 'roster' }, true);
       else if (e.key === 's' || e.key === 'S') sideToggle('sujets');
+      else if (e.key === 'n' || e.key === 'N') { e.preventDefault(); if (!G.M.demo) featureDialog(G.M); }
       else if (e.key === 'j' || e.key === 'J') select({ kind: G.M.builds.some(b => !b.ok) ? 'ko' : 'ok' }, true);
       else if (e.key === 'Home' || e.key === '0') { G.userMoved = false; fit(); G.dirty = true; }
       else if (e.key.startsWith('Arrow')) {
@@ -1097,7 +1144,7 @@
           a.docs && ['Doc UE', h('span', { class: a.docs.tone === 'warn' ? 'us-t-warn' : a.docs.tone === 'ok' ? 'us-t-ok' : 'us-dim' }, a.docs.text)],
         ]),
         a.task ? [h('div', { class: 'us-sub' }, `Suivi : ${a.task.title}`), suiviBlock(a)] : null,
-        a.sujet && (M.sujets || []).some(z => z.id === a.sujet) ? [h('div', { class: 'us-sub' }, 'Son sujet'), sujetBody(M, M.sujets.find(z => z.id === a.sujet), a)] : null,
+        a.sujet && defOf(a.sujet) ? [h('div', { class: 'us-sub' }, a.kind === 'feature' ? 'Sa feature' : 'Son sujet (core)'), sujetBody(M, defOf(a.sujet), a)] : null,
         usageBlock(a),
         a.old ? h('p', { class: 'us-dim' }, a.hidden ? 'Salle rangée : elle n\'apparaît qu\'avec les anciennes sessions.' : 'Ancienne session : elle n\'apparaît qu\'avec les anciennes sessions.') : null,
         h('div', { class: 'us-actions' }, btn(canChat(a) ? 'Discuter' : 'Lire la discussion', () => chatDialog(a.id), canChat(a) ? 'us-go' : '', { title: canChat(a) ? 'Lui écrire depuis la tour, sans fenêtre' : 'Elle tourne dans sa fenêtre : tu lis ici, tu lui écris là-bas' }),
@@ -1952,32 +1999,61 @@
   const forSujet = (z, e) => { const t = e.to.toLowerCase(); return t === z.title.toLowerCase() || /^(tous|toutes|all)$/.test(t); };
   const boardLine = (e) => h('li', null, h('span', { class: 'us-time' }, e.when ? e.when.slice(5).replace(/^(\d\d)-(\d\d)/, '$2/$1') : ''),
     h('span', null, h('b', null, `${e.from} → ${e.to}`), ' ', e.text));
-  // Par defaut, la session d'un sujet se lance dans la tour : tu lui parles dans sa discussion.
+  // Par defaut, la session d'un sujet ou d'une feature se lance dans la tour : tu lui parles dans sa discussion.
   async function sujetLaunch(M, z, window) {
     if (window) return launchTask({ id: z.id, title: z.title }, M.sujetsProject);
     const r = await T.api('/api/chat/start', { id: z.id, project: M.sujetsProject });
-    if (r && r.ok) { sideToggle('sujets', false); select({ kind: 'agent', id: r.sessionId }, true); chatDialog(r.sessionId); }
+    if (r && r.ok) { if (G.side) sideToggle(G.side, false); select({ kind: 'agent', id: r.sessionId }, true); chatDialog(r.sessionId); }
     else if (r && r.error) T.toast(r.error);
   }
+  // Les regles d'une session core ou feature (lib/regles.js) : pour chaque action, sans demander,
+  // en demandant a ali, ou interdit. Elles s'appliquent a son prochain lancement ou message.
+  const LEVELS = [['oui', 'Sans demander'], ['demander', 'Demander'], ['non', 'Interdit']];
+  function rulesBlock(M, z) {
+    const r = (M.regles || {})[z.id];
+    if (!r || !(M.actions || []).length) return null;
+    const set = async (action, level) => {
+      const res = await T.api('/api/regles', { id: z.id, action, level });
+      if (res && res.ok) T.toast('Règle changée : elle s\'applique au prochain message ou lancement de la session.');
+      else if (res) T.toast(res.error || 'Règle refusée.');
+    };
+    return [h('div', { class: 'us-sub' }, 'Ses règles'),
+      h('ul', { class: 'us-rules' }, M.actions.map(ac => h('li', null,
+        h('span', null, h('b', null, ac.label), h('small', { class: 'us-dim' }, ac.hint)),
+        h('span', { class: 'us-seg', role: 'group', 'aria-label': ac.label }, LEVELS.map(([lv, txt]) =>
+          h('button', { type: 'button', class: `us-segbtn us-lv-${lv}`, 'aria-pressed': String(r[ac.id] === lv), disabled: M.demo || undefined,
+            onclick: () => { if (r[ac.id] !== lv) set(ac.id, lv); } }, txt)))))),
+      h('p', { class: 'us-dim' }, 'Toujours permis : lire tout le projet et écrire dans Saved/Tour (carnet, tableau, rapports). « Demander » te pose la question dans la tour.')];
+  }
   function sujetBody(M, z, live) {
-    const n = z.notes, mail = (M.board || []).filter(e => forSujet(z, e)).slice(-4);
+    const feat = z.kind === 'feature';
+    const n = z.notes, mail = feat ? [] : (M.board || []).filter(e => forSujet(z, e)).slice(-4);
     const proj = encodeURIComponent(M.sujetsProject || '');
+    const notes = feat ? `Saved/Tour/features/${z.id.slice(8)}.md` : `Saved/Tour/sujets/${z.id.slice(6)}.md`;
     return [
-      live ? null : h('p', { class: 'us-dim' }, 'En sommeil : aucune session ne tourne. « Discuter » en lance une ici, qui lit d\'abord le carnet et le tableau, puis te demande quoi faire.'),
-      z.text ? h('p', null, z.text) : null,
+      live ? null : h('p', { class: 'us-dim' }, z.done ? 'Feature terminée : sa salle a quitté le bâtiment.'
+        : feat ? 'En sommeil : aucune session ne tourne. « Discuter » en lance une ici, qui lit son carnet et ceux des sujets touchés, puis te propose un plan.'
+          : 'Session core en sommeil : elle garde la mémoire du sujet dans son carnet. « Discuter » en lance une ici, qui lit le carnet et le tableau, puis te demande quoi faire.'),
+      feat ? h('div', { class: 'us-said' }, h('b', null, 'L\'idée : '), h('span', { class: 'us-pre' }, z.idea)) : z.text ? h('p', null, z.text) : null,
       rowsOf([
+        feat && ['Sujets touchés', z.topics.length ? z.topics.join(', ') : h('span', { class: 'us-dim' }, 'aucun choisi')],
         ['Ses agents', z.agents.length ? z.agents.join(', ') : 'aucun attitré'],
         z.reviewers && z.reviewers.length && ['Relecture', z.reviewers.join(', ')],
-        ['Carnet', n ? ['mis à jour ', T.agoEl(n.at)] : h('span', { class: 'us-dim' }, 'pas encore : la première session le crée')],
+        [feat ? 'Son carnet' : 'Mémoire (carnet)', n ? ['mis à jour ', T.agoEl(n.at)] : h('span', { class: 'us-dim' }, `pas encore : la première session ${feat ? 'de la feature' : 'du sujet'} le crée`)],
       ]),
       n && n.where ? h('div', { class: 'us-said' }, h('b', null, 'Où on en est : '), h('span', { class: 'us-pre' }, n.where)) : null,
       n && n.next ? h('div', { class: 'us-said' }, h('b', null, 'Prochaines étapes : '), h('span', { class: 'us-pre' }, n.next)) : null,
       mail.length ? [h('div', { class: 'us-sub' }, 'Pour lui au tableau'), h('ul', { class: 'us-board' }, mail.map(boardLine))] : null,
+      rulesBlock(M, z),
       h('div', { class: 'us-actions' },
-        live ? null : btn('Discuter', () => sujetLaunch(M, z), 'us-go', M.demo || !M.sujetsProject ? { disabled: true } : { title: 'Lance la session de ce sujet dans la tour : tu lui parles ici, sans fenêtre' }),
-        live ? null : btn('Dans une fenêtre', () => sujetLaunch(M, z, true), '', M.demo || !M.sujetsProject ? { disabled: true } : { title: 'Ouvre Claude Code dans une fenêtre, dans le dossier du projet, sur ce sujet' }),
-        btn('Lire le carnet', () => fileView(`Carnet : ${z.title}`, `Saved/Tour/sujets/${z.id.slice(6)}.md`, `/api/sujets/file?project=${proj}&id=${encodeURIComponent(z.id)}`), '', M.demo || !n ? { disabled: true } : {}),
-        btn('Écrire au tableau', () => boardDialog(M, z.title), '', M.demo ? { disabled: true } : {})),
+        live || z.done ? null : btn('Discuter', () => sujetLaunch(M, z), 'us-go', M.demo || !M.sujetsProject ? { disabled: true } : { title: 'Lance sa session dans la tour : tu lui parles ici, sans fenêtre' }),
+        live || z.done ? null : btn('Dans une fenêtre', () => sujetLaunch(M, z, true), '', M.demo || !M.sujetsProject ? { disabled: true } : { title: 'Ouvre Claude Code dans une fenêtre, dans le dossier du projet' }),
+        btn('Lire le carnet', () => fileView(`Carnet : ${z.title}`, notes, `/api/sujets/file?project=${proj}&id=${encodeURIComponent(z.id)}`), '', M.demo || !n ? { disabled: true } : {}),
+        feat ? null : btn('Écrire au tableau', () => boardDialog(M, z.title), '', M.demo ? { disabled: true } : {}),
+        feat ? btn(z.done ? 'Reprendre la feature' : 'Terminer la feature', async () => {
+          const r = await T.api('/api/features/done', { id: z.id, done: !z.done });
+          if (r && r.ok && !z.done) { select(null); T.toast(`« ${z.title} » est terminée : sa salle quitte le bâtiment (« Anciennes » la remontre).`); }
+        }, z.done ? '' : 'us-danger', M.demo ? { disabled: true } : { title: 'L\'idée est en place : sa salle quitte le bâtiment, rien n\'est effacé' }) : null),
     ];
   }
   function sujetsPanel(M) {
@@ -1986,9 +2062,9 @@
     const proj = encodeURIComponent(M.sujetsProject || '');
     const open = (z) => { sideToggle('sujets', false); select({ kind: 'agent', id: z.session ? z.session.id : 'sujet:' + z.id }, true); };
     return h('section', { class: 'us-panel us-entity us-taches', 'aria-label': 'Sujets' },
-      h('div', { class: 'us-ehead' }, h('h2', null, M.sujetsProject ? `Sujets de ${M.sujetsProject}` : 'Sujets'), close),
+      h('div', { class: 'us-ehead' }, h('h2', null, M.sujetsProject ? `Core : les sujets de ${M.sujetsProject}` : 'Core : les sujets'), close),
       h('div', { class: 'us-ebody' },
-        zs.length ? h('p', null, 'Une salle par sujet du jeu. Une session de sujet ne tourne pas en permanence : elle tient un carnet, et la suivante reprend là où elle s\'est arrêtée. Les sujets se parlent par le tableau, et chaque session passe à ses agents ce qui les concerne.')
+        zs.length ? h('p', null, 'Les sessions core, une par sujet du jeu, dans leur bâtiment. Elles ne tournent pas en permanence : chacune garde la mémoire de son sujet dans son carnet, et la suivante reprend là où elle s\'est arrêtée. Tu règles dans sa fiche ce qu\'elle peut faire seule, ce qu\'elle te demande et ce qui lui est interdit. Les sujets se parlent par le tableau.')
           : h('p', null, 'Connecte ton projet Unreal : ses sujets viennent des sections de ses agents (.claude/agents).'),
         h('ul', { class: 'us-runs' }, zs.map(z => {
           const a = z.session, mail = (M.board || []).filter(e => forSujet(z, e)).length;
@@ -2026,6 +2102,65 @@
     f.text.value = ''; f.err.textContent = '';
     boardDlg.showModal();
     f.text.focus();
+  }
+
+  // ---------- features (lib/features.js) ----------
+  // Une feature : une session pour mettre en place une nouvelle idee, dans son propre batiment. Elle se
+  // cree ici (nom, idee, sujets touches), lit les carnets core de ces sujets et s'arrete une fois l'idee en place.
+  function featuresPanel(M) {
+    const close = btn('Fermer', () => sideToggle('features', false), 'us-x', { 'aria-label': 'Fermer les features', title: 'Échap' });
+    const fs = (M.features || []).filter(f => !f.done), done = (M.features || []).filter(f => f.done);
+    const open = (z) => { sideToggle('features', false); select({ kind: 'agent', id: z.session ? z.session.id : 'sujet:' + z.id }, true); };
+    const row = (z) => {
+      const a = z.session;
+      return h('li', null,
+        h('button', { type: 'button', class: 'us-runbtn', onclick: () => open(z) },
+          h('span', { class: `us-dot us-d-${a ? dotFor(a.st) : 'grey'}` }), h('b', null, z.title),
+          h('span', { class: 'us-dim' }, ` ${z.done ? 'terminée' : a ? `${a.name}, ${a.stText}` : 'en sommeil'}${z.topics.length ? `, touche ${z.topics.join(', ')}` : ''}`)),
+        z.done ? null : a ? btn('Discuter', () => { sideToggle('features', false); select({ kind: 'agent', id: a.id }, true); chatDialog(a.id); }) : btn('Discuter', () => sujetLaunch(M, z), 'us-go', M.demo || !M.sujetsProject ? { disabled: true } : {}));
+    };
+    return h('section', { class: 'us-panel us-entity us-taches', 'aria-label': 'Features' },
+      h('div', { class: 'us-ehead' }, h('h2', null, 'Features : les nouvelles idées'), close),
+      h('div', { class: 'us-ebody' },
+        h('p', null, 'Une session feature met en place une nouvelle idée, dans son bâtiment à côté du core. Elle lit la mémoire des sujets qu\'elle touche sans la réécrire, laisse au tableau ce qui change pour eux, et s\'arrête quand l\'idée est en place.'),
+        h('div', { class: 'us-actions' }, btn('Nouvelle feature', () => featureDialog(M), 'us-go', M.demo || !M.sujetsProject ? { disabled: true, title: 'Connecte d\'abord ton projet' } : { title: 'Touche N' })),
+        fs.length ? h('ul', { class: 'us-runs' }, fs.map(row)) : h('p', { class: 'us-dim' }, 'Aucune feature en cours.'),
+        done.length ? [h('div', { class: 'us-sub' }, 'Terminées'), h('ul', { class: 'us-runs' }, done.map(row))] : null));
+  }
+  let featDlg = null;
+  function featureDialog(M) {
+    if (!M.sujetsProject) { T.toast('Connecte d\'abord ton projet Unreal : une feature se lance dans son dossier.'); return; }
+    if (!featDlg) {
+      const f = {};
+      featDlg = h('dialog', { class: 'us-dialog', 'aria-label': 'Nouvelle feature' },
+        h('form', { method: 'dialog', onsubmit: async (e) => {
+          e.preventDefault();
+          const sujets = [...f.topics.querySelectorAll('input:checked')].map(x => x.value);
+          f.go.disabled = true;
+          const r = await T.api('/api/features', { project: G.M.sujetsProject, title: f.title.value, idea: f.idea.value, sujets });
+          f.go.disabled = false;
+          if (!r || !r.ok) { f.err.textContent = (r && r.error) || 'Création impossible.'; return; }
+          featDlg.close();
+          const z = { ...r.feature, kind: 'feature' };
+          if (f.where.value === 'fenetre') return launchTask({ id: z.id, title: z.title }, G.M.sujetsProject);
+          sujetLaunch(G.M, z);
+        } },
+          h('h2', null, 'Nouvelle feature'),
+          h('p', { class: 'us-dim' }, 'Une session pour mettre en place une idée. Elle lit d\'abord la mémoire des sujets touchés, puis te propose un plan avant de toucher au jeu.'),
+          h('label', null, 'Nom', f.title = h('input', { name: 'title', maxlength: 60, required: true, placeholder: 'ex. Lampe torche' })),
+          h('label', null, 'L\'idée', f.idea = h('textarea', { name: 'idea', rows: 5, maxlength: 2000, required: true, placeholder: 'ex. Le joueur trouve une lampe torche, l\'allume avec F, et sa pile se vide en 3 minutes.' })),
+          h('fieldset', { class: 'us-topics' }, h('legend', null, 'Sujets touchés'), f.topics = h('div', { class: 'us-checks' })),
+          h('label', null, 'Où la lancer', f.where = h('select', { name: 'where' }, h('option', { value: 'tour' }, 'Dans la tour (discussion)'), h('option', { value: 'fenetre' }, 'Dans une fenêtre Claude Code'))),
+          f.err = h('p', { class: 'us-t-ko' }),
+          h('div', { class: 'us-actions' }, btn('Annuler', () => featDlg.close()), f.go = h('button', { type: 'submit', class: 'us-btn us-go' }, 'Créer et lancer'))));
+      featDlg.f = f;
+      document.body.append(featDlg);
+    }
+    const f = featDlg.f;
+    f.topics.replaceChildren(...(M.sujets || []).map(z => h('label', { class: 'us-check' }, h('input', { type: 'checkbox', name: 'sujet', value: z.id }), z.title)));
+    f.title.value = ''; f.idea.value = ''; f.err.textContent = ''; f.where.value = 'tour';
+    featDlg.showModal();
+    f.title.focus();
   }
 
   function tachesPanel(M) {
@@ -2090,7 +2225,7 @@
     const M = G.M; if (!M) return;
     G.hud.chips.replaceChildren(...chips(M).filter(Boolean));
     G.hud.res.replaceChildren(...(MODE.counters ? counters(M) : []));
-    const ent = G.side === 'tuto' ? tutoPanel(M) : G.side === 'taches' ? tachesPanel(M) : G.side === 'sujets' ? sujetsPanel(M) : G.side === 'equipe' ? equipePanel(M) : entityPanel(M);
+    const ent = G.side === 'tuto' ? tutoPanel(M) : G.side === 'taches' ? tachesPanel(M) : G.side === 'sujets' ? sujetsPanel(M) : G.side === 'features' ? featuresPanel(M) : G.side === 'equipe' ? equipePanel(M) : entityPanel(M);
     // La fiche est refaite a chaque nouvelle donnee : on garde l'endroit ou on l'avait fait defiler.
     const was = G.hud.entity.firstChild, oldBody = was && was.querySelector('.us-ebody');
     G.hud.entity.replaceChildren(...(ent ? [ent] : []));
@@ -2106,6 +2241,7 @@
     G.hud.tutoBtn.classList.toggle('on', G.side === 'tuto');
     G.hud.taskBtn.classList.toggle('on', G.side === 'taches');
     G.hud.sujetBtn.classList.toggle('on', G.side === 'sujets');
+    G.hud.featBtn.classList.toggle('on', G.side === 'features');
     G.hud.oldBtn.textContent = T.ui.showEnded ? 'Masquer les anciennes' : `Anciennes (${M.endedCount})`;
     G.hud.oldBtn.classList.toggle('on', T.ui.showEnded);
     G.hud.oldBtn.disabled = !M.endedCount && !T.ui.showEnded;
@@ -2128,7 +2264,7 @@
     };
     G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
-      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Une salle par sujet du jeu (animation, interface, menus, armes...), son carnet et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Sujets'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
+      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions core : une par sujet du jeu (animation, interface, menus, armes...), sa mémoire, ses règles, et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Core'), G.hud.featBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions feature : une par nouvelle idée, à créer ici (touche N pour une nouvelle)', onclick: () => sideToggle('features') }, 'Features'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
       G.hud.mode,
       G.hud.entity);
     root.replaceChildren(G.app);
