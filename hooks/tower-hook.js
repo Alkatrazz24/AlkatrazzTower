@@ -87,10 +87,12 @@ async function main() {
   // d'agir. Ne depend pas du serveur : la consigne passe meme tour eteinte.
   // La regle « doc Unreal » vient de la tour (si question, ou a chaque modification) ; tour eteinte : si question.
   const mode = reply && reply.unreal === 'modif' ? 'modif' : 'question';
+  // La tour ne fait respecter la doc obligatoire que sur un projet connecte, et seulement allumee.
+  const enforced = !!(reply && reply.docs);
   if (ev.hook_event_name === 'SessionStart' && process.env.TOWER_NO_DOCS !== '1') {
     const project = require('../lib/detect').findProject(ev.cwd);
     if (project) {
-      const additionalContext = require('../lib/unreal').docsContext(project, { mode });
+      const additionalContext = require('../lib/unreal').docsContext(project, { mode, enforced });
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext } }), quit);
       return;
     }
@@ -99,7 +101,7 @@ async function main() {
   if (ev.hook_event_name === 'SubagentStart' && process.env.TOWER_NO_DOCS !== '1') {
     const project = require('../lib/detect').findProject(ev.cwd);
     if (project) {
-      const additionalContext = require('../lib/docs').rules(project, { mode, agent: true });
+      const additionalContext = require('../lib/docs').rules(project, { mode, agent: true, enforced });
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SubagentStart', additionalContext } }), quit);
       return;
     }

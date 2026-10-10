@@ -114,6 +114,10 @@ test('doc obligatoire : le hook fait continuer la session qui a modifie le jeu s
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tower-docjeu-'));
   fs.writeFileSync(path.join(root, 'Jeu.uproject'), JSON.stringify({ EngineAssociation: '5.8' }));
   const base = { session_id: 'doc-int', cwd: root };
+  // pas connecte a la tour : la session finit sans doc
+  await hook({ ...base, session_id: 'doc-libre', hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(root, 'Source', 'Jeu', 'A.cpp') } });
+  assert.strictEqual((await hook({ ...base, session_id: 'doc-libre', hook_event_name: 'Stop' })).out, '');
+  assert.ok(JSON.parse((await req('POST', '/api/projects/connect', {}, { path: root })).body).ok);
   const start = await hook({ ...base, hook_event_name: 'SubagentStart', agent_id: 'a1', agent_type: 'ctb-son' });
   assert.match(JSON.parse(start.out).hookSpecificOutput.additionalContext, /doc obligatoire/);
   await hook({ ...base, hook_event_name: 'PostToolUse', tool_name: 'Edit', tool_input: { file_path: path.join(root, 'Source', 'Jeu', 'A.cpp') } });

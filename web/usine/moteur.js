@@ -1871,9 +1871,16 @@
     const input = h('input', { type: 'search', class: 'us-docq', name: 'docq', 'data-keep': 'docq', value: docUi.q, placeholder: 'Chercher (ex. porte, réplication)', 'aria-label': 'Chercher dans la doc',
       oninput: (e) => { docUi.q = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); docSearch(M); } } });
     const R = docUi.results;
+    // la page d'entree : docs/COMPRENDRE.md (ecrite par la tache « Doc du projet »), sinon docs/README.md
+    const has = (rel) => D.shelves.some(sh => sh.files.some(f => f.rel === rel));
+    const entry = has('docs/COMPRENDRE.md') ? 'docs/COMPRENDRE.md' : D.hasReadme ? 'docs/README.md' : null;
     return [
       all.length > 1 ? h('div', { class: 'us-filters', role: 'group', 'aria-label': 'Projet' }, all.map(n => h('button', { type: 'button', class: 'us-chip2' + (n === D.project ? ' on' : ''), 'aria-pressed': String(n === D.project), onclick: () => { docUi.project = n; docUi.results = null; renderHud(); } }, n))) : null,
-      h('p', null, `${T.plural(D.total, 'page', 'pages')} à lire sur ${D.project}. Les sessions et leurs agents y écrivent leur doc : c'est obligatoire, la tour les fait continuer tant qu'elles ont modifié le jeu sans rien écrire dans docs/.`),
+      h('p', null, `La doc de ${D.project}, pour toi et pour les sessions : ${T.plural(D.total, 'page', 'pages')}. Les sessions et leurs agents y écrivent leur doc : c'est obligatoire, la tour les fait continuer tant qu'elles ont modifié le jeu sans rien écrire dans docs/. La doc d'Unreal Engine 5 est dans la salle d'en face.`),
+      h('div', { class: 'us-actions' },
+        entry ? btn(`Comprendre ${D.project}`, () => read(entry, `Comprendre ${D.project}`), 'us-go') : null,
+        btn(entry === 'docs/COMPRENDRE.md' ? 'Compléter la doc' : 'Écrire la page d\'entrée', () => launchTask((M.S.tasks || []).find(t => t.id === 'doc-projet') || { id: 'doc-projet', title: 'Doc du projet : tout comprendre', prompt: '' }, D.project, true), entry ? '' : 'us-go',
+          M.demo ? { disabled: true } : { title: `Une session en fond relit tout le jeu et fait de docs/ la doc qui suffit pour comprendre ${D.project} : une page d'entrée, une page par système. Elle n'écrit que dans docs/.` })),
       h('div', { class: 'us-row' }, input, btn(docUi.busy ? 'Recherche…' : 'Chercher', () => docSearch(M), 'us-go', { disabled: docUi.busy || !!M.demo })),
       R ? [h('div', { class: 'us-sub' }, R.hits.length ? `${R.total > R.hits.length ? `${R.hits.length} premiers sur ${R.total}` : T.plural(R.hits.length, 'page trouvée', 'pages trouvées')} pour « ${R.q} »` : `Rien pour « ${R.q || docUi.q} »`),
         h('ul', { class: 'us-tuto-list' }, R.hits.map(x => h('li', { class: 'us-task us-doc' }, h('button', { type: 'button', class: 'us-runbtn', onclick: () => read(x.rel, x.title) }, h('b', null, x.title), h('span', { class: 'us-dim us-scope' }, x.shelf)),
@@ -2466,7 +2473,7 @@
       t.text ? h('p', { class: 'us-dim' }, t.text) : null,
       h('div', { class: 'us-actions' },
         btn('Lancer', () => launchTask(t, proj), 'us-go', M.demo || !proj ? { disabled: true } : { title: 'Ouvre Claude Code dans une fenêtre, dans le dossier du projet, avec cette consigne' }),
-        t.readonly ? btn('En fond', () => launchTask(t, proj, true), '', M.demo || !proj ? { disabled: true } : { title: 'Sans fenêtre : tu suis l\'agent dans la tour. Il lit le projet et écrit son rapport dans Saved/Tour, sans rien modifier d\'autre.' }) : null,
+        t.readonly ? btn('En fond', () => launchTask(t, proj, true), '', M.demo || !proj ? { disabled: true } : { title: t.writesDocs ? 'Sans fenêtre : tu suis l\'agent dans la tour. Il lit le projet et n\'écrit que dans docs/ et Saved/Tour.' : 'Sans fenêtre : tu suis l\'agent dans la tour. Il lit le projet et écrit son rapport dans Saved/Tour, sans rien modifier d\'autre.' }) : null,
         btn('Copier la consigne', () => copyPrompt(t, proj)),
         t.builtin ? btn('Copier en perso', () => taskDialog(t), '', M.demo ? { disabled: true } : { title: 'Crée une tâche perso à partir de celle-ci' })
           : [btn('Modifier', () => taskDialog(t), '', M.demo ? { disabled: true } : {}),

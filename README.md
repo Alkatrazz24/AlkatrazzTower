@@ -74,10 +74,11 @@ Le bouton **Tâches** de la barre du haut propose des consignes prêtes à lance
 | Relecture complète et rapport | relit code, Blueprints, niveaux et config, sans rien modifier, et écrit un rapport dans `Saved/Tour/rapports/` |
 | Anomalies du code et corrections | liste les bugs par gravité, puis corrige les plus sûrs un par un, build et tests à l'appui |
 | Idées de features et plan d'action | propose 5 features, puis écrit le plan détaillé de la meilleure dans `Saved/Tour/plans/` |
+| Doc du projet : tout comprendre | fait de `docs/` la doc qui suffit pour comprendre le jeu : une page d'entrée `docs/COMPRENDRE.md`, une page par système ; n'écrit que dans `docs/` |
 
 - **Lancer** ouvre Claude Code dans une nouvelle fenêtre, dans le dossier du projet, avec la consigne
   (écrite dans `Saved/Tour/taches/`, dossier non versionné). Tu valides ses modifications comme d'habitude.
-- **En fond** (relecture, idées de features, et tes tâches cochées « ne modifie pas le code ») lance
+- **En fond** (relecture, idées de features, doc du projet, et tes tâches cochées « ne modifie pas le code ») lance
   Claude Code sans fenêtre (`claude -p`) : il lit le projet et n'écrit que dans `Saved/Tour/`, le reste
   est refusé sans question. Son journal va dans `Saved/Tour/taches/`, et la tour le suit comme les autres.
 - **Copier la consigne** la met dans le presse-papiers, pour une session déjà ouverte.
@@ -193,11 +194,15 @@ parti travailler dans une salle. Il lit, sans rien modifier :
 - une **recherche** (sans accents ni majuscules) et une **liseuse** : la page s'ouvre dans la tour, ses
   liens vers d'autres pages aussi ;
 - **Écrit par les sessions** : les dernières pages que les sessions et leurs agents ont écrites.
+- **Comprendre le projet** ouvre la page d'entrée `docs/COMPRENDRE.md` (sinon `docs/README.md`) ; **Compléter la doc** lance en fond
+  la tâche « Doc du projet » qui relit tout le jeu et complète `docs/` jusqu'à ce qu'elle suffise pour le
+  comprendre (elle n'écrit que dans `docs/`).
 
 **La doc est obligatoire.** Une session ou un agent qui modifie le jeu (`Source/`, `Content/`, `Config/`,
 `Plugins/`, `tools/`, le `.uproject`) doit écrire dans `docs/` avant de finir : le hook `Stop` (ou
 `SubagentStop` pour un agent) le fait continuer une fois pour l'écrire. S'il s'arrête quand même, sa page
-passe en **Doc en retard** et la salle clignote. Les consignes des sujets et des features le rappellent,
+passe en **Doc en retard** et la salle clignote. Seuls les projets connectés à la tour sont concernés, et
+rien n'est bloqué quand la tour est éteinte. Les consignes des sujets et des features le rappellent,
 et chaque agent le reçoit à son démarrage. Pour l'écrire aussi dans le `CLAUDE.md` et les agents d'un
 projet : `node scripts/doc-ctb.js "<projet>"` montre les changements, `--apply` les écrit (copie d'avant
 dans `Saved/Tour/sauvegardes/`).

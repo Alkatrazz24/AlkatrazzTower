@@ -9,10 +9,10 @@ const { TowerState } = require('../server/state');
 const taches = require('../lib/taches');
 const usage = require('../lib/usage');
 
-test('trois taches de base, des taches perso qui se gardent, et la marque reconnue', () => {
+test('quatre taches de base, des taches perso qui se gardent, et la marque reconnue', () => {
   const s = new TowerState();
   const t = taches.create(s);
-  assert.deepStrictEqual(t.list().map(x => x.id), ['relecture', 'anomalies', 'features']);
+  assert.deepStrictEqual(t.list().map(x => x.id), ['relecture', 'anomalies', 'features', 'doc-projet']);
   assert.strictEqual(t.save({ title: '', prompt: 'x' }).ok, false);
   assert.strictEqual(t.save({ id: 'relecture', title: 'a', prompt: 'b' }).ok, false);
   const r = t.save({ title: 'Assets orphelins', prompt: 'Liste les assets orphelins de {projet}.' });
@@ -68,7 +68,7 @@ test('les tokens : un message compte une fois, le contexte vient du dernier, les
 test('en fond : seulement les taches qui ne modifient pas le code, avec des droits limites', async () => {
   const s = new TowerState();
   const t = taches.create(s);
-  assert.deepStrictEqual(t.list().filter(x => x.readonly).map(x => x.id), ['relecture', 'features']);
+  assert.deepStrictEqual(t.list().filter(x => x.readonly).map(x => x.id), ['relecture', 'features', 'doc-projet']);
   assert.strictEqual(t.save({ title: 'Lecture', prompt: 'p', readonly: true }).task.readonly, true);
   assert.strictEqual(t.save({ title: 'Ecriture', prompt: 'p' }).task.readonly, false);
   const project = { name: 'CTB', root: os.tmpdir() };

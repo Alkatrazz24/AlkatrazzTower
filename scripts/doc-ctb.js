@@ -35,7 +35,8 @@ plutôt que d'en créer une. La tour (Alkatrazz Tower) vérifie : tant qu'une mo
 d'aucune écriture dans \`docs/\`, elle fait continuer la session ou l'agent pour qu'il l'écrive. Le chef de
 chantier le rappelle dans le brief de chaque spécialiste.
 
-En cas de question sur le projet, cherche d'abord dans \`docs/\`. ${unreal} : le rayon par thème est dans
+En cas de question sur le projet, cherche d'abord dans \`docs/\` (\`docs/COMPRENDRE.md\` pour comprendre le jeu,
+quand elle existe). ${unreal} : le rayon par thème est dans
 \`Saved/Tour/doc-unreal.md\`, et ali le lit dans le bâtiment Documentation de la tour.
 `;
 }

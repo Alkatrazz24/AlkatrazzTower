@@ -2,6 +2,7 @@
 // Etat de la tour : agents, verrou de build, file d'attente, builds recents.
 // Aucune E/S ici, pour pouvoir tout tester sans serveur.
 
+const path = require('path');
 const { findProject } = require('../lib/detect');
 const campaign = require('../lib/campaign');
 const { docRead } = require('../lib/unreal');
@@ -126,7 +127,8 @@ class TowerState {
     // faire repasser au travail un agent qui a deja fini. On ignore tout evenement plus vieux que
     // le dernier pris en compte.
     // La doc obligatoire suit chaque ecriture, meme arrivee en retard : la fin du tour en depend.
-    docsLib.track(a, ev, t);
+    // Seulement sur un projet connecte a la tour : une session ailleurs n'est jamais retenue.
+    if (this.isConnected(a.project)) docsLib.track(a, ev, t);
     const ts = Number(ev.ts) || t;
     if (a.eventTs && ts < a.eventTs) { this.changed(); return true; }
     a.eventTs = ts;
@@ -333,10 +335,17 @@ class TowerState {
   }
   // Ce que la tour repond au hook apres un evenement : la regle doc Unreal (SessionStart, SubagentStart)
   // et, a la fin d'un tour ou d'un agent, s'il doit d'abord ecrire sa doc (lib/docs.js).
+  isConnected(project) {
+    const root = project && project.root ? path.resolve(project.root).toLowerCase() : '';
+    return !!root && this.projects.some(p => p && p.root && path.resolve(p.root).toLowerCase() === root);
+  }
+
   hookReply(ev) {
     const out = { unreal: this.docRules.unreal };
     const a = ev && this.agents[String(ev.session_id || '')];
-    if (!a || !/^(Stop|SubagentStop)$/.test(ev.hook_event_name || '')) return out;
+    // docs : la tour fait respecter la doc obligatoire pour cette session (son projet est connecte)
+    if (a && this.isConnected(a.project)) out.docs = true;
+    if (!out.docs || !/^(Stop|SubagentStop)$/.test(ev.hook_event_name || '')) return out;
     const r = docsLib.check(a, ev, this.now());
     if (r && r.block) {
       out.block = r.block;
