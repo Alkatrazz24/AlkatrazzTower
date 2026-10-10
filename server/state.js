@@ -12,6 +12,8 @@ const suivi = require('../lib/suivi');
 const { salleOf } = require('../lib/salles');
 const equipe = require('../lib/equipe');
 const sujets = require('../lib/sujets');
+const features = require('../lib/features');
+const regles = require('../lib/regles');
 
 // Agents des tutos (lib/tuto.js) : jamais sauvegardes, jamais comptes pour une version.
 const isTuto = (id) => String(id || '').startsWith('tuto-');
@@ -64,6 +66,9 @@ class TowerState {
     this.skills = null;    // la bibliotheque des skills installes et leur usage (lib/skills.js), relue par le serveur
     this.tasks = [];       // taches ajoutees par l'utilisateur (lib/taches.js), en plus des taches de base
     this.sujets = {};      // projet -> { topics, board } : les sujets du jeu, leur carnet, le tableau (lib/sujets.js)
+    this.features = [];    // sessions feature creees depuis la tour (lib/features.js)
+    this.featureNotes = {}; // id de feature -> son carnet, relu par le serveur
+    this.regles = {};      // id de sujet ou de feature -> { action: 'oui' | 'demander' | 'non' } (lib/regles.js)
     this.answers = {};     // id de question -> reponse donnee dans la tour, en attente du hook
     this.redTests = {};    // projet -> chemins des tests rouges a leur dernier passage
     this.onVictory = null; // (campagne) => void, branche par le serveur
@@ -253,15 +258,57 @@ class TowerState {
     return true;
   }
 
-  // Un sujet sous forme de tache, pour le lancer et nommer sa salle.
+  // Un sujet (core) ou une feature sous forme de tache, pour le lancer et nommer sa salle. Sa consigne
+  // finit par ses regles, pour qu'il ne tente pas ce qu'ali lui a interdit.
   sujetTask(id) {
-    if (!sujets.isSujet(id)) return null;
-    for (const v of Object.values(this.sujets)) {
-      const t = v && v.topics && v.topics.find(x => x.id === id);
-      if (t) return sujets.taskOf(t);
+    let task = null;
+    if (sujets.isSujet(id)) {
+      for (const v of Object.values(this.sujets)) {
+        const t = v && v.topics && v.topics.find(x => x.id === id);
+        if (t) { task = sujets.taskOf(t); break; }
+      }
+    } else if (features.isFeature(id)) {
+      const f = this.features.find(x => x.id === id);
+      if (f) task = features.taskOf(f, this.topicsOf(f.project));
     }
-    return null;
+    return task && { ...task, prompt: `${task.prompt}\n\n${regles.text(this.regles[id])}` };
   }
+  topicsOf(project) {
+    const v = this.sujets[project] || Object.values(this.sujets)[0];
+    return (v && v.topics) || [];
+  }
+
+  // Une nouvelle feature, creee depuis la tour.
+  addFeature(input) {
+    const r = features.make(input, this.features, this.topicsOf(input && input.project), this.now());
+    if (!r.ok) return r;
+    this.features.push(r.feature);
+    this.changed();
+    return r;
+  }
+  // Terminer une feature : sa salle quitte le batiment (on la retrouve dans les anciennes), rien n'est efface.
+  endFeature(id, done = true) {
+    const f = this.features.find(x => x.id === id);
+    if (!f) return false;
+    if (done) f.doneAt = this.now(); else delete f.doneAt;
+    this.changed();
+    return true;
+  }
+  setFeatureNotes(id, notes) {
+    if (JSON.stringify(this.featureNotes[id] || null) === JSON.stringify(notes || null)) return false;
+    this.featureNotes[id] = notes || null;
+    this.changed();
+    return true;
+  }
+
+  // Les regles d'une session core ou feature : ce qu'elle fait sans demander, demande, ou ne fait pas.
+  setRule(id, action, level) {
+    if (!(sujets.isSujet(id) || features.isFeature(id)) || !regles.valid(action, level)) return false;
+    this.regles[id] = { ...regles.rulesOf(this.regles[id]), [action]: level };
+    this.changed();
+    return true;
+  }
+  ruleArgs(id) { return id && (sujets.isSujet(id) || features.isFeature(id)) ? regles.args(this.regles[id]) : []; }
 
   setSujets(project, v) {
     if (!project || !v) return false;
@@ -820,6 +867,9 @@ class TowerState {
       skills: this.skills,
       roster: this.roster,
       sujets: this.sujets,
+      features: this.features.map(f => ({ ...f, notes: this.featureNotes[f.id] || null })),
+      regles: Object.fromEntries([...Object.values(this.sujets).flatMap(v => (v && v.topics) || []), ...this.features].map(x => [x.id, regles.rulesOf(this.regles[x.id])])),
+      actions: regles.ACTIONS,
     };
   }
 
@@ -828,7 +878,7 @@ class TowerState {
     return {
       agents: keep(this.agents, a => !isTuto(a.sessionId)), builds: this.builds.filter(b => !isTuto(b.sessionId)), seq: this.seq,
       campaigns: this.campaigns, testGroups: this.testGroups, characters: keep(this.characters, c => !c.tuto), projects: this.projects,
-      tasks: this.tasks, redTests: this.redTests,
+      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles,
     };
   }
 
@@ -845,6 +895,8 @@ class TowerState {
     if (Array.isArray(saved.projects)) this.projects = saved.projects;
     if (Array.isArray(saved.tasks)) this.tasks = saved.tasks;
     if (saved.redTests && typeof saved.redTests === 'object') this.redTests = saved.redTests;
+    if (Array.isArray(saved.features)) this.features = saved.features;
+    if (saved.regles && typeof saved.regles === 'object') this.regles = saved.regles;
     for (const a of Object.values(this.agents)) delete a.building; // aucun verrou ne survit a un redemarrage
     // ni un message de discussion en cours : son processus est parti avec l'ancienne tour
     for (const a of Object.values(this.agents)) if (a.chat) { if (a.chat.busy) { a.chat.error = 'Interrompu : la tour a redémarré.'; if (a.status === 'working') a.status = 'idle'; } a.chat.busy = false; a.chat.queued = 0; }

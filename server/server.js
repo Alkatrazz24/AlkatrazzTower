@@ -147,7 +147,13 @@ function probeSujets() {
     if (!p || !p.root || !p.name) continue;
     try { state.setSujets(p.name, sujetsLib.scan(p, require('../lib/equipe').teamOf(p.root))); } catch { /* projet illisible */ }
   }
+  // le carnet de chaque feature, dans le projet ou elle a ete creee
+  for (const f of state.features) {
+    const p = projectFor(f.project);
+    if (p) try { state.setFeatureNotes(f.id, featuresLib.scan(p.root, f).notes); } catch { /* carnet illisible */ }
+  }
 }
+const featuresLib = require('../lib/features');
 
 // ---- inventaire des projets pour la carte ----------------------------------------------------
 
@@ -335,7 +341,19 @@ const routes = {
   'POST /api/chat/start': (b) => {
     const r = taches.prepare({ id: b.id, project: projectFor(b.project) });
     if (!r.ok) return r;
-    return discussion.start({ cwd: r.project.root, text: r.ask });
+    return discussion.start({ cwd: r.project.root, text: r.ask, def: r.task.id });
+  },
+  // Sessions feature : une nouvelle idee, creee depuis la tour, puis lancee en discussion (ou dans une fenetre).
+  'POST /api/features': (b) => {
+    const p = projectFor(b.project);
+    if (!p) return { ok: false, error: 'Aucun projet connecté : connecte d\'abord ton projet.' };
+    return state.addFeature({ title: b.title, idea: b.idea, sujets: b.sujets, project: p.name });
+  },
+  'POST /api/features/done': (b) => ({ ok: state.endFeature(String(b.id || ''), b.done !== false) }),
+  // Regles d'une session core ou feature (lib/regles.js) : appliquees a son prochain lancement ou message.
+  'POST /api/regles': (b) => {
+    const ok = state.setRule(String(b.id || ''), String(b.action || ''), String(b.level || ''));
+    return ok ? { ok } : { ok, error: 'Règle inconnue.' };
   },
   'POST /api/agents/hide': (b) => ({ ok: state.hide(String(b.sessionId || ''), b.hidden !== false) }),
   'GET /api/sujets/file': (b, url) => {

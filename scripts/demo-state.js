@@ -297,6 +297,19 @@ function demoSujets() {
   at(-10); tool('s-anim', 'Read', { file_path: P('Saved/Tour/sujets/animation.md') });
   at(-9); tool('s-anim', 'Read', { file_path: P('Saved/Tour/tableau.md') });
   at(-4); ev('s-anim', 'PreToolUse', { tool_name: 'Read', tool_input: { file_path: P('Content/Characters/Animations/A_Arms_Reload.uasset') }, agent_id: 'anim-a', agent_type: 'ctb-animation' });
+  // Deux features : la lampe torche au travail, les coffres de la base en sommeil avec son carnet ;
+  // une regle changee par ali sur le sujet Armes et combat.
+  const feats = require('../lib/features');
+  const ids = (names) => state.topicsOf('ConquerTheBackrooms').filter(t => names.includes(t.title)).map(t => t.id);
+  const lampe = state.addFeature({ title: 'Lampe torche', idea: 'Le joueur trouve une lampe torche, l\'allume avec F, et sa pile se vide en 3 minutes.', sujets: ids(['Interface', 'Items']), project: 'ConquerTheBackrooms' }).feature;
+  const coffres = state.addFeature({ title: 'Coffres de la base', idea: 'Des coffres dans la base pour garder le loot entre deux raids.', sujets: ids(['Base', 'Items']), project: 'ConquerTheBackrooms' }).feature;
+  put(feats.notesPath(coffres.id), '# Coffres de la base\n\n## Où on en est\nPlan validé par ali : un coffre de 20 cases, sauvegardé dans le profil.\n\n## Prochaines étapes\n- Créer BP_Coffre_Base\n- Sauver son contenu dans le profil\n');
+  state.setFeatureNotes(coffres.id, feats.scan(PROJ, coffres).notes);
+  state.setRule(ids(['Armes et combat'])[0], 'commandes', 'oui');
+  at(-6); ev('s-lampe', 'UserPromptSubmit', { prompt: `Tache de la tour [${lampe.id}] : lis la consigne dans Saved/Tour/taches/${lampe.id}.md et suis-la.` });
+  state.agents['s-lampe'].characterId = state.createCharacter({ name: 'Silex', look: { hat: 'casque', hatColor: '#d97706', tool: 'cle', shirt: '#92400e' } }).id;
+  at(-5); tool('s-lampe', 'Read', { file_path: P('Saved/Tour/sujets/interface.md') });
+  at(-3); ev('s-lampe', 'PreToolUse', { tool_name: 'Read', tool_input: { file_path: P('Source/CTB/Items/CTBItemData.h') }, agent_id: 'lampe-a', agent_type: 'ctb-economie' });
   at(-2);
 }
 
