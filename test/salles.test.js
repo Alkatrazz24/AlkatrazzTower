@@ -92,3 +92,20 @@ test('le titre de la session est lu dans son journal, /rename avant le titre gen
     + JSON.stringify({ type: 'summary', summary: 'Autre chose' }) + '\n');
   assert.strictEqual((await usage.usageOf(file)).title, 'Coup de pied');
 });
+
+test('une question posee a ali (AskUserQuestion) met la salle en attente de sa reponse', () => {
+  const s = new TowerState();
+  s.event({ session_id: 'Q', hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { question: 'Quelle animation ? (Mixamo / Fab)' } });
+  assert.strictEqual(s.agents.Q.status, 'waiting');
+  assert.strictEqual(s.agents.Q.message, 'Quelle animation ? (Mixamo / Fab)');
+  s.event({ session_id: 'Q', hook_event_name: 'PostToolUse', tool_name: 'AskUserQuestion', tool_input: { question: 'Quelle animation ? (Mixamo / Fab)' } });
+  assert.strictEqual(s.agents.Q.status, 'working');
+  // la consigne des taches demande de poser ses doutes plutot que de deviner
+  assert.match(require('../lib/suivi').CONSIGNE, /AskUserQuestion/);
+});
+
+test('le hook garde la question et ses options', () => {
+  const { slim } = require('../hooks/tower-hook');
+  const ev = slim({ session_id: 'h', hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: 'Quelle touche ?', options: [{ label: 'F maintenu' }, { label: 'K' }] }] } });
+  assert.strictEqual(ev.tool_input.question, 'Quelle touche ? (F maintenu / K)');
+});

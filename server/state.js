@@ -34,6 +34,7 @@ function toolSummary(name, input) {
     if (m) return snip('[verrou] ' + Buffer.from(m[1], 'base64').toString('utf8'), 120);
     return snip(input.command, 120);
   }
+  if (input.question) return snip(input.question, 120);
   if (input.file_path) return snip(input.file_path.split(/[\\/]/).slice(-2).join('/'), 120);
   if (input.pattern) return snip(input.pattern, 80);
   if (input.url) return snip(input.url, 120);
@@ -167,6 +168,11 @@ class TowerState {
           if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(ev.tool_name || '') && !suivi.isTowerFile(touched)) a.edits = (a.edits || 0) + 1;
         }
         if (ev.hook_event_name === 'PreToolUse') a.message = '';
+        // L'agent pose une question a l'humain dans sa fenetre : il attend sa reponse.
+        if (ev.tool_name === 'AskUserQuestion' && ev.hook_event_name === 'PreToolUse' && !sub) {
+          a.status = 'waiting';
+          a.message = snip((ev.tool_input && ev.tool_input.question) || 'Une question dans sa session Claude Code.', 200);
+        }
         break;
       case 'PostToolUseFailure':
         a.status = 'working';

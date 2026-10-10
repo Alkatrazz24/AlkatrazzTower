@@ -33,6 +33,12 @@ function slim(ev) {
     for (const k of ['command', 'file_path', 'path', 'pattern', 'url', 'description', 'prompt', 'subagent_type']) {
       if (typeof ti[k] === 'string') out.tool_input[k] = ti[k].slice(0, 500);
     }
+    // Une question posee a l'humain (AskUserQuestion) : la tour l'affiche dans la salle.
+    const q = Array.isArray(ti.questions) && ti.questions[0];
+    if (q && typeof q.question === 'string') {
+      const opts = Array.isArray(q.options) ? q.options.map(o => (o && typeof o.label === 'string' ? o.label : '')).filter(Boolean) : [];
+      out.tool_input.question = (q.question + (opts.length ? ` (${opts.join(' / ')})` : '')).slice(0, 500);
+    }
   }
   // Les agents travaillent les assets par MCP ou par scripts Python, pas en editant le .uasset :
   // on releve les chemins /Game/... cites dans l'appel, pour prevenir l'humain qui ouvre le meme.
