@@ -316,9 +316,38 @@ function demoSujets() {
   at(-2);
 }
 
+// La documentation : quelques pages dans docs/, une procedure du projet, et deux sessions qui
+// modifient le jeu, l'une avec sa doc, l'autre arretee par la tour pour l'ecrire (lib/docs.js).
+function demoDocs() {
+  const docs = require('../lib/docs');
+  const put = (rel, text, ageDays = 3) => { touch(rel, ageDays, text); };
+  put('docs/README.md', '# La documentation de CTB\n\nQuatre familles de documents, chacune répondant à une question différente.\n\n| Où | Répond à |\n|---|---|\n| `docs/bible/` | De quel monde parle-t-on ? |\n| `docs/decisions/` | Pourquoi ce choix ? |\n| `docs/ARCHITECTURE.md` | Qu\'est-ce qui existe, et où ? |\n\n## La bible\n\nC\'est la **source de vérité narrative**. Commencer par `00_PITCH.md`.\n', 20);
+  put('docs/ARCHITECTURE.md', '# Architecture\n\n## Les modules\n\n- `ConquerTheBackrooms` : le jeu.\n- `CTBTests` : les tests automatiques (`tools/tests.ps1`).\n\n## Les portes\n\n`ACTBPorte` s\'ouvre au clic, et casse après six coups de pied (touche K, à 2,5 m).\n', 0.02);
+  put('docs/FEUILLE_DE_ROUTE.md', '# Feuille de route\n\n1. Le level 0 jouable de bout en bout\n2. La base\n3. Les raids à plusieurs\n', 9);
+  put('docs/bible/00_PITCH.md', '# Le pitch\n\nDes contractuels envoyés dans les Backrooms pour le compte de Meridian.\n', 40);
+  put('docs/bible/02_LORE.md', '# Le lore\n\nA.C.R.E. et le M.E.G. sont les deux seules factions jouables.\n', 40);
+  put('docs/decisions/0047-les-portes-qui-s-ouvrent.md', '# 0047 · Les portes qui s\'ouvrent\n\nUne porte est un acteur répliqué, ouverte par le serveur.\n', 12);
+  put('docs/decisions/0081-le-coup-de-pied-dans-les-portes.md', '# 0081 · Le coup de pied dans les portes\n\n## Contexte\n\nali veut enfoncer une porte d\'un coup de pied.\n\n## Décision\n\nK donne un coup de pied à 2,5 m ; six coups la cassent. Le serveur tranche.\n\n## Tester\n\n`tools\\tests.ps1 CTB.Portes CTB.CoupDePied`, puis PIE et K devant une porte.\n', 0.6);
+  put('docs/idees/30-les-portes-verrouillees.md', '# Les portes verrouillées\n\nUne carte d\'accès ouvre les portes du niveau 1.\n', 1);
+  put('docs/memoire/MEMORY.md', '# Mémoire\n\n- [Live Coding jamais à l\'aveugle](ctb-live-coding-jamais-a-l-aveugle.md)\n', 5);
+  put('.claude/skills/ctb-portes/SKILL.md', '---\nname: ctb-portes\ndescription: Les portes de CTB\n---\n\n# Les portes\n\nOuvrir, casser, tester.\n', 2);
+  put('Saved/Tour/rapports/relecture-2026-10-09.md', '# Relecture du 9 octobre\n\n657 tests verts, 1 rouge (CTB.Ragdoll).\n', 1);
+  put('Infima.docs/index.md', '# Infima\n\nLe pack d\'animations : démo solo, référence seulement.\n', 60);
+  state.connectProject({ name: 'ConquerTheBackrooms', root: PROJ, uproject: P('ConquerTheBackrooms.uproject'), engine: '5.8' });
+  state.setDocs('ConquerTheBackrooms', docs.scan({ name: 'ConquerTheBackrooms', root: PROJ, uproject: P('ConquerTheBackrooms.uproject') }));
+  // la session du coup de pied : code modifie, puis son ADR mis a jour
+  at(-30); tool('s-anim', 'Edit', { file_path: P('Source/ConquerTheBackrooms/Portes/CTBPorte.cpp') });
+  at(-29); tool('s-anim', 'Edit', { file_path: P('docs/decisions/0081-le-coup-de-pied-dans-les-portes.md') });
+  // la lampe torche : un agent a modifie le jeu sans doc, la tour a arrete la fin de son tour
+  at(-3); tool('s-lampe', 'Write', { file_path: P('Source/ConquerTheBackrooms/Items/CTBLampe.cpp') });
+  const stop = { session_id: 's-lampe', cwd: PROJ, hook_event_name: 'Stop', ts: clock };
+  state.event(stop); state.hookReply(stop);
+}
+
 (async () => {
 await demoSkills();
 demoSujets();
+demoDocs();
 
 // Les chemins du dossier temporaire deviennent des chemins Windows plausibles.
 const WIN = 'C:\\Users\\Alkatrazz\\Documents\\Unreal Projects';

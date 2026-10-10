@@ -23,7 +23,7 @@ function slim(ev) {
   // Heure de l'evenement : les hooks asynchrones peuvent arriver dans le desordre.
   const out = { ts: Date.now() };
   for (const k of ['session_id', 'cwd', 'hook_event_name', 'tool_name', 'prompt', 'message', 'notification_type',
-    'source', 'reason', 'agent_id', 'agent_type', 'error', 'session_title', 'permission_mode', 'model', 'transcript_path']) {
+    'source', 'reason', 'agent_id', 'agent_type', 'error', 'session_title', 'permission_mode', 'model', 'transcript_path', 'stop_hook_active']) {
     if (ev[k] !== undefined) out[k] = typeof ev[k] === 'string' ? ev[k].slice(0, 2000) : ev[k];
   }
   if (ev.last_assistant_message) out.last_assistant_message = String(ev.last_assistant_message).slice(0, 1000);
@@ -85,13 +85,32 @@ async function main() {
 
   // Debut de session sur un projet Unreal : on rappelle a l'agent de lire la doc officielle avant
   // d'agir. Ne depend pas du serveur : la consigne passe meme tour eteinte.
+  // La regle « doc Unreal » vient de la tour (si question, ou a chaque modification) ; tour eteinte : si question.
+  const mode = reply && reply.unreal === 'modif' ? 'modif' : 'question';
+  // La tour ne fait respecter la doc obligatoire que sur un projet connecte, et seulement allumee.
+  const enforced = !!(reply && reply.docs);
   if (ev.hook_event_name === 'SessionStart' && process.env.TOWER_NO_DOCS !== '1') {
     const project = require('../lib/detect').findProject(ev.cwd);
     if (project) {
-      const additionalContext = require('../lib/unreal').docsContext(project);
+      const additionalContext = require('../lib/unreal').docsContext(project, { mode, enforced });
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext } }), quit);
       return;
     }
+  }
+  // Chaque agent appele sur un projet Unreal recoit les memes regles : doc obligatoire, doc Unreal.
+  if (ev.hook_event_name === 'SubagentStart' && process.env.TOWER_NO_DOCS !== '1') {
+    const project = require('../lib/detect').findProject(ev.cwd);
+    if (project) {
+      const additionalContext = require('../lib/docs').rules(project, { mode, agent: true, enforced });
+      process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SubagentStart', additionalContext } }), quit);
+      return;
+    }
+  }
+  // Doc obligatoire : la session (ou l'agent) a modifie le jeu sans ecrire de doc, la tour lui fait
+  // continuer son tour pour l'ecrire (lib/docs.js). Une seule fois : Claude Code passe stop_hook_active.
+  if (reply && reply.block && (ev.hook_event_name === 'Stop' || ev.hook_event_name === 'SubagentStop')) {
+    process.stdout.write(JSON.stringify({ decision: 'block', reason: String(reply.block).slice(0, 4000) }), quit);
+    return;
   }
 
   if (reply && ev.hook_event_name === 'PreToolUse' && (ev.tool_name === 'Bash' || ev.tool_name === 'PowerShell')) {

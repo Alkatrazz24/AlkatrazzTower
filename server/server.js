@@ -155,6 +155,17 @@ function probeSujets() {
 }
 const featuresLib = require('../lib/features');
 
+// La documentation de chaque projet connecte (lib/docs.js), relue toutes les minutes ; elle reecrit
+// aussi Saved/Tour/doc-unreal.md, le rayon Unreal que lisent les sessions.
+const docsLib = require('../lib/docs');
+function probeDocs() {
+  for (const p of state.projects) {
+    if (!p || !p.root || !p.name) continue;
+    try { state.setDocs(p.name, docsLib.scan(p)); } catch (e) { console.error('[tower] doc illisible :', e.message); }
+  }
+}
+function docRoot(name) { const p = projectFor(name); return p ? p.root : null; }
+
 // ---- inventaire des projets pour la carte ----------------------------------------------------
 
 const scanning = new Set();
@@ -196,6 +207,8 @@ setInterval(() => { state.expire(); }, 2000).unref();
 setInterval(probeEditor, 10_000).unref();
 setInterval(probeChantiers, 10_000).unref();
 setInterval(probeSujets, 10_000).unref();
+setInterval(probeDocs, 60_000).unref();
+setTimeout(probeDocs, 3000).unref();
 probeEditor();
 probeChantiers();
 probeSujets();
@@ -314,7 +327,11 @@ const routes = {
   'GET /api/health': () => ({ ok: true, name: 'alkatrazz-tower', pid: process.pid }),
   'GET /api/state': () => state.snapshot(),
 
-  'POST /api/event': (b) => { const ok = state.event(b); if (ok) usageSoon(String(b.session_id)); return { ok }; },
+  'POST /api/event': (b) => { const ok = state.event(b); if (ok) usageSoon(String(b.session_id)); return { ok, ...(ok ? state.hookReply(b) : {}) }; },
+  'GET /api/docs/file': (b, url) => docsLib.readDoc(docRoot(url.searchParams.get('project')), url.searchParams.get('path')),
+  'GET /api/docs/search': (b, url) => docsLib.search(docRoot(url.searchParams.get('project')), String(url.searchParams.get('q') || '').slice(0, 120)),
+  'POST /api/docs/refresh': () => { probeDocs(); return { ok: true }; },
+  'POST /api/docs/unreal': (b) => ({ ok: state.setDocRule(String(b.mode || '')) }),
 
   'POST /api/lock/acquire': (b) => {
     const st = state.acquire({
@@ -391,6 +408,7 @@ const routes = {
     if (!p) return { ok: false, error: 'aucun .uproject a cet endroit' };
     state.connectProject(p);
     inventoryOf(p);
+    setTimeout(probeDocs, 500);
     return { ok: true, project: p };
   },
   'POST /api/projects/disconnect': (b) => ({ ok: state.disconnectProject(b.uproject) }),

@@ -22,7 +22,10 @@ test('consigne de debut de session : version du projet et liens epingles', () =>
   fs.writeFileSync(up, JSON.stringify({ EngineAssociation: '5.8' }));
   const txt = docsContext({ name: 'Jeu', root: dir, uproject: up });
   assert.match(txt, /Unreal Engine 5\.8 detecte : Jeu/);
-  assert.match(txt, /AVANT toute modification/);
+  assert.match(txt, /doc obligatoire/);
+  assert.match(txt, /quand tu te poses une question/);
+  assert.doesNotMatch(txt, /AVANT toute modification/);
+  assert.match(docsContext({ name: 'Jeu', root: dir, uproject: up }, { mode: 'modif' }), /AVANT toute modification/);
   assert.match(txt, /unreal-engine-5-8-documentation\?application_version=5\.8/);
   assert.ok(docLinks('5.8').every(([, u]) => u.endsWith('?application_version=5.8')));
 });
