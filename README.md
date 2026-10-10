@@ -115,6 +115,20 @@ utilisé. **Ajouter un skill** écrit un `SKILL.md` dans le dossier perso ou dan
 projet, à partir d'un modèle, ou depuis une adresse GitHub : le fichier est montré en entier et ne
 s'installe qu'une fois lu et confirmé.
 
+## Le quartier des agents
+
+En face de la bibliothèque, le **quartier des agents** : un casier par agent que Claude Code peut appeler
+sur le PC, de la couleur de sa section (bouton **Agents**, ou touche A). Un casier ouvert : l'agent est
+parti travailler dans une salle. Il lit, sans rien modifier :
+
+- les agents **intégrés** (general-purpose, Explore, Plan…), les **perso** (`~/.claude/agents`), ceux de
+  chaque **projet** connu (`<projet>/.claude/agents`) et ceux des **plugins** ;
+- l'en-tête de chaque agent : section, description, modèle, `tools`, `disallowedTools`, les skills qu'il
+  **précharge** (`skills:`) et ceux que ses consignes **citent**, avec ce qui manque sur le PC, et s'il
+  peut appeler un skill (pas s'il a une liste `tools:` sans `Skill`) ;
+- ses **appels** des 30 derniers jours (outil Agent dans les journaux de Claude Code) : sessions, projets,
+  tokens rendus par chaque appel, ses derniers travaux, et les salles où il travaille en ce moment.
+
 ## La carte du projet
 
 Sur la page, le projet est une petite ville. La maison au centre, c'est le jeu, avec son nom,
@@ -275,6 +289,7 @@ chaque changement de `web/` au lieu de deviner.
 | `scripts/setup.js`, `setup.cmd`, `uninstall.cmd` | installation et retrait sur un PC |
 | `lib/characters.js`, `web/avatar.js` | personnages : allure, validation, dessin en pixels |
 | `lib/projects.js` | recherche et connexion des projets Unreal |
+| `lib/skills.js`, `lib/agents.js` | bibliothèque des skills et quartier des agents : inventaire, vérification, usage |
 | `lib/taches.js`, `lib/suivi.js` | tâches prêtes à lancer, et leur suivi (fait, à faire, questions, rapport) |
 | `lib/inventory.js`, `web/map.js` | carte du projet : comptage des assets et dessin de la ville |
 | `unreal/AlkatrazzTower`, `scripts/install-plugin.js` | plugin d'éditeur Unreal et son installation dans un projet |
