@@ -27,10 +27,12 @@ test('Windows sans Chrome : Edge', () => {
 });
 
 test('cloud : Chromium de Playwright sans fenetre, profil jetable', () => {
-  const b = pickBrowser({ PLAYWRIGHT_BROWSERS_PATH: '/opt/pw-browsers' }, 'linux', only(path.join('/opt/pw-browsers', 'chromium')));
+  // Sous Windows, path.join met des barres inverses : le chemin attendu est construit de la meme facon.
+  const pw = path.join('/opt/pw-browsers', 'chromium');
+  const b = pickBrowser({ PLAYWRIGHT_BROWSERS_PATH: '/opt/pw-browsers' }, 'linux', only(pw));
   const args = buildArgs(b);
   assert.strictEqual(args[1], PACKAGE);
-  for (const a of ['--headless', '--isolated', '--usageStatistics=false', '--executablePath=/opt/pw-browsers/chromium']) assert.ok(args.includes(a), a);
+  for (const a of ['--headless', '--isolated', '--usageStatistics=false', `--executablePath=${pw}`]) assert.ok(args.includes(a), a);
 });
 
 test('CHROME_DEVTOOLS_EXECUTABLE force le navigateur', () => {
