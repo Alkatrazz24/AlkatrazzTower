@@ -74,6 +74,9 @@ Le bouton **Tâches** de la barre du haut propose des consignes prêtes à lance
 
 - **Lancer** ouvre Claude Code dans une nouvelle fenêtre, dans le dossier du projet, avec la consigne
   (écrite dans `Saved/Tour/taches/`, dossier non versionné). Tu valides ses modifications comme d'habitude.
+- **En fond** (relecture, idées de features, et tes tâches cochées « ne modifie pas le code ») lance
+  Claude Code sans fenêtre (`claude -p`) : il lit le projet et n'écrit que dans `Saved/Tour/`, le reste
+  est refusé sans question. Son journal va dans `Saved/Tour/taches/`, et la tour le suit comme les autres.
 - **Copier la consigne** la met dans le presse-papiers, pour une session déjà ouverte.
 - **Nouvelle tâche** en ajoute une à toi (`{projet}` et `{date}` sont remplacés) ; « Copier en perso »
   part d'une tâche de base. Elles sont gardées par la tour.
