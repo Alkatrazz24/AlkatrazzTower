@@ -397,8 +397,34 @@ async function demoGit() {
     repos: [tower, { name: 'ConquerTheBackrooms', kind: 'projet', ...ctb, remote: null, sync: null }, proto] });
 }
 
+// Le conseil (lib/conseil.js) : un verdict rendu sur la porte du SAS, et une question en pleine relecture croisee.
+function demoConseil() {
+  const C = require('../lib/conseil');
+  state.conseilView = C.create(state, { projectFor: () => ({ name: 'ConquerTheBackrooms', root: PROJ }) }).view;
+  const members = (o) => Object.fromEntries(C.MEMBERS.map(m => [m.id, { status: 'fini', avis: '', revue: '', error: '', ...(o[m.id] || {}) }]));
+  const done = {
+    id: 'c-demo-sas', at: T0 - 50 * 60_000, endedAt: T0 - 46 * 60_000, project: 'ConquerTheBackrooms', model: 'sonnet', revue: true, cadrage: true, step: 'fini', error: '', note: '',
+    question: 'La porte du SAS doit-elle pouvoir s\'ouvrir d\'un coup de pied, comme les portes des parcelles ?',
+    framed: 'Le coup de pied (ADR 0081) ouvre toutes les portes des parcelles (ACTBPorte, 250 cm, 0,8 s). La porte du SAS sépare la base de la zone dangereuse : c\'est elle qui protège l\'équipe pendant un raid. Faut-il lui donner le coup de pied aussi ?',
+    decision: 'Non : la porte du SAS reste fermée au coup de pied, elle s\'ouvre au badge.',
+    verdict: '**Décision :** Non : la porte du SAS reste fermée au coup de pied, elle s\'ouvre au badge.\n\n## Où le conseil est d\'accord\n- Le SAS est la seule porte qui protège l\'équipe pendant un raid.\n- Un coup de pied qui l\'ouvre en 0,8 s retire tout l\'intérêt du badge.\n\n## Où il s\'oppose\n- Le Visionnaire veut un coup de pied qui l\'abîme sans l\'ouvrir (un bruit qui attire les entités) ; le Contradicteur y voit un piège à bugs réseau.\n\n## Ce que la relecture a révélé\n- Le Candide : un joueur ne comprendra pas pourquoi une porte cède et pas l\'autre sans un signe visible.\n\n## La recommandation\nGarde le SAS au badge, et donne-lui une autre allure (bandes jaunes, voyant) pour que la règle se voie.\n\n## La première chose à faire\nAjouter à ACTBPorte un drapeau « résiste au coup de pied », coché sur le SAS.',
+    members: members({}), revues: ['B est la plus solide…'], letters: { A: 'candide', B: 'contradicteur', C: 'executant', D: 'fondamental', E: 'visionnaire' }, cost: 0.31, tokens: 61200,
+    file: 'Saved/Tour/conseil/2026-10-09-11-10-la-porte-du-sas.md', chef: { at: T0 - 44 * 60_000, sessionId: 's-chef' },
+  };
+  for (const m of C.MEMBERS) done.members[m.id].avis = `${m.name} : avis de démonstration.`;
+  const now = {
+    id: 'c-demo-lampe', at: T0 - 2 * 60_000, endedAt: 0, project: 'ConquerTheBackrooms', model: 'sonnet', revue: true, cadrage: true, step: 'revue', error: '', note: '',
+    question: 'Lampe torche : batterie à recharger, ou lumière infinie mais qui attire les entités ?',
+    framed: 'Deux options pour la lampe torche de CTB : une batterie qui se vide (et des piles à trouver), ou une lumière infinie qui attire les entités proches.', decision: '', verdict: '',
+    members: members({ contradicteur: { status: 'relit' }, fondamental: { status: 'relit' }, candide: { status: 'relit' } }), revues: [], letters: null, cost: 0.12, tokens: 24800, file: '',
+  };
+  for (const m of C.MEMBERS) now.members[m.id].avis = `${m.name} : avis de démonstration.`;
+  state.conseil = { model: 'sonnet', revue: true, cadrage: true, runs: [now, done] };
+}
+
 (async () => {
 await demoSkills();
+demoConseil();
 demoSujets();
 demoDocs();
 await demoGit();

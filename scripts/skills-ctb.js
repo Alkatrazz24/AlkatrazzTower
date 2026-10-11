@@ -7,6 +7,8 @@
 //   node scripts/skills-ctb.js "<dossier du projet>" --apply         l'installe
 //   --only a,b         seulement ces skills
 //   --ponytail-auto    laisse ponytail se declencher tout seul sur chaque tache de code (par defaut : /ponytail)
+//   --conseil-auto     laisse le conseil (llm-council) se lancer tout seul sur un choix (par defaut : /llm-council)
+//   --pas-unreal       accepte un dossier sans .uproject (le dossier de la tour)
 //
 // Rien n'est ecrase : un skill deja dans le projet, ou qu'une session du projet a deja (perso, compte claude.ai,
 // plugin active), est laisse tel quel. Rien n'est commite. Sorties en ASCII (console PowerShell).
@@ -22,12 +24,12 @@ async function main(argv) {
   const args = argv.filter(a => !a.startsWith('--'));
   const opt = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
   const root = args.find(a => a !== opt('--only'));
-  if (!root || !fs.existsSync(root) || !fs.readdirSync(root).some(f => f.toLowerCase().endsWith('.uproject'))) {
-    say('Usage : node scripts/skills-ctb.js "<dossier du projet Unreal>" [--apply] [--only a,b] [--ponytail-auto]');
+  if (!root || !fs.existsSync(root) || (!argv.includes('--pas-unreal') && !fs.readdirSync(root).some(f => f.toLowerCase().endsWith('.uproject')))) {
+    say('Usage : node scripts/skills-ctb.js "<dossier du projet Unreal>" [--apply] [--only a,b] [--ponytail-auto] [--conseil-auto] [--pas-unreal]');
     return 2;
   }
   const only = opt('--only') ? opt('--only').split(',').map(s => s.trim()).filter(Boolean) : null;
-  const auto = argv.includes('--ponytail-auto');
+  const auto = [...(argv.includes('--ponytail-auto') ? ['ponytail'] : []), ...(argv.includes('--conseil-auto') ? ['llm-council'] : [])];
   const p = lib.plan({ root: path.resolve(root), only });
   const by = (st) => p.items.filter(i => i.status === st);
   say(`Projet : ${p.root}`);
@@ -36,7 +38,7 @@ async function main(argv) {
   let group = '';
   for (const it of by('install')) {
     if (it.group !== group) { group = it.group; say(`  ${group}`); }
-    say(`    ${it.name}${it.manual ? (auto ? '  (se declenche tout seul)' : '  (a la main : /ponytail)') : ''}  <- ${it.source}`);
+    say(`    ${it.name}${it.manual ? (auto.includes(it.name) ? '  (se declenche tout seul)' : `  (a la main : /${it.name})`) : ''}  <- ${it.source}`);
   }
   if (by('present').length) say(`Deja dans le projet : ${by('present').map(i => i.name).join(', ')}`);
   if (by('available').length) { say('Deja disponibles pour ses sessions, non copies :'); for (const it of by('available')) say(`  ${it.name} : ${it.where}`); }

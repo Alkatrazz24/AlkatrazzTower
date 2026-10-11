@@ -264,7 +264,7 @@
       S, demo: DEMO, connected, now: now(),
       template: current, templates: TEMPLATES,
       agents, liveAgents: live, visibleAgents: agents.filter(x => ui.showEnded || !x.old), endedCount: agents.filter(x => x.old).length,
-      sujets, features, chef, board: sv ? sv.board.entries : [], sujetsProject: sv ? sv.project : '',
+      sujets, features, chef, conseil: S.conseil || null, board: sv ? sv.board.entries : [], sujetsProject: sv ? sv.project : '',
       regles: S.regles || {}, actions: S.actions || [],
       mise: S.miseEnPlace || { budgets: [], budget: 1, current: null, queue: [], runs: {} },
       counts: { working: count('working'), waiting, idle: count('idle'), ready: count('ready'), silent: count('silent'), live: live.length },

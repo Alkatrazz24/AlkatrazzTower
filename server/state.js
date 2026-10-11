@@ -74,6 +74,8 @@ class TowerState {
     this.misePlace = {};   // id de sujet -> sa derniere mise en place (lib/miseenplace.js)
     this.miseView = null;  // () => la file des mises en place, branche par le serveur
     this.chef = { ask: false, envois: [] }; // le chef et ses envois (lib/chef.js)
+    this.conseil = { runs: [] }; // le conseil : ses deliberations et ses reglages (lib/conseil.js)
+    this.conseilView = null;     // () => ce que la page affiche du conseil, branche par le serveur
     this.regles = {};      // id de sujet ou de feature -> { action: 'oui' | 'demander' | 'non' } (lib/regles.js)
     this.docs = {};        // projet -> sa documentation : etageres, rayon Unreal (lib/docs.js), relue par le serveur
     this.docRules = { unreal: 'question' }; // quand les sessions lisent la doc Unreal : 'question' ou 'modif'
@@ -946,6 +948,7 @@ class TowerState {
       features: this.features.map(f => ({ ...f, notes: this.featureNotes[f.id] || null })),
       regles: Object.fromEntries([...Object.values(this.sujets).flatMap(v => (v && v.topics) || []), ...this.features, { id: chefLib.ID }].map(x => [x.id, regles.rulesOf(this.regles[x.id], this.rulesBase(x.id))])),
       chef: { ask: !!this.chef.ask, envois: this.chef.envois || [] },
+      conseil: this.conseilView ? this.conseilView() : null,
       actions: regles.ACTIONS,
       miseEnPlace: this.miseView ? this.miseView() : { budgets: [], budget: 0, current: null, queue: [], runs: this.misePlace },
     };
@@ -956,7 +959,7 @@ class TowerState {
     return {
       agents: keep(this.agents, a => !isTuto(a.sessionId)), builds: this.builds.filter(b => !isTuto(b.sessionId)), seq: this.seq,
       campaigns: this.campaigns, testGroups: this.testGroups, characters: keep(this.characters, c => !c.tuto), projects: this.projects,
-      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles, misePlace: this.misePlace, chef: this.chef, docRules: this.docRules, gitFollow: this.gitFollow,
+      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles, misePlace: this.misePlace, chef: this.chef, conseil: this.conseil, docRules: this.docRules, gitFollow: this.gitFollow,
     };
   }
 
@@ -976,6 +979,7 @@ class TowerState {
     if (Array.isArray(saved.features)) this.features = saved.features;
     if (saved.regles && typeof saved.regles === 'object') this.regles = saved.regles;
     if (saved.chef && typeof saved.chef === 'object') this.chef = { ask: !!saved.chef.ask, envois: Array.isArray(saved.chef.envois) ? saved.chef.envois : [] };
+    if (saved.conseil && typeof saved.conseil === 'object') this.conseil = require('../lib/conseil').restore(saved.conseil);
     if (Array.isArray(saved.gitFollow)) this.gitFollow = saved.gitFollow.filter(x => x && typeof x.root === 'string');
     if (saved.docRules && docsLib.UNREAL_MODES.includes(saved.docRules.unreal)) this.docRules = { unreal: saved.docRules.unreal };
     // une mise en place en cours ou en file est partie avec l'ancienne tour

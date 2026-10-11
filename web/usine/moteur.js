@@ -191,6 +191,12 @@
       hallOf(B, cx0, cx0 + cw + 1, 0, 'chef');
       right = cx0 + cw + 1;
     }
+    // Le conseil, au bout de la rue : la salle des deliberations en haut (cinq membres et le president
+    // autour de la table), en bas les verdicts rendus.
+    const kx0 = right + GAP;
+    const kroom = { x: kx0 + 1, y: TOP, w: 12, h: ROOM_H }, vdroom = { x: kx0 + 1, y: BOT, w: 12, h: ROOM_H };
+    hallOf(B, kx0, kx0 + 13, 0, 'conseil');
+    right = kx0 + 13;
     let h = BOT + ROOM_H + 2;
     // Les batiments core et feature, des qu'un projet a des sujets (ou qu'une session core ou feature existe).
     const core = shown.filter(a => kindOf(a) === 'core'), feat = shown.filter(a => kindOf(a) === 'feature');
@@ -205,7 +211,7 @@
       h = oy + BOT + ROOM_H + 2;
     }
     const you = { x: 1.2, y: CY + .1 };
-    return { ...B, forge, froom, okChest, koChest, silo, vroom, lroom, aroom, droom, uroom, groom, hroom, eroom, hall: B.halls[0], you, w: right + 2, h, x0: 3 };
+    return { ...B, forge, froom, okChest, koChest, silo, vroom, lroom, aroom, droom, uroom, groom, hroom, eroom, kroom, vdroom, hall: B.halls[0], you, w: right + 2, h, x0: 3 };
   }
 
   // ---------- terrain : calcule une fois par taille de batiment, hors de la boucle ----------
@@ -746,6 +752,89 @@
     if (wait && blink) light(bx + bw / 2, by + bh / 2, 46, COL.warn, .7);
     light(x + w / 2, y + hh / 2, 60, '#ffe3a8', .6);
   }
+  // ---------- le conseil (lib/conseil.js) ----------
+  const conseilOf = (M) => (M && M.conseil) || null;
+  const isLive = (r) => !!r && !['fini', 'erreur', 'arrete'].includes(r.step);
+  // Une bulle au-dessus d'une tete : trois points qui defilent (il reflechit), une feuille (il relit).
+  function bubble(c, cx, top, kind, t, col = '#f4f1e8') {
+    const bw = 16, bh = 10, bx = Math.round(cx - bw / 2), by = Math.round(top - bh - 4);
+    c.fillStyle = col; c.fillRect(bx, by, bw, bh); c.fillRect(bx + 5, by + bh, 3, 3);
+    c.fillStyle = 'rgba(0,0,0,.6)';
+    if (kind === 'dots') { const k = reduced ? 3 : Math.floor(t * 3) % 4; for (let i = 0; i < Math.min(3, k); i++) c.fillRect(bx + 3 + i * 4, by + 4, 2, 2); }
+    else if (kind === 'page') { c.fillStyle = '#fff'; c.fillRect(bx + 4, by + 1, 8, 8); c.fillStyle = 'rgba(0,0,0,.45)'; c.fillRect(bx + 5, by + 3, 6, 1); c.fillRect(bx + 5, by + 5, 5, 1); c.fillRect(bx + 5, by + 7, 6, 1); }
+    else if (kind === 'ok') { c.fillStyle = COL.ok; c.fillRect(bx + 5, by + 2, 6, 6); }
+    else if (kind === 'ko') { c.fillStyle = COL.ko; c.fillRect(bx + 5, by + 2, 6, 6); }
+  }
+  // La salle des deliberations : une longue table sous un tapis pourpre ; le president au fond, entre
+  // le Fondamental et le Visionnaire ; le Contradicteur et le Candide aux bouts ; l'Executant devant.
+  const SEATS = { fondamental: [-1, 'back'], president: [0, 'back'], visionnaire: [1, 'back'], contradicteur: [-1, 'end'], candide: [1, 'end'], executant: [0, 'front'] };
+  function seatsOf(W) {
+    const R = W.kroom, x = R.x * TS, y = R.y * TS, w = R.w * TS;
+    const tx = x + 2.6 * TS, tw = w - 5.2 * TS, ty = y + 3 * TS, th = 1.3 * TS, cx = x + w / 2, pw = 22 * BIG;
+    const out = {};
+    for (const [id, [k, row]] of Object.entries(SEATS)) {
+      out[id] = row === 'back' ? { x: cx - pw / 2 + k * 2.4 * TS, y: ty - 2.3 * TS, row }
+        : row === 'end' ? { x: k < 0 ? tx - pw - 2 : tx + tw + 2, y: ty - 1.3 * TS, row }
+          : { x: cx - pw / 2, y: ty + .3 * TS, row };
+    }
+    return { tx, tw, ty, th, seats: out };
+  }
+  function drawConseilRoom(c, W, t) {
+    const R = W.kroom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS, K = conseilOf(G.M);
+    const r = K && K.runs && K.runs[0], live = isLive(r);
+    planks(c, x, y, w, hh, shade(COL.floor, -.2));
+    if (!SC) { c.fillStyle = '#4c2a5e'; c.fillRect(x + 1.6 * TS, y + 1.4 * TS, w - 3.2 * TS, hh - 2.6 * TS); c.fillStyle = COL.carpetEdge; c.fillRect(x + 1.6 * TS, y + 1.4 * TS, w - 3.2 * TS, 1); c.fillRect(x + 1.6 * TS, y + hh - 1.2 * TS - 1, w - 3.2 * TS, 1); }
+    walls(c, R, roomDoor({ x: R.x, w: R.w, top: true }));
+    const { tx, tw, ty, th, seats } = seatsOf(W);
+    const members = (K && K.members) || [], P = K && K.president;
+    const stOf = (id) => {
+      if (!r) return null;
+      if (id === 'president') return r.step === 'president' || r.step === 'cadrage' ? 'dots' : null;
+      const m = r.members && r.members[id];
+      if (!m || !live) return null;
+      return m.status === 'reflechit' ? 'dots' : m.status === 'relit' ? 'page' : m.status === 'erreur' ? 'ko' : m.status === 'fini' ? 'ok' : null;
+    };
+    const who = [...members.map(m => ({ id: m.id, look: m.look })), ...(P ? [{ id: 'president', look: P.look }] : [])];
+    const draw = (row) => {
+      for (const p of who) {
+        const s = seats[p.id]; if (!s || s.row !== row) continue;
+        const b = stOf(p.id), active = b === 'dots' || b === 'page';
+        person(c, p.look, active ? 'working' : 'idle', s.x, s.y, t);
+        if (b) bubble(c, s.x + 22 * BIG / 2, s.y, b, t, p.id === 'president' ? '#ffe9a8' : '#f4f1e8');
+      }
+    };
+    draw('back');
+    box(c, tx, ty, tw, th, COL.table, shade(COL.table, .25), shade(COL.table, -.35));
+    if (!SC) {
+      // les bougies, et le verdict roule sur la table quand le president a tranche
+      for (const fx of [tx + 8, tx + tw - 12]) { c.fillStyle = '#efe8d6'; c.fillRect(fx, ty + 2, 4, 7); c.fillStyle = reduced || Math.floor(t * 6 + fx) % 2 ? COL.fireHot : COL.fire; c.fillRect(fx + 1, ty - 1, 2, 3); light(fx + 2, ty, 26, '#ffd9a0', .5); }
+      if (r && r.step === 'fini') { c.fillStyle = '#efe2b8'; c.fillRect(tx + tw / 2 - 9, ty + 5, 18, 7); c.fillStyle = '#b91c1c'; c.fillRect(tx + tw / 2 - 2, ty + 7, 4, 4); }
+    }
+    draw('end');
+    draw('front');
+    light(x + w / 2, y + hh / 2, 80, live ? '#c9a2ff' : '#ffe3a8', live ? .9 : .6);
+  }
+  // Les verdicts : un rayon de parchemins, un par question posee (dore : rendu ; rouge : erreur ; gris :
+  // arrete ; bleu qui clignote : en cours), et le pupitre ou repose le dernier.
+  function drawVerdictsRoom(c, W, t) {
+    const R = W.vdroom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS, K = conseilOf(G.M), runs = (K && K.runs) || [];
+    planks(c, x, y, w, hh, shade(COL.floor, -.12));
+    walls(c, R, { side: 'top', x: R.x + .6, w: 1.6, open: true });
+    const bx = x + WALL + 6, bw = w - 2 * WALL - 12, by = y + hh - WALL - 2.2 * TS, bh = 1.9 * TS;
+    box(c, bx, by, bw, bh, '#5a3b22', '#7a5233', '#3b2716');
+    const blink = reduced || Math.floor(t * 2) % 2 === 0;
+    runs.slice(0, 16).forEach((r, i) => {
+      const nx = bx + 6 + (i % 8) * ((bw - 12) / 8), ny = by + 5 + Math.floor(i / 8) * (bh / 2 - 1);
+      const col = isLive(r) ? (blink ? COL.blue : '#9cc9ef') : r.step === 'erreur' ? COL.ko : r.step === 'arrete' ? '#9aa0a6' : '#efe2b8';
+      c.fillStyle = col; c.fillRect(nx, ny, 8, 14);
+      if (!SC) { c.fillStyle = shade(col, -.3); c.fillRect(nx, ny, 8, 2); c.fillRect(nx, ny + 12, 8, 2); if (r.step === 'fini') { c.fillStyle = '#b91c1c'; c.fillRect(nx + 2, ny + 6, 4, 3); } }
+    });
+    // le pupitre
+    const dx = x + w / 2 - 1.4 * TS, dy = y + 1.5 * TS;
+    box(c, dx, dy, 2.8 * TS, 1.1 * TS, COL.desk, COL.deskLight, COL.deskDark);
+    if (!SC && runs.some(r => r.step === 'fini')) { c.fillStyle = '#f3eddc'; c.fillRect(dx + 8, dy + 3, 13, 10); c.fillRect(dx + 23, dy + 3, 13, 10); c.fillStyle = 'rgba(0,0,0,.25)'; for (let k = 0; k < 3; k++) { c.fillRect(dx + 10, dy + 5 + k * 3, 9, 1); c.fillRect(dx + 25, dy + 5 + k * 3, 9, 1); } }
+    light(x + w / 2, y + hh / 2, 60, '#ffe3a8', .55);
+  }
   // Le rayon Unreal Engine : la doc officielle par theme, un livre bleu acier par page, et un poste en ligne.
   function drawUnrealRoom(c, W, t) {
     const R = W.uroom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS, M = G.M;
@@ -866,6 +955,7 @@
     if (sel.kind === 'git') return W.groom;
     if (sel.kind === 'github') return W.hroom;
     if (sel.kind === 'unreal') return W.uroom;
+    if (sel.kind === 'conseil') return W.kroom;
     if (sel.kind === 'ok') return W.okChest;
     if (sel.kind === 'ko') return W.koChest;
     return null;
@@ -903,6 +993,8 @@
     drawGitRoom(c, W, t);
     drawGithubRoom(c, W, t);
     if (W.eroom) drawEnvoisRoom(c, W, t);
+    drawConseilRoom(c, W, t);
+    drawVerdictsRoom(c, W, t);
     drawLamps(c, W);
     // dans le couloir : la file devant la forge, et toi a l'entree
     const people = queueSpots(W).map(p => ({ look: p.q.agent ? p.q.agent.look : {}, st: 'ready', x: p.x * TS, y: p.y * TS }));
@@ -992,8 +1084,8 @@
     // les batiments core et feature : leur enseigne au-dessus de l'entree, et la salle libre des features
     for (const b of W.blds) {
       if (!b.name) continue;
-      const [bx, by] = S(b.x + b.w / 2, b.y - (b.name === 'doc' || b.name === 'git' || b.name === 'chef' ? 1.5 : 1.1));
-      const sign = { core: ['Core · la mémoire du jeu', COL.ok], feature: ['Features · les nouvelles idées', COL.warn], doc: ['Documentation', COL.blue], git: ['Dépôts', COL.ok], chef: ['Chef · toutes tes demandes', COL.select] }[b.name];
+      const [bx, by] = S(b.x + b.w / 2, b.y - (b.name === 'doc' || b.name === 'git' || b.name === 'chef' || b.name === 'conseil' ? 1.5 : 1.1));
+      const sign = { core: ['Core · la mémoire du jeu', COL.ok], feature: ['Features · les nouvelles idées', COL.warn], doc: ['Documentation', COL.blue], git: ['Dépôts', COL.ok], chef: ['Chef · toutes tes demandes', COL.select], conseil: ['Conseil · les vrais choix', '#b48ee8'] }[b.name];
       if (sign) label(c, sign[0], bx, by, { edge: sign[1], size: small ? 12 : 14, weight: 700 });
     }
     if (z >= .6) for (const f of W.fillers) if (f.free === 'feature' && f.top) { const [fx, fy] = S(f.x + f.w / 2, f.y + f.h / 2); label(c, '+ Nouvelle feature', fx, fy, { edge: COL.warn, weight: 700, size: small ? 11 : 13 }); }
@@ -1045,6 +1137,11 @@
       const E = G.M.chef.envois, wait = E.filter(e => e.status === 'proposé').length;
       const [elx, ely] = S(W.eroom.x + W.eroom.w / 2, W.eroom.y + W.eroom.h + .55);
       label(c, wait ? `Envois : ${wait} à valider` : `Envois : ${E.length}`, elx, ely, { edge: wait ? COL.warn : E.some(e => e.status === 'erreur') ? COL.ko : COL.select, weight: 700, max: Math.max(90, W.eroom.w * TS * z) });
+    }
+    {
+      const K = conseilOf(G.M), r = K && K.runs && K.runs[0], n = K ? K.runs.filter(x => x.step === 'fini').length : 0;
+      const [klx, kly] = S(W.vdroom.x + W.vdroom.w / 2, W.vdroom.y + W.vdroom.h + .55);
+      label(c, isLive(r) ? `Le conseil ${K.steps[r.step] ? `: ${K.steps[r.step]}` : 'délibère'}` : n ? `Verdicts : ${n}` : 'Verdicts', klx, kly, { edge: isLive(r) ? COL.blue : r && r.step === 'erreur' ? COL.ko : '#b48ee8', weight: 700, max: Math.max(90, W.vdroom.w * TS * z) });
     }
     const [ulx, uly] = S(W.uroom.x + W.uroom.w / 2, W.uroom.y + W.uroom.h + .55);
     label(c, `Unreal Engine ${DC && DC.version ? DC.version : '5'}`, ulx, uly, { edge: COL.blue, weight: 700, max: Math.max(90, W.uroom.w * TS * z) });
@@ -1138,6 +1235,7 @@
     c.fillStyle = docDebts(G.M).some(d => d.owed) ? COL.ko : COL.desk; c.fillRect(W.droom.x * TS + 6, W.droom.y * TS + 6, W.droom.w * TS - 12, W.droom.h * TS - 12);
     c.fillStyle = gitAlert(G.M) ? COL.ko : COL.steel; c.fillRect(W.groom.x * TS + 6, W.groom.y * TS + 6, W.groom.w * TS - 12, W.groom.h * TS - 12);
     if (W.eroom) { c.fillStyle = G.M.chef && G.M.chef.envois.some(e => e.status === 'proposé') ? COL.warn : COL.desk; c.fillRect(W.eroom.x * TS + 6, W.eroom.y * TS + 6, W.eroom.w * TS - 12, W.eroom.h * TS - 12); }
+    { const K = conseilOf(G.M), live = K && isLive(K.runs[0]); c.fillStyle = live ? COL.blue : '#7a4f9a'; c.fillRect(W.kroom.x * TS + 6, W.kroom.y * TS + 6, W.kroom.w * TS - 12, W.kroom.h * TS - 12); c.fillStyle = COL.desk; c.fillRect(W.vdroom.x * TS + 6, W.vdroom.y * TS + 6, W.vdroom.w * TS - 12, W.vdroom.h * TS - 12); }
     c.fillStyle = COL.ok; c.fillRect(W.hroom.x * TS + 6, W.hroom.y * TS + 6, W.hroom.w * TS - 12, W.hroom.h * TS - 12);
     c.fillStyle = COL.blue; c.fillRect(W.uroom.x * TS + 6, W.uroom.y * TS + 6, W.uroom.w * TS - 12, W.uroom.h * TS - 12);
     const { vw, vh } = view();
@@ -1166,6 +1264,7 @@
     if (inR(W.hroom)) return { kind: 'github' };
     if (inR(W.uroom)) return { kind: 'unreal' };
     if (W.eroom && inR(W.eroom)) return chefSel();
+    if (inR(W.kroom) || inR(W.vdroom)) return { kind: 'conseil' };
     if (W.fillers.some(f => f.free === 'feature' && inR(f))) return { kind: 'newfeature' };
     return null;
   }
@@ -1189,6 +1288,10 @@
     if (s.kind === 'git') { const Gt = gitOf(M); return ['Dépôts git', !Gt ? 'Lecture en cours' : !Gt.git ? 'Git n\'est pas installé : clique pour l\'installer' : Gt.repos.map(r => `${r.name} : ${repoTone(r, Gt)[1]}`).join(' · ')]; }
     if (s.kind === 'github') { const n = prsOf(M).length; return ['Quai GitHub', n ? `${T.plural(n, 'PR ouverte', 'PR ouvertes')} ; clique pour les voir` : 'Ce qui arrive sur GitHub : commits poussés, PR ouvertes']; }
     if (s.kind === 'unreal') return ['Rayon Unreal Engine', 'La doc officielle par thème, que les sessions ouvrent quand elles ont une question'];
+    if (s.kind === 'conseil') {
+      const K = conseilOf(M), r = K && K.runs[0];
+      return ['Conseil', isLive(r) ? `Délibère : ${K.steps[r.step] || r.step}` : r && r.step === 'fini' ? `Dernier verdict : ${r.decision || 'rendu'}` : 'Pose-lui un vrai choix : cinq avis, une relecture croisée, un verdict (touche K)'];
+    }
     if (s.kind === 'newfeature') return ['Nouvelle feature', 'Une session pour mettre en place une nouvelle idée : clique pour la créer'];
     if (s.kind === 'silo') return ['Salle de lancement', M.campaign ? `${M.campaign.name} : ${M.campaign.proven} sur ${M.campaign.total}` : 'Aucune version'];
     return null;
@@ -1290,6 +1393,7 @@
       else if (e.key === 'g' || e.key === 'G') select({ kind: 'git' }, true);
       else if (e.key === 's' || e.key === 'S') sideToggle('sujets');
       else if ((e.key === 'c' || e.key === 'C') && chefSel()) select(chefSel(), true);
+      else if (e.key === 'k' || e.key === 'K') select({ kind: 'conseil' }, true);
       else if (e.key === 'n' || e.key === 'N') { e.preventDefault(); if (!G.M.demo) featureDialog(G.M); }
       else if (e.key === 'j' || e.key === 'J') select({ kind: G.M.builds.some(b => !b.ok) ? 'ko' : 'ok' }, true);
       else if (e.key === 'Home' || e.key === '0') { G.userMoved = false; fit(); G.dirty = true; }
@@ -1441,6 +1545,9 @@
     } else if (s.kind === 'unreal') {
       title = 'Rayon Unreal Engine';
       body = unrealBody(M);
+    } else if (s.kind === 'conseil') {
+      title = 'Conseil';
+      body = conseilBody(M);
     } else if (s.kind === 'silo') {
       const c = M.campaign;
       title = c ? `Lancement : ${c.name}` : 'Salle de lancement';
@@ -2615,6 +2722,84 @@
         }, z.done ? '' : 'us-danger', M.demo ? { disabled: true } : { title: 'L\'idée est en place : sa salle quitte le bâtiment, rien n\'est effacé' }) : null),
     ];
   }
+  // ---------- le conseil (lib/conseil.js) ----------
+  // Pour un vrai choix : cinq membres repondent chacun de leur cote, se relisent sans savoir qui a dit
+  // quoi, puis le president tranche. Pour tout le reste (une confirmation, une question, un bug) : le chef.
+  const conseilUi = { q: '', open: null, avis: false, busy: false };
+  const MEMBER_ST = { attend: ['en attente', 'none'], reflechit: ['réfléchit', 'blue'], relit: ['relit les avis', 'blue'], fini: ['a répondu', 'ok'], erreur: ['erreur', 'ko'] };
+  function verdictBlock(M, K, r, full) {
+    const toChef = async () => {
+      const res = await T.api('/api/conseil/chef', { id: r.id });
+      if (res && res.ok) { T.toast('Décision confiée au chef.'); if (res.sessionId) { select({ kind: 'agent', id: res.sessionId }, true); chatDialog(res.sessionId); } }
+      else if (res) T.toast(res.error || 'Impossible.');
+    };
+    return [
+      r.decision ? h('p', { class: 'us-cs-decision' }, r.decision) : null,
+      full ? h('div', { class: 'us-md us-cs-verdict' }, mdNodes(String(r.verdict || '').replace(/^\*\*D[ée]cision\s*:?\*\*.*\n*/i, ''))) : null,
+      full && r.members ? [
+        btn(conseilUi.avis ? 'Cacher les avis' : 'Lire les cinq avis', () => { conseilUi.avis = !conseilUi.avis; renderHud(); }, 'us-link'),
+        conseilUi.avis ? h('div', { class: 'us-cs-avis' }, (K.members || []).filter(m => r.members[m.id] && r.members[m.id].avis).map(m => h('details', null, h('summary', null, h('b', null, m.name), h('span', { class: 'us-dim' }, ` · ${m.short}`)), h('div', { class: 'us-pre' }, r.members[m.id].avis)))) : null] : null,
+      h('div', { class: 'us-actions' },
+        btn(r.chef ? 'Confier à nouveau au chef' : 'Confier au chef', toChef, r.chef ? '' : 'us-go', M.demo ? { disabled: true } : { title: 'Le chef met la décision en œuvre : il vérifie, puis confie les changements aux sessions core ou à une feature' }),
+        r.chef ? h('span', { class: 'us-dim' }, 'Confiée au chef ', T.agoEl(r.chef.at)) : null),
+      h('small', { class: 'us-dim' }, [r.file ? `Écrit dans ${r.file}` : null, r.cost ? `${r.cost.toFixed(2)} $` : null, r.tokens ? `${tok(r.tokens)} tokens` : null].filter(Boolean).join(' · ')),
+    ];
+  }
+  function conseilBody(M) {
+    const K = conseilOf(M);
+    if (!K) return [h('p', { class: 'us-dim' }, 'La tour prépare la salle du conseil…')];
+    const runs = K.runs || [], r = runs[0], live = isLive(r);
+    const set = async (o) => { const res = await T.api('/api/conseil/reglages', o); if (res && !res.ok) T.toast(res.error || 'Impossible.'); };
+    const ask = async () => {
+      const q = conseilUi.q.trim();
+      if (!q) { T.toast('Écris d\'abord ta question.'); return; }
+      conseilUi.busy = true; renderHud();
+      const res = await T.api('/api/conseil', { question: q, project: M.sujetsProject || '' });
+      conseilUi.busy = false;
+      if (res && res.ok) { conseilUi.q = ''; T.toast('Le conseil se réunit.'); } else if (res) T.toast(res.error || 'Impossible.');
+      renderHud();
+    };
+    const off = M.demo || live || conseilUi.busy;
+    const form = h('div', { class: 'us-cs-form' },
+      h('textarea', { name: 'conseil-question', 'data-keep': 'conseilq', rows: 4, maxlength: 4000, value: conseilUi.q, 'aria-label': 'Ta question au conseil', ...(off ? { disabled: true } : {}),
+        placeholder: 'Le choix à trancher, et ce qui compte pour toi. Ex. : lampe torche avec une batterie à recharger, ou lumière infinie qui attire les entités ?',
+        oninput: (e) => { conseilUi.q = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ask(); } } }),
+      h('div', { class: 'us-cs-opts' },
+        h('label', { class: 'us-check' }, h('input', { type: 'checkbox', checked: !!K.cadrage, ...(M.demo ? { disabled: true } : {}), onchange: (e) => set({ cadrage: e.target.checked }) }), 'Lire le projet d\'abord'),
+        h('label', { class: 'us-check' }, h('input', { type: 'checkbox', checked: !!K.revue, ...(M.demo ? { disabled: true } : {}), onchange: (e) => set({ revue: e.target.checked }) }), 'Relecture croisée'),
+        h('label', { class: 'us-check' }, 'Modèle ', h('select', { class: 'us-select', name: 'conseil-model', 'aria-label': 'Modèle des membres', ...(M.demo ? { disabled: true } : {}), onchange: (e) => set({ model: e.target.value }) },
+          (K.models || []).map(([id, label]) => h('option', { value: id, ...(id === K.model ? { selected: true } : {}) }, label))))),
+      h('small', { class: 'us-dim' }, `${K.cadrage ? 'Si un projet est connecté, un cadrage lit d\'abord 3 de ses fichiers au plus ; puis ' : ''}${K.revue ? '11' : '6'} appels courts, sans outils ni contexte chargé.`),
+      h('div', { class: 'us-actions' }, btn(conseilUi.busy ? 'Envoi…' : 'Demander au conseil', ask, 'us-go', off ? { disabled: true } : { title: 'Ctrl+Entrée' })));
+    const progress = live ? [
+      h('div', { class: 'us-sub' }, `En cours · ${K.steps[r.step] || r.step}`),
+      h('p', { class: 'us-cs-q' }, r.question),
+      r.framed && r.cadrage ? h('details', null, h('summary', null, 'La question cadrée'), h('div', { class: 'us-pre' }, r.framed)) : null,
+      h('ul', { class: 'us-cs-members' }, (K.members || []).map(m => {
+        const st = (r.members && r.members[m.id]) || { status: 'attend' }, [txt, dot] = MEMBER_ST[st.status] || MEMBER_ST.attend;
+        return h('li', null, h('span', { class: `us-dot us-d-${dot}` }), h('b', null, m.name), h('span', { class: 'us-dim' }, ` ${txt}`));
+      }), h('li', null, h('span', { class: `us-dot us-d-${r.step === 'president' ? 'blue' : 'none'}` }), h('b', null, 'Le Président'), h('span', { class: 'us-dim' }, r.step === 'president' ? ' tranche' : ' attend les avis'))),
+      h('div', { class: 'us-actions' }, btn('Arrêter', async () => { const res = await T.api('/api/conseil/stop'); if (res && !res.ok) T.toast(res.error || 'Impossible.'); }, 'us-danger', M.demo ? { disabled: true } : {}),
+        h('span', { class: 'us-dim' }, `${r.cost ? `${r.cost.toFixed(2)} $ pour l'instant · ` : ''}commencé `, T.agoEl(r.at)))] : null;
+    const last = !live && r ? [
+      h('div', { class: 'us-sub' }, r.step === 'fini' ? 'Dernier verdict' : r.step === 'erreur' ? 'Dernière question : erreur' : 'Dernière question : arrêtée'),
+      h('p', { class: 'us-cs-q' }, r.question),
+      r.step === 'fini' ? verdictBlock(M, K, r, true) : h('p', { class: r.step === 'erreur' ? 'us-t-ko' : 'us-dim' }, r.error || r.note || 'Arrêté avant le verdict.')] : null;
+    const old = runs.slice(1).filter(x => x.step === 'fini');
+    return [
+      h('p', null, 'Pour un vrai choix. Cinq membres répondent chacun de leur côté, chacun avec sa façon de penser ; ils relisent ensuite les cinq réponses sans savoir qui a dit quoi ; le président tranche. Pour tout le reste (une confirmation, une question, un bug), demande au chef.'),
+      progress, live ? null : form, r && r.note && live ? h('p', { class: 'us-dim' }, r.note) : null, last,
+      old.length ? [h('div', { class: 'us-sub' }, 'Verdicts précédents'),
+        h('ul', { class: 'us-tuto-list' }, old.map(x => h('li', { class: 'us-task' },
+          h('button', { type: 'button', class: 'us-runbtn', 'aria-expanded': String(conseilUi.open === x.id), onclick: () => { conseilUi.open = conseilUi.open === x.id ? null : x.id; renderHud(); } },
+            h('b', null, x.question.length > 90 ? x.question.slice(0, 89) + '…' : x.question), h('span', { class: 'us-dim us-scope' }, T.agoEl(x.at))),
+          conseilUi.open === x.id ? verdictBlock(M, K, x, true) : x.decision ? h('small', { class: 'us-dim' }, x.decision) : null)))] : null,
+      h('div', { class: 'us-sub' }, 'Les membres'),
+      h('ul', { class: 'us-cs-members' }, (K.members || []).map(m => h('li', null, h('b', null, m.name), h('span', { class: 'us-dim' }, ` · ${m.short}`)))),
+      h('small', { class: 'us-dim' }, 'Méthode du LLM Council de Karpathy, d\'après le skill llm-council d\'aiwithremy.'),
+    ];
+  }
+
   // ---------- le chef (lib/chef.js) ----------
   // Une session a qui ali confie toutes ses demandes : elle verifie en lisant, repond, et confie les
   // changements aux sessions core ou a une nouvelle feature. Ses envois s'affichent ici, avec ou ils en sont.
@@ -2872,6 +3057,8 @@
     G.hud.docBtn.classList.toggle('on', !G.side && !!G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal'));
     G.hud.docBtn.classList.toggle('alert', docDebts(M).some(d => d.owed));
     { const cs = chefSel(); G.hud.chefBtn.classList.toggle('on', !G.side && !!cs && !!G.sel && G.sel.kind === 'agent' && G.sel.id === cs.id); }
+    G.hud.conseilBtn.classList.toggle('on', !G.side && !!G.sel && G.sel.kind === 'conseil');
+    G.hud.conseilBtn.classList.toggle('run', isLive(conseilOf(M) && conseilOf(M).runs[0]));
     G.hud.gitBtn.classList.toggle('on', !G.side && !!G.sel && (G.sel.kind === 'git' || G.sel.kind === 'github'));
     G.hud.gitBtn.classList.toggle('alert', gitAlert(M));
     G.hud.tutoBtn.classList.toggle('run', !!(M.S.tuto && M.S.tuto.running));
@@ -2888,7 +3075,7 @@
     };
     G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
-      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.chefBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le chef : tu lui confies toutes tes demandes sur le jeu ; il vérifie, te répond, et confie les changements aux sessions core ou à une feature (touche C)', onclick: () => { if (G.side) sideToggle(G.side, false); const cs = chefSel(); if (!cs) { T.toast('Connecte d\'abord ton projet Unreal : le chef travaille dans son dossier.'); return; } select(G.sel && G.sel.kind === 'agent' && G.sel.id === cs.id ? null : cs, true); } }, 'Chef'), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions core : une par sujet du jeu (animation, interface, menus, armes...), sa mémoire, ses règles, et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Core'), G.hud.featBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions feature : une par nouvelle idée, à créer ici (touche N pour une nouvelle)', onclick: () => sideToggle('features') }, 'Features'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.docBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La documentation du jeu : à lire, à chercher ; les sessions y écrivent la leur. Et la doc Unreal Engine par thème (touche D)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal') ? null : { kind: 'docs' }, true); } }, 'Doc'), G.hud.gitBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les dépôts : l\'état git de chaque projet et ce qui se passe sur GitHub ; initialiser git dans un dossier (touche G)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'git' || G.sel.kind === 'github') ? null : { kind: 'git' }, true); } }, 'Git'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
+      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), G.hud.chefBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le chef : tu lui confies toutes tes demandes sur le jeu ; il vérifie, te répond, et confie les changements aux sessions core ou à une feature (touche C)', onclick: () => { if (G.side) sideToggle(G.side, false); const cs = chefSel(); if (!cs) { T.toast('Connecte d\'abord ton projet Unreal : le chef travaille dans son dossier.'); return; } select(G.sel && G.sel.kind === 'agent' && G.sel.id === cs.id ? null : cs, true); } }, 'Chef'), G.hud.conseilBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le conseil : pour un vrai choix. Cinq membres répondent chacun de leur côté, se relisent, et le président tranche (touche K)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'conseil' ? null : { kind: 'conseil' }, true); } }, 'Conseil'), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions core : une par sujet du jeu (animation, interface, menus, armes...), sa mémoire, ses règles, et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Core'), G.hud.featBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions feature : une par nouvelle idée, à créer ici (touche N pour une nouvelle)', onclick: () => sideToggle('features') }, 'Features'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.docBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La documentation du jeu : à lire, à chercher ; les sessions y écrivent la leur. Et la doc Unreal Engine par thème (touche D)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal') ? null : { kind: 'docs' }, true); } }, 'Doc'), G.hud.gitBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les dépôts : l\'état git de chaque projet et ce qui se passe sur GitHub ; initialiser git dans un dossier (touche G)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'git' || G.sel.kind === 'github') ? null : { kind: 'git' }, true); } }, 'Git'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos'), T.switcher('Fonctionnement'), worldSwitch()),
       G.hud.mode,
       G.hud.entity);
     root.replaceChildren(G.app);

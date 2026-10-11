@@ -282,6 +282,18 @@ state.miseView = misePlace.view;
 // Le chef (lib/chef.js) : ses envois deposes dans Saved/Tour/chef/envois/, transmis aux sessions core ou feature.
 const chef = require('../lib/chef').create(state, discussion, { projectFor: (n) => projectFor(n), prepare: (o) => taches.prepare(o) });
 setInterval(() => { try { chef.scan(); } catch (e) { console.error('[tower] envois du chef :', e.message); } }, 10_000).unref();
+// Le conseil (lib/conseil.js) : cinq membres deliberent sur un vrai choix, le president tranche. ali peut
+// confier la decision au chef : dans sa discussion s'il tourne dans la tour, sinon la tour le lance.
+function toChef(p, text) {
+  const live = chef.liveOf('chef');
+  if (live && discussion.canChat(live)) { const r = discussion.send(live.sessionId, text); return r.ok ? { ok: true, sessionId: live.sessionId } : r; }
+  if (live) return { ok: false, error: 'Le chef tourne dans sa fenêtre : ferme-la pour lui écrire depuis la tour, ou colle-lui le verdict.' };
+  const r = taches.prepare({ id: 'chef', project: p });
+  if (!r.ok) return r;
+  return discussion.start({ cwd: p.root, text: `${r.ask}\n\n${text}`, def: 'chef' });
+}
+const conseil = require('../lib/conseil').create(state, { projectFor: (n) => projectFor(n), launchEnv: require('../lib/taches').launchEnv, toChef, dataDir: DATA_DIR });
+state.conseilView = conseil.view;
 const usage = require('../lib/usage');
 const usageTimers = new Map();
 function usageSoon(sid, ms = 2500) {
@@ -407,6 +419,11 @@ const routes = {
   // Le chef : valider ou ignorer un envoi propose, et choisir s'il faut valider ses envois avant.
   'POST /api/chef/envoi': (b) => chef.decide(String(b.id || ''), b.go !== false),
   'POST /api/chef/ask': (b) => chef.setAsk(!!b.ask),
+  // Le conseil : poser une question, l'arreter, ses reglages, et confier son verdict au chef.
+  'POST /api/conseil': (b) => { const r = conseil.ask({ question: b.question, project: b.project, model: b.model, revue: b.revue, cadrage: b.cadrage }); return r.ok ? { ok: true, id: r.id } : r; },
+  'POST /api/conseil/stop': () => conseil.stop(),
+  'POST /api/conseil/reglages': (b) => conseil.settings({ model: b.model, revue: b.revue, cadrage: b.cadrage }),
+  'POST /api/conseil/chef': (b) => conseil.chef(String(b.id || '')),
   // Sessions feature : une nouvelle idee, creee depuis la tour, puis lancee en discussion (ou dans une fenetre).
   'POST /api/features': (b) => {
     const p = projectFor(b.project);

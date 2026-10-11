@@ -24,6 +24,7 @@ hooks sortent toujours en 0, sans rien dire, et `TOWER_OFF=1` coupe tout sans ri
 - [Les questions des agents dans la tour](#les-questions-des-agents-dans-la-tour)
 - [Sujets, Core et Features](#sujets-core-et-features)
 - [Le chef : toutes tes demandes au même endroit](#le-chef--toutes-tes-demandes-au-même-endroit)
+- [Le conseil : pour les vrais choix](#le-conseil--pour-les-vrais-choix)
 - [La bibliothèque des skills](#la-bibliothèque-des-skills)
 - [Le quartier des agents](#le-quartier-des-agents)
 - [La documentation](#la-documentation)
@@ -50,6 +51,7 @@ La v0.1 rassemble tout ce qui a été construit jusqu'à la pull request 30 incl
 | Questions dans la tour | les questions et demandes de permission des sessions lancées par la tour s'y répondent d'un clic |
 | Sujets, Core, Features | une session par sujet du jeu avec son carnet et ses règles, un tableau partagé, une session par nouvelle idée, « Discuter » depuis la tour, « Mise en place » |
 | Chef | une session qui reçoit toutes tes demandes, vérifie en lisant et confie les changements aux bonnes sessions |
+| Conseil | pour un vrai choix : cinq membres répondent chacun de leur côté, se relisent sans savoir qui a dit quoi, et le président tranche |
 | Skills, Agents | bibliothèque des skills et quartier des agents : inventaire, vérification, usage, ajout ; `skills-ctb.js` copie dans un projet les skills des sessions de la tour et ceux de ponytail |
 | Documentation | la doc de chaque projet à lire dans la tour, la doc Unreal par thème, la doc obligatoire pour qui modifie le jeu |
 | Dépôts | git sur le PC et GitHub pour la tour, les projets et les dossiers suivis |
@@ -98,7 +100,7 @@ ses sous-agents travaillent autour d'une table. Les salles bordent un couloir et
 ailes, une par projet (ou par dossier). Au bout du couloir, la **forge** : un seul build à la fois, les
 agents qui attendent font la queue devant sa porte, puis le build part au coffre des réussis ou des
 échecs. En face, la **salle de lancement** : la version est une fusée qui monte à chaque feature prête.
-Dehors, le long de la rue, les autres bâtiments : Core, Features, Chef, la bibliothèque des skills, le
+Dehors, le long de la rue, les autres bâtiments : Core, Features, Chef, Conseil, la bibliothèque des skills, le
 quartier des agents, la Documentation et les Dépôts.
 
 On glisse pour se déplacer, la molette zoome, un clic ouvre une fiche ; touches 1 à 9 pour un agent,
@@ -316,6 +318,34 @@ Bouton **Chef** (touche C), un bâtiment au bout de la rue. Tu lui confies tout 
 - La tour tient `Saved/Tour/chef/suivi.md` (où en est chaque envoi), que le chef lit avant chaque demande,
   et les sessions lui répondent au tableau, pour « Chef ».
 
+## Le conseil : pour les vrais choix
+
+Bouton **Conseil** (touche K), le bâtiment au bout de la rue, après le chef. Le chef prend toutes les
+demandes, les confirmations simples comprises ; le conseil sert quand tu dois vraiment choisir (deux
+directions, un arbitrage qui engage le jeu). C'est la méthode du LLM Council de Karpathy, telle que le
+skill [llm-council](https://github.com/aiwithremy/claude-skills-llm-council) d'aiwithremy la fait tourner :
+
+1. **Le cadrage** (si un projet est connecté et « Lire le projet d'abord » est coché) : un appel en
+   lecture seule dans le projet lit 3 fichiers au plus et récrit la question avec le contexte qui compte,
+   limité à 0,50 $.
+2. **Les avis** : cinq membres répondent en même temps, chacun avec sa façon de penser. Le Contradicteur
+   cherche ce qui va casser, le Fondamental repart du vrai problème, le Visionnaire voit plus grand, le
+   Candide ne connaît ni toi ni le projet, l'Exécutant demande ce qu'on fait lundi matin.
+3. **La relecture croisée** (si cochée) : chaque membre relit les cinq avis, notés A à E dans un ordre
+   tiré au hasard et sans les noms : le plus solide, le plus gros angle mort, ce que tous ont manqué.
+4. **Le président** tranche : la décision en une phrase, où ils sont d'accord, où ils s'opposent, ce que
+   la relecture a révélé, la recommandation, et la première chose à faire.
+
+Il reste économe : à part le cadrage, chaque appel tourne sans outils, sans skills, sans MCP, sans les
+réglages ni les hooks du compte, depuis un dossier vide (le `CLAUDE.md` du projet ne se charge pas), et
+rien n'est gardé sur le disque ; aucune salle n'apparaît dans la rue. Avec Haiku, une question complète
+(11 appels) a coûté environ 40 000 tokens. Le modèle se choisit dans la fiche (Sonnet par défaut).
+
+Le verdict s'affiche dans la fiche (les cinq avis se déplient) et s'écrit dans
+`Saved/Tour/conseil/` du projet. **Confier au chef** lui passe la décision : dans sa discussion s'il
+tourne dans la tour, sinon la tour le lance ; il vérifie, puis confie les changements aux sessions. Le
+chef, de son côté, propose le conseil quand une demande est un vrai choix.
+
 ## La bibliothèque des skills
 
 Au bout du couloir, à côté de la salle de lancement, la **bibliothèque** : un livre par skill installé
@@ -339,7 +369,10 @@ serait copié dans `<projet>/.claude/skills`, ce qui y est déjà, ce qu'une ses
 compte, plugin activé) et ce qui est écarté avec la raison ; `--apply` copie, `--only a,b` n'en prend que
 certains. Les skills viennent de leurs dépôts GitHub publics (ceux d'Epic de `vendor/unreal-mcp-skills`),
 rien n'est écrasé ni commité. ponytail arrive sans ses hooks, et son skill principal ne se lance qu'à la
-main (`/ponytail`) sauf avec `--ponytail-auto`. graphify reste exclu.
+main (`/ponytail`) sauf avec `--ponytail-auto`. Le skill du conseil, `llm-council` (figé sur un commit),
+se lance à la main (`/llm-council`) sauf avec `--conseil-auto` : ses onze sous-agents rechargeraient sinon
+le contexte du projet à chaque hésitation. `--pas-unreal` accepte un dossier sans `.uproject` (celui de la
+tour). graphify reste exclu.
 
 ## Le quartier des agents
 
@@ -523,6 +556,7 @@ Les consignes de travail de Claude sur ce dépôt sont dans [CLAUDE.md](CLAUDE.m
 | `lib/regles.js` | règles d'une session core ou feature : sans demander, en demandant, interdit ; ses options de lancement |
 | `lib/miseenplace.js` | mise en place des sessions core : un sujet après l'autre, en fond, en lecture seule, avec une limite de dépense |
 | `lib/chef.js` | le chef : sa consigne, ses envois lus dans `Saved/Tour/chef/envois/` et transmis aux sessions core ou feature, leur suivi |
+| `lib/conseil.js` | le conseil : cadrage, cinq avis, relecture croisée anonyme, verdict du président, écrit dans `Saved/Tour/conseil/` |
 | `lib/skills.js`, `lib/agents.js` | bibliothèque des skills et quartier des agents : inventaire, vérification, usage |
 | `lib/equipe.js` | l'équipe d'un projet : ses agents rangés par section |
 | `lib/docs.js` | bâtiment Documentation : rayons, recherche, doc obligatoire, rayon Unreal par thème |

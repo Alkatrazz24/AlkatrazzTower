@@ -105,3 +105,38 @@ test('le script montre sans ecrire, puis refuse un dossier sans .uproject', asyn
   assert.ok(/^[\x09\x0a\x20-\x7e]*$/.test(out), 'sortie ASCII');
   assert.ok(!fs.existsSync(path.join(F.root, '.claude', 'skills', 'ponytail')));
 });
+
+test('le conseil : skill a la racine de son depot, fige sur un commit, a la main sauf --conseil-auto', async () => {
+  const F = fixture();
+  const ref = '55ee36e89e0f3f780099ac50332fbb3ec8d14738';
+  const it = lib.CATALOG.find(i => i.name === 'llm-council');
+  assert.strictEqual(it.from.ref, ref);
+  const p = lib.plan({ root: F.root, cfg: F.cfg, only: ['llm-council'] });
+  assert.strictEqual(p.items[0].source, `https://github.com/aiwithremy/claude-skills-llm-council/tree/${ref}`);
+  const files = { 'aiwithremy/claude-skills-llm-council:SKILL.md': '---\nname: llm-council\ndescription: "Council."\n---\n\n# LLM Council\n', 'aiwithremy/claude-skills-llm-council:README.md': '# Lisez-moi\n' };
+  const { fetchFn, calls } = fakeGithub(files);
+  const res = await lib.apply(p, { fetchFn });
+  assert.ok(res[0].ok, JSON.stringify(res));
+  assert.ok(calls.some(u => u.includes(`/git/trees/${ref}`)), 'arbre du commit fige');
+  const dir = path.join(F.root, '.claude', 'skills', 'llm-council');
+  assert.match(fs.readFileSync(path.join(dir, 'SKILL.md'), 'utf8'), /description: "Council."\ndisable-model-invocation: true\n---/);
+  assert.ok(fs.existsSync(path.join(dir, 'README.md')));
+  // --conseil-auto : il se lance tout seul ; ponytail reste a la main
+  const G = fixture();
+  const q = lib.plan({ root: G.root, cfg: G.cfg, only: ['llm-council'] });
+  await lib.apply(q, { fetchFn: fakeGithub(files).fetchFn, auto: ['llm-council'] });
+  assert.doesNotMatch(fs.readFileSync(path.join(G.root, '.claude', 'skills', 'llm-council', 'SKILL.md'), 'utf8'), /disable-model-invocation/);
+});
+
+test('le script accepte le dossier de la tour avec --pas-unreal', async () => {
+  const F = fixture();
+  const { main } = require('../scripts/skills-ctb');
+  const lines = [];
+  const log = console.log;
+  console.log = (s) => lines.push(s);
+  const prev = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = F.cfg;
+  try { assert.strictEqual(await main([F.base, '--pas-unreal', '--only', 'llm-council']), 0); }
+  finally { console.log = log; if (prev === undefined) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = prev; }
+  assert.match(lines.join('\n'), /llm-council  \(a la main : \/llm-council\)/);
+});
