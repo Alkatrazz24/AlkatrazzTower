@@ -400,7 +400,7 @@ async function demoGit() {
 // Le conseil (lib/conseil.js) : un verdict rendu sur la porte du SAS, et une question en pleine relecture croisee.
 function demoConseil() {
   const C = require('../lib/conseil');
-  state.conseilView = C.create(state, { projectFor: () => ({ name: 'ConquerTheBackrooms', root: PROJ }) }).view;
+  state.conseilView = C.create(state, { projectFor: () => ({ name: 'ConquerTheBackrooms', root: PROJ }), tower: { name: 'Alkatrazz Tower', root: PROJ } }).view;
   const members = (o) => Object.fromEntries(C.MEMBERS.map(m => [m.id, { status: 'fini', avis: '', revue: '', error: '', ...(o[m.id] || {}) }]));
   const done = {
     id: 'c-demo-sas', at: T0 - 50 * 60_000, endedAt: T0 - 46 * 60_000, project: 'ConquerTheBackrooms', model: 'sonnet', revue: true, cadrage: true, step: 'fini', error: '', note: '',

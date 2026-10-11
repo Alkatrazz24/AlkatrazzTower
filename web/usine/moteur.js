@@ -2725,7 +2725,7 @@
   // ---------- le conseil (lib/conseil.js) ----------
   // Pour un vrai choix : cinq membres repondent chacun de leur cote, se relisent sans savoir qui a dit
   // quoi, puis le president tranche. Pour tout le reste (une confirmation, une question, un bug) : le chef.
-  const conseilUi = { q: '', open: null, avis: false, busy: false };
+  const conseilUi = { q: '', open: null, avis: false, busy: false, sur: 'jeu' };
   const MEMBER_ST = { attend: ['en attente', 'none'], reflechit: ['réfléchit', 'blue'], relit: ['relit les avis', 'blue'], fini: ['a répondu', 'ok'], erreur: ['erreur', 'ko'] };
   function verdictBlock(M, K, r, full) {
     const toChef = async () => {
@@ -2740,7 +2740,7 @@
         btn(conseilUi.avis ? 'Cacher les avis' : 'Lire les cinq avis', () => { conseilUi.avis = !conseilUi.avis; renderHud(); }, 'us-link'),
         conseilUi.avis ? h('div', { class: 'us-cs-avis' }, (K.members || []).filter(m => r.members[m.id] && r.members[m.id].avis).map(m => h('details', null, h('summary', null, h('b', null, m.name), h('span', { class: 'us-dim' }, ` · ${m.short}`)), h('div', { class: 'us-pre' }, r.members[m.id].avis)))) : null] : null,
       h('div', { class: 'us-actions' },
-        btn(r.chef ? 'Confier à nouveau au chef' : 'Confier au chef', toChef, r.chef ? '' : 'us-go', M.demo ? { disabled: true } : { title: 'Le chef met la décision en œuvre : il vérifie, puis confie les changements aux sessions core ou à une feature' }),
+        r.sur === 'tour' ? h('span', { class: 'us-dim' }, 'Verdict sur la tour : ses changements passent par une PR, pas par le chef.') : btn(r.chef ? 'Confier à nouveau au chef' : 'Confier au chef', toChef, r.chef ? '' : 'us-go', M.demo ? { disabled: true } : { title: 'Le chef met la décision en œuvre : il vérifie, puis confie les changements aux sessions core ou à une feature' }),
         r.chef ? h('span', { class: 'us-dim' }, 'Confiée au chef ', T.agoEl(r.chef.at)) : null),
       h('small', { class: 'us-dim' }, [r.file ? `Écrit dans ${r.file}` : null, r.cost ? `${r.cost.toFixed(2)} $` : null, r.tokens ? `${tok(r.tokens)} tokens` : null].filter(Boolean).join(' · ')),
     ];
@@ -2754,7 +2754,7 @@
       const q = conseilUi.q.trim();
       if (!q) { T.toast('Écris d\'abord ta question.'); return; }
       conseilUi.busy = true; renderHud();
-      const res = await T.api('/api/conseil', { question: q, project: M.sujetsProject || '' });
+      const res = await T.api('/api/conseil', { question: q, project: M.sujetsProject || '', sur: conseilUi.sur });
       conseilUi.busy = false;
       if (res && res.ok) { conseilUi.q = ''; T.toast('Le conseil se réunit.'); } else if (res) T.toast(res.error || 'Impossible.');
       renderHud();
@@ -2764,6 +2764,9 @@
       h('textarea', { name: 'conseil-question', 'data-keep': 'conseilq', rows: 4, maxlength: 4000, value: conseilUi.q, 'aria-label': 'Ta question au conseil', ...(off ? { disabled: true } : {}),
         placeholder: 'Le choix à trancher, et ce qui compte pour toi. Ex. : lampe torche avec une batterie à recharger, ou lumière infinie qui attire les entités ?',
         oninput: (e) => { conseilUi.q = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); ask(); } } }),
+      K.tower ? h('div', { class: 'us-filters', role: 'group', 'aria-label': 'La question porte sur' },
+        [['jeu', M.sujetsProject ? `Le jeu (${M.sujetsProject})` : 'Le jeu'], ['tour', 'La tour']].map(([id, label]) => h('button', { type: 'button', class: 'us-chip2' + (conseilUi.sur === id ? ' on' : ''), 'aria-pressed': String(conseilUi.sur === id),
+          title: id === 'tour' ? 'Le cadrage lit le dossier de la tour (README, code) ; le verdict reste dans ses données' : 'Le cadrage lit le projet du jeu ; le verdict va dans Saved/Tour/conseil/', onclick: () => { conseilUi.sur = id; renderHud(); } }, label))) : null,
       h('div', { class: 'us-cs-opts' },
         h('label', { class: 'us-check' }, h('input', { type: 'checkbox', checked: !!K.cadrage, ...(M.demo ? { disabled: true } : {}), onchange: (e) => set({ cadrage: e.target.checked }) }), 'Lire le projet d\'abord'),
         h('label', { class: 'us-check' }, h('input', { type: 'checkbox', checked: !!K.revue, ...(M.demo ? { disabled: true } : {}), onchange: (e) => set({ revue: e.target.checked }) }), 'Relecture croisée'),
@@ -2783,7 +2786,7 @@
         h('span', { class: 'us-dim' }, `${r.cost ? `${r.cost.toFixed(2)} $ pour l'instant · ` : ''}commencé `, T.agoEl(r.at)))] : null;
     const last = !live && r ? [
       h('div', { class: 'us-sub' }, r.step === 'fini' ? 'Dernier verdict' : r.step === 'erreur' ? 'Dernière question : erreur' : 'Dernière question : arrêtée'),
-      h('p', { class: 'us-cs-q' }, r.question),
+      h('p', { class: 'us-cs-q' }, r.question, r.sur === 'tour' ? h('span', { class: 'us-dim' }, ' (sur la tour)') : null),
       r.step === 'fini' ? verdictBlock(M, K, r, true) : h('p', { class: r.step === 'erreur' ? 'us-t-ko' : 'us-dim' }, r.error || r.note || 'Arrêté avant le verdict.')] : null;
     const old = runs.slice(1).filter(x => x.step === 'fini');
     return [

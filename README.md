@@ -325,9 +325,10 @@ demandes, les confirmations simples comprises ; le conseil sert quand tu dois vr
 directions, un arbitrage qui engage le jeu). C'est la méthode du LLM Council de Karpathy, telle que le
 skill [llm-council](https://github.com/aiwithremy/claude-skills-llm-council) d'aiwithremy la fait tourner :
 
-1. **Le cadrage** (si un projet est connecté et « Lire le projet d'abord » est coché) : un appel en
-   lecture seule dans le projet lit 3 fichiers au plus et récrit la question avec le contexte qui compte,
-   limité à 0,50 $.
+1. **Le cadrage** (si « Lire le projet d'abord » est coché) : un appel en lecture seule lit 3 fichiers
+   au plus et récrit la question avec le contexte qui compte, limité à 0,50 $. Il lit le projet du jeu,
+   ou le dossier de la tour si tu choisis « La tour » au-dessus de la question (le verdict reste alors
+   dans les données de la tour, et ses changements passent par une PR plutôt que par le chef).
 2. **Les avis** : cinq membres répondent en même temps, chacun avec sa façon de penser. Le Contradicteur
    cherche ce qui va casser, le Fondamental repart du vrai problème, le Visionnaire voit plus grand, le
    Candide ne connaît ni toi ni le projet, l'Exécutant demande ce qu'on fait lundi matin.

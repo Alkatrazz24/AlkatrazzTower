@@ -179,3 +179,27 @@ test('le chef renvoie les vrais choix au conseil', () => {
   assert.match(chefLib.promptOf([], []), /Conseil de la tour/);
   assert.match(chefLib.promptOf([], []), /Saved\/Tour\/conseil/);
 });
+
+test('une question sur la tour : le cadrage lit le dossier de la tour, le verdict reste dans ses donnees, pas de chef', async () => {
+  const tower = fs.mkdtempSync(path.join(os.tmpdir(), 'tower-dossier-'));
+  const { state, cs, calls, root, base } = setup(standard, { tower: { name: 'Alkatrazz Tower', root: tower } });
+  assert.strictEqual(cs.view().tower, true);
+  const r = cs.ask({ question: 'Fais un point sur la tour et ce qu\'il faut améliorer.', project: 'ConquerTheBackrooms', sur: 'tour' });
+  await r.done;
+  const run = state.conseil.runs[0];
+  assert.strictEqual(run.step, 'fini', run.error);
+  assert.strictEqual(run.sur, 'tour');
+  assert.strictEqual(run.project, 'Alkatrazz Tower');
+  const cad = calls.find(c => kindOf(c) === 'cadrage');
+  assert.strictEqual(cad.cwd, tower, 'pas dans CTB');
+  assert.match(cad.input, /la tour elle-même/);
+  assert.match(cad.input, /README\.md/);
+  assert.ok(run.file.startsWith(path.join(base, 'conseil')), run.file);
+  assert.ok(!fs.existsSync(path.join(tower, 'Saved')), 'rien dans le dossier de la tour');
+  assert.ok(!fs.existsSync(path.join(root, 'Saved')), 'rien dans CTB');
+  assert.strictEqual(cs.chef(r.id).ok, false, 'le chef travaille sur le jeu');
+  // par defaut, toujours le jeu
+  await cs.ask({ question: 'Une question sur le jeu, assez longue ?', project: 'ConquerTheBackrooms' }).done;
+  assert.strictEqual(state.conseil.runs[0].sur, 'jeu');
+  assert.strictEqual(calls.filter(c => kindOf(c) === 'cadrage').pop().cwd, root);
+});

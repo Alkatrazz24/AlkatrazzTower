@@ -292,7 +292,7 @@ function toChef(p, text) {
   if (!r.ok) return r;
   return discussion.start({ cwd: p.root, text: `${r.ask}\n\n${text}`, def: 'chef' });
 }
-const conseil = require('../lib/conseil').create(state, { projectFor: (n) => projectFor(n), launchEnv: require('../lib/taches').launchEnv, toChef, dataDir: DATA_DIR });
+const conseil = require('../lib/conseil').create(state, { projectFor: (n) => projectFor(n), launchEnv: require('../lib/taches').launchEnv, toChef, dataDir: DATA_DIR, tower: { name: 'Alkatrazz Tower', root: ROOT } });
 state.conseilView = conseil.view;
 const usage = require('../lib/usage');
 const usageTimers = new Map();
@@ -420,7 +420,7 @@ const routes = {
   'POST /api/chef/envoi': (b) => chef.decide(String(b.id || ''), b.go !== false),
   'POST /api/chef/ask': (b) => chef.setAsk(!!b.ask),
   // Le conseil : poser une question, l'arreter, ses reglages, et confier son verdict au chef.
-  'POST /api/conseil': (b) => { const r = conseil.ask({ question: b.question, project: b.project, model: b.model, revue: b.revue, cadrage: b.cadrage }); return r.ok ? { ok: true, id: r.id } : r; },
+  'POST /api/conseil': (b) => { const r = conseil.ask({ question: b.question, project: b.project, model: b.model, revue: b.revue, cadrage: b.cadrage, sur: b.sur }); return r.ok ? { ok: true, id: r.id } : r; },
   'POST /api/conseil/stop': () => conseil.stop(),
   'POST /api/conseil/reglages': (b) => conseil.settings({ model: b.model, revue: b.revue, cadrage: b.cadrage }),
   'POST /api/conseil/chef': (b) => conseil.chef(String(b.id || '')),
