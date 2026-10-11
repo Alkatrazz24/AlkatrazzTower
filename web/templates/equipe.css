@@ -2,11 +2,11 @@
 .us-roster { position: absolute; left: 16px; right: 16px; bottom: 16px; display: grid; gap: 8px; padding: 10px 12px 12px; }
 .us-has-sel .us-roster { right: 412px; }
 .us-rhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.us-rhead h2 { font: 600 22px/1.1 var(--us-cond); color: var(--us-orange); }
+.us-rhead h2 { font: 700 21px/1.1 var(--us-text); color: var(--us-ink); }
 .us-mates { list-style: none; margin: 0; padding: 0 0 4px; display: flex; gap: 8px; overflow-x: auto; }
 .us-mate {
   width: 250px; height: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; text-align: left; cursor: pointer;
-  background: var(--us-inset); color: var(--us-ink); border: 1px solid var(--us-edge); border-top: 4px solid var(--us-grey); border-radius: var(--us-radius); padding: 8px 10px;
+  background: var(--us-field); color: var(--us-ink); border: 1px solid var(--us-line); border-top: 4px solid var(--us-grey); border-radius: var(--us-radius); padding: 8px 10px;
 }
 .us-mate:hover { background: var(--us-hover); }
 .us-mate.sel { outline: 2px solid var(--us-orange); outline-offset: -1px; background: var(--us-sel-bg); }

@@ -18,7 +18,7 @@
 .us-d-warn { background: var(--us-warn) !important; }
 .us-d-ok { background: var(--us-ok) !important; }
 .us-d-blue { background: var(--us-blue) !important; }
-.us-toasts { position: absolute; top: 60px; right: 16px; width: 340px; display: grid; gap: 8px; pointer-events: none; }
+.us-toasts { position: absolute; top: var(--us-top, 60px); right: 16px; width: 340px; display: grid; gap: 8px; pointer-events: none; }
 .us-has-sel .us-toasts { right: 412px; }
 .us-toast { pointer-events: auto; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; text-align: left; color: var(--us-ink); cursor: pointer; border-left: 4px solid var(--us-grey); animation: us-in .25s ease-out; }
 .us-toast b { display: block; font-size: 15px; }
