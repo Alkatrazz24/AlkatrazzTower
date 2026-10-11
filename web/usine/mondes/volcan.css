@@ -7,7 +7,7 @@
   --us-btn1: #3a2620; --us-btn2: #2a1a16; --us-btn-hi: #5a3a2e;
   --us-topbg: linear-gradient(180deg, rgba(20, 8, 5, .95), rgba(20, 8, 5, .6) 70%, transparent); --us-topsolid: rgba(20, 8, 5, .97);
   --us-panel-shadow: inset 0 2px 0 #ff6a1a, inset 0 3px 8px rgba(255, 106, 26, .18), 0 0 0 1px #000, 0 8px 24px rgba(0, 0, 0, .6);
-  --us-radius: 2px;
+  --us-radius: 10px;
 }
 .us-ptitle, .us-ehead h2 { text-shadow: 0 0 12px rgba(255, 106, 26, .5); }
 .us-bar > i { box-shadow: 0 0 12px rgba(255, 106, 26, .7); }
