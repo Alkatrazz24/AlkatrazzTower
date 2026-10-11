@@ -54,6 +54,22 @@ test('les adresses de depot acceptees, et rien d\'autre', () => {
   assert.strictEqual(SV.safeName('Jeu: v2 / test. '), 'Jeu_ v2 _ test');
 });
 
+test('un depot sur disque donne en file:// devient une vraie adresse, meme sous Windows', () => {
+  assert.strictEqual(SV.remoteUrl('file://C:\\Users\\ALKATR~1\\Temp\\mon depot.git'), 'file:///C:/Users/ALKATR~1/Temp/mon%20depot.git');
+  assert.strictEqual(SV.remoteUrl('file:///D:/Depots/Jeu.git'), 'file:///D:/Depots/Jeu.git');
+  // un chemin sans lecteur : sous Windows, il prend le lecteur courant
+  assert.strictEqual(SV.remoteUrl('file:///srv/a b/jeu.git'), require('url').pathToFileURL(path.resolve('/srv/a b/jeu.git')).href);
+  assert.strictEqual(SV.remoteUrl('https://github.com/ali/jeu.git'), 'https://github.com/ali/jeu.git');
+  assert.ok(SV.validRemote(SV.remoteUrl('file://C:\\Depots\\Mon Jeu.git')));
+});
+
+test('le chemin reel d\'une destination pas encore creee', { skip: !hasGit }, () => {
+  const base = tmp('tower-sv-');
+  fs.mkdirSync(path.join(base, 'Long'));
+  try { fs.symlinkSync(path.join(base, 'Long'), path.join(base, 'COURT~1'), 'junction'); } catch { return; }
+  assert.strictEqual(SV.real(path.join(base, 'COURT~1', 'Jeu', 'Sauvegardes')), path.join(fs.realpathSync.native(base), 'Long', 'Jeu', 'Sauvegardes'));
+});
+
 test('git status -z : les chemins, renommages compris', () => {
   assert.deepStrictEqual(SV.parseStatusZ(' M a.txt\0?? dossier/nouveau é.txt\0R  neuf.txt\0vieux.txt\0 D b.txt\0'), ['a.txt', 'dossier/nouveau é.txt', 'neuf.txt', 'vieux.txt', 'b.txt']);
 });
@@ -140,6 +156,9 @@ test('un dossier sans git : tout est copie dans un dossier, refuse vers un depot
   assert.deepStrictEqual(files, ['Content/Carte.umap', 'Proto.uproject', 'Saved/Tour/rapport.md']);
   await assert.rejects(SV.backup({ root: src, name: 'Proto', type: 'depot', dest: 'https://github.com/ali/proto.git' }, ctxOf(data)), /initialise d'abord git/);
   await assert.rejects(SV.backup({ root: src, name: 'Proto', type: 'dossier', dest: path.join(src, 'Sauvegardes') }, ctxOf(data)), /dans le projet/);
+  let court = null;
+  try { fs.symlinkSync(base, path.join(path.dirname(base), `${path.basename(base)}~1`), 'junction'); court = path.join(path.dirname(base), `${path.basename(base)}~1`); } catch { /* liens interdits */ }
+  if (court) await assert.rejects(SV.backup({ root: src, name: 'Proto', type: 'dossier', dest: path.join(court, 'Proto', 'Sauvegardes') }, ctxOf(data)), /dans le projet/);
 });
 
 test('le batiment : destination par projet, une sauvegarde a la fois, reprise apres redemarrage', { skip: !hasGit }, async () => {
