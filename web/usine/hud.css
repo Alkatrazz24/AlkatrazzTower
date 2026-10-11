@@ -429,3 +429,15 @@ h1, h2, h3, p { margin: 0; }
 .us-envoi-text { font-size: 13px; max-height: 6.5em; overflow: auto; margin: 4px 0; }
 .us-envoi .us-actions { margin-top: 4px; }
 .us-chef-ask { margin: 6px 0; }
+
+/* le conseil : la question, les membres, le verdict */
+.us-cs-form { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.us-cs-form textarea { width: 100%; box-sizing: border-box; resize: vertical; font: inherit; font-size: 14px; padding: 6px 8px; background: var(--us-panel2); color: inherit; border: 1px solid var(--us-hi); border-radius: 4px; }
+.us-cs-opts { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.us-cs-q { font-style: italic; margin: 4px 0; }
+.us-cs-decision { font-weight: 700; border-left: 3px solid #b48ee8; padding: 2px 0 2px 8px; margin: 6px 0; }
+.us-cs-verdict { font-size: 14px; }
+.us-cs-members { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.us-cs-members li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.us-cs-avis { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; }
+.us-cs-avis .us-pre { font-size: 13px; margin: 4px 0 4px 10px; }
