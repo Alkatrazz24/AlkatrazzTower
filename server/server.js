@@ -180,6 +180,11 @@ function gitList() {
 const gitTrack = gitLib.create({ list: gitList, publish: (v) => state.setGit(v) });
 const gitSafe = (p) => p.catch(e => { console.error('[tower] git illisible :', e.message); return null; });
 
+// Le batiment de la sauvegarde (lib/sauvegarde.js) : les memes dossiers que les depots. Chaque projet a
+// sa destination (un dossier sur un autre disque, ou un depot distant) ; une sauvegarde part d'un clic.
+const sauvegarde = require('../lib/sauvegarde').create(state, { list: gitList, dataDir: DATA_DIR });
+state.sauvegardeView = sauvegarde.view;
+
 // ---- inventaire des projets pour la carte ----------------------------------------------------
 
 const scanning = new Set();
@@ -226,6 +231,9 @@ setTimeout(probeDocs, 3000).unref();
 setInterval(() => gitSafe(gitTrack.refresh()), 60_000).unref();
 setInterval(() => gitSafe(gitTrack.refresh({ withGithub: true })), 5 * 60_000).unref();
 setTimeout(() => gitSafe(gitTrack.refresh({ withGithub: true })), 2000).unref();
+const sauvegardeSafe = () => sauvegarde.refresh().catch(e => console.error('[tower] sauvegarde illisible :', e.message));
+setInterval(sauvegardeSafe, 10 * 60_000).unref();
+setTimeout(sauvegardeSafe, 3000).unref();
 probeEditor();
 probeChantiers();
 probeSujets();
@@ -377,12 +385,19 @@ const routes = {
     if (gitTrack.find(root)) return { ok: false, error: 'Ce dossier est déjà suivi.' };
     state.followRepo(root, path.basename(root) || root);
     await gitSafe(gitTrack.refresh({ withGithub: true }));
+    sauvegardeSafe();
     return { ok: true, root };
   },
   'POST /api/git/unfollow': async (b) => { const ok = state.unfollowRepo(String(b.root || '')); if (ok) await gitSafe(gitTrack.refresh()); return { ok }; },
   'POST /api/git/init': (b) => gitTrack.init(String(b.root || '')),
   'POST /api/git/fetch': (b) => gitTrack.fetchRemote(String(b.root || '')),
   'POST /api/git/remote': (b) => gitTrack.addRemote(String(b.root || ''), String(b.url || '')),
+
+  // La sauvegarde : choisir la destination d'un projet, lancer une sauvegarde, l'arreter.
+  'POST /api/sauvegarde/cible': (b) => sauvegarde.setTarget(String(b.root || ''), { type: b.type ? String(b.type) : '', dest: String(b.dest || '') }),
+  'POST /api/sauvegarde/lancer': (b) => sauvegarde.start(String(b.root || '')),
+  'POST /api/sauvegarde/stop': () => sauvegarde.stop(),
+  'POST /api/sauvegarde/relire': async () => { await sauvegarde.refresh(); return { ok: true }; },
 
   'POST /api/lock/acquire': (b) => {
     const st = state.acquire({
@@ -469,6 +484,7 @@ const routes = {
     inventoryOf(p);
     setTimeout(probeDocs, 500);
     setTimeout(() => gitSafe(gitTrack.refresh({ withGithub: true })), 500);
+    setTimeout(sauvegardeSafe, 800);
     return { ok: true, project: p };
   },
   'POST /api/projects/disconnect': (b) => ({ ok: state.disconnectProject(b.uproject) }),
