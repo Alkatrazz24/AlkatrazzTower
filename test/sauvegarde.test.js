@@ -57,7 +57,8 @@ test('les adresses de depot acceptees, et rien d\'autre', () => {
 test('un depot sur disque donne en file:// devient une vraie adresse, meme sous Windows', () => {
   assert.strictEqual(SV.remoteUrl('file://C:\\Users\\ALKATR~1\\Temp\\mon depot.git'), 'file:///C:/Users/ALKATR~1/Temp/mon%20depot.git');
   assert.strictEqual(SV.remoteUrl('file:///D:/Depots/Jeu.git'), 'file:///D:/Depots/Jeu.git');
-  assert.strictEqual(SV.remoteUrl('file:///srv/a b/jeu.git'), 'file:///srv/a%20b/jeu.git');
+  // un chemin sans lecteur : sous Windows, il prend le lecteur courant
+  assert.strictEqual(SV.remoteUrl('file:///srv/a b/jeu.git'), require('url').pathToFileURL(path.resolve('/srv/a b/jeu.git')).href);
   assert.strictEqual(SV.remoteUrl('https://github.com/ali/jeu.git'), 'https://github.com/ali/jeu.git');
   assert.ok(SV.validRemote(SV.remoteUrl('file://C:\\Depots\\Mon Jeu.git')));
 });
