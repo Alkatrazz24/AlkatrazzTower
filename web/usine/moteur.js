@@ -3021,24 +3021,58 @@
 
   function tutoToggle(on) { sideToggle('tuto', on); }
 
+  // Les panneaux sont refaits a chaque nouvelle donnee de la tour. Avant de remplacer un panneau, on note
+  // jusqu'ou chaque zone defilante avait ete descendue et quels <details> etaient ouverts ; la fonction
+  // rendue le remet dans les noeuds neufs, retrouves par le meme chemin (balise, classes, rang).
+  // A lire AVANT replaceChildren : un noeud sorti de la page n'a plus de defilement (scrollTop vaut 0).
+  function viewPath(el, root) {
+    const path = [];
+    for (let e = el; e && e !== root; e = e.parentElement) {
+      const sig = e.tagName + '.' + (e.getAttribute('class') || '');
+      let n = 0;
+      for (let x = e.previousElementSibling; x; x = x.previousElementSibling) if (x.tagName + '.' + (x.getAttribute('class') || '') === sig) n++;
+      path.push([sig, n]);
+    }
+    return path.reverse();
+  }
+  function viewFind(root, path) {
+    let cur = root;
+    for (const [sig, n] of path) {
+      let k = -1, hit = null;
+      for (const x of cur.children) if (x.tagName + '.' + (x.getAttribute('class') || '') === sig && ++k === n) { hit = x; break; }
+      if (!hit) return null;
+      cur = hit;
+    }
+    return cur;
+  }
+  function snapView(root) {
+    const scrolls = [], opens = [];
+    for (const d of root.querySelectorAll('details')) opens.push([viewPath(d, root), d.open]);
+    for (const el of root.querySelectorAll('*')) if (el.scrollTop || el.scrollLeft) scrolls.push([viewPath(el, root), el.scrollTop, el.scrollLeft]);
+    return () => {
+      for (const [p, o] of opens) { const d = viewFind(root, p); if (d && d.tagName === 'DETAILS') d.open = o; }
+      for (const [p, top, left] of scrolls) { const el = viewFind(root, p); if (el) { el.scrollTop = top; el.scrollLeft = left; } }
+    };
+  }
+
   function renderHud() {
     const M = G.M; if (!M) return;
     G.hud.chips.replaceChildren(...chips(M).filter(Boolean));
     G.hud.res.replaceChildren(...(MODE.counters ? counters(M) : []));
     const ent = G.side === 'tuto' ? tutoPanel(M) : G.side === 'taches' ? tachesPanel(M) : G.side === 'sujets' ? sujetsPanel(M) : G.side === 'features' ? featuresPanel(M) : G.side === 'equipe' ? equipePanel(M) : entityPanel(M);
     // La fiche est refaite a chaque nouvelle donnee : on garde l'endroit ou on l'avait fait defiler.
-    const was = G.hud.entity.firstChild, oldBody = was && was.querySelector('.us-ebody');
+    const was = G.hud.entity.firstChild, view = was && ent && ent.getAttribute('aria-label') === was.getAttribute('aria-label') ? snapView(G.hud.entity) : null;
     // un champ de la fiche en cours de saisie (la recherche de la doc) garde le focus et le curseur
     const typing = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.keep && G.hud.entity.contains(document.activeElement) ? document.activeElement : null;
     const caret = typing ? [typing.dataset.keep, typing.selectionStart, typing.selectionEnd] : null;
     G.hud.entity.replaceChildren(...(ent ? [ent] : []));
-    if (caret) { const el = G.hud.entity.querySelector(`[data-keep="${caret[0]}"]`); if (el) { el.focus(); try { el.setSelectionRange(caret[1], caret[2]); } catch { /* champ sans curseur */ } } }
-    if (oldBody && ent && ent.getAttribute('aria-label') === was.getAttribute('aria-label')) ent.querySelector('.us-ebody').scrollTop = oldBody.scrollTop;
+    if (view) view();
+    if (caret) { const el = G.hud.entity.querySelector(`[data-keep="${caret[0]}"]`); if (el) { el.focus({ preventScroll: true }); try { el.setSelectionRange(caret[1], caret[2]); } catch { /* champ sans curseur */ } } }
     G.hud.entity.hidden = !ent;
     G.app.classList.toggle('us-has-sel', !!ent);
     // Un mode peut rendre les memes noeuds d'une fois sur l'autre (un champ de saisie garde alors son focus).
     const nodes = (MODE.hud ? MODE.hud(M, api) : []).filter(Boolean);
-    if (!same(nodes, [...G.hud.mode.children])) G.hud.mode.replaceChildren(...nodes);
+    if (!same(nodes, [...G.hud.mode.children])) { const back = snapView(G.hud.mode); G.hud.mode.replaceChildren(...nodes); back(); }
     const none = !G.world || !G.world.machines.length;
     if (none) G.hud.empty.replaceChildren(h('p', null, M.projects.length ? 'Aucune session ouverte. Lance Claude Code (ou une tâche) : sa salle apparaît ici, avec son personnage et ses sous-agents.' : 'Connecte ton projet Unreal (bouton en haut), puis lance Claude Code : chaque session aura sa salle ici.'));
     G.hud.empty.hidden = !none;
