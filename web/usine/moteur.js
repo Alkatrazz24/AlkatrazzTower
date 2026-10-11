@@ -179,7 +179,12 @@
     const gx0 = dx0 + 11 + GAP;
     const groom = { x: gx0 + 1, y: TOP, w: 10, h: ROOM_H }, hroom = { x: gx0 + 1, y: BOT, w: 10, h: ROOM_H };
     hallOf(B, gx0, gx0 + 11, 0, 'git');
-    right = gx0 + 11;
+    // La sauvegarde, a cote des depots : le coffre en haut (un coffre-fort par projet), les archives en
+    // bas (une cassette par sauvegarde faite).
+    const sx0 = gx0 + 11 + GAP;
+    const sroom = { x: sx0 + 1, y: TOP, w: 10, h: ROOM_H }, arroom = { x: sx0 + 1, y: BOT, w: 10, h: ROOM_H };
+    hallOf(B, sx0, sx0 + 11, 0, 'sauvegarde');
+    right = sx0 + 11;
     // Le chef, au bout de la rue : sa salle en haut (tu lui confies tes demandes), en bas le bureau des
     // envois (ce qu'il a confie a qui).
     let eroom = null;
@@ -211,7 +216,7 @@
       h = oy + BOT + ROOM_H + 2;
     }
     const you = { x: 1.2, y: CY + .1 };
-    return { ...B, forge, froom, okChest, koChest, silo, vroom, lroom, aroom, droom, uroom, groom, hroom, eroom, kroom, vdroom, hall: B.halls[0], you, w: right + 2, h, x0: 3 };
+    return { ...B, forge, froom, okChest, koChest, silo, vroom, lroom, aroom, droom, uroom, groom, hroom, sroom, arroom, eroom, kroom, vdroom, hall: B.halls[0], you, w: right + 2, h, x0: 3 };
   }
 
   // ---------- terrain : calcule une fois par taille de batiment, hors de la boucle ----------
@@ -929,6 +934,90 @@
     light(x + w / 2, y + hh / 2, 64, '#ffe3a8', .6);
   }
 
+  // ---------- la sauvegarde (lib/sauvegarde.js) : le coffre et les archives ----------
+  const svUi = { open: new Set(), type: {}, dest: {}, run: null, busy: '', seen: false };
+  const svOf = (M) => (M && M.S && M.S.sauvegarde) || null;
+  const svLive = (r) => !!r && !r.endedAt;
+  const svRun = (SV, id) => (SV && id && SV.runs.find(r => r.id === id)) || null;
+  const svCurrent = (M) => { const SV = svOf(M); return SV && svRun(SV, SV.current); };
+  function octets(n) {
+    const f = (x, d) => x.toLocaleString('fr-FR', { maximumFractionDigits: d });
+    return n >= 1024 ** 3 ? `${f(n / 1024 ** 3, 1)} Go` : n >= 1024 ** 2 ? `${f(n / 1024 ** 2, 0)} Mo` : `${f(Math.max(1, n / 1024), 0)} ko`;
+  }
+  function svAge(t, now) {
+    const d = Math.floor((now - t) / 86400_000);
+    return d <= 0 ? 'aujourd\'hui' : d === 1 ? 'hier' : `il y a ${d} jours`;
+  }
+  // L'etat d'un projet en un mot et une couleur : le voyant de son coffre-fort, sa ligne dans la fiche.
+  function svTone(p, SV, now) {
+    const r = svRun(SV, p.last);
+    if (svLive(r)) return ['blue', T.lower(r.stepText || 'en cours')];
+    if (p.info && !p.info.exists) return ['ko', 'dossier introuvable'];
+    if (!p.target) return p.info && p.info.uproject ? ['warn', 'pas encore protégé'] : ['off', 'pas de destination'];
+    if (r && r.step === 'erreur') return ['ko', 'dernière sauvegarde en échec'];
+    if (!p.lastOk) return ['warn', 'jamais sauvegardé'];
+    if (now - p.lastOk > 7 * 86400_000) return ['warn', `sauvegardé ${svAge(p.lastOk, now)}`];
+    return ['ok', `sauvegardé ${svAge(p.lastOk, now)}`];
+  }
+  // le jeu sans sauvegarde recente, ou une sauvegarde en echec : le bouton du batiment s'allume
+  function svAlert(M) { const SV = svOf(M); return !!SV && SV.projects.some(p => { const [t] = svTone(p, SV, M.now); return t === 'ko' || (t === 'warn' && p.info && p.info.uproject); }); }
+  // Un coffre-fort par projet contre le mur du fond : son voyant prend la couleur de son etat ; pendant
+  // une sauvegarde, sa porte s'entrouvre et une barre se remplit au-dessus.
+  function drawCoffreRoom(c, W, t) {
+    const R = W.sroom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS, SV = svOf(G.M), tc = TONE_COL();
+    planks(c, x, y, w, hh, shade(COL.floor, -.18));
+    walls(c, R, { side: 'bottom', x: R.x + .6, w: 1.6, open: true });
+    const ps = SV ? SV.projects.slice(0, 4) : [];
+    const sw = 1.9 * TS, gap = .4 * TS, sx = x + WALL + 6, sy = y + WALL + 4, sh = 2.3 * TS;
+    const blink = reduced || Math.floor(t * 2) % 2 === 0;
+    ps.forEach((p, i) => {
+      const bx = sx + i * (sw + gap), [tone] = svTone(p, SV, G.M.now), col = tc[tone], r = svRun(SV, p.last), live = svLive(r);
+      box(c, bx, sy, sw, sh, '#3c4147', '#5b6168', '#23272b');
+      if (SC) return;
+      c.fillStyle = '#2c3035'; c.fillRect(bx + 4, sy + 4, sw - 8, sh - 8);
+      if (live) { c.fillStyle = '#0f1113'; c.fillRect(bx + sw - 9, sy + 4, 5, sh - 8); }
+      // la molette et la poignee
+      const mx = bx + sw / 2 - 2, my = sy + sh / 2 - 3;
+      c.fillStyle = '#9aa0a6'; c.fillRect(mx - 4, my - 4, 12, 12); c.fillStyle = '#2c3035'; c.fillRect(mx - 1, my - 1, 6, 6);
+      c.fillStyle = '#c8ccd0'; c.fillRect(mx + 1, my - 6, 2, 4);
+      c.fillStyle = live ? (blink ? COL.blue : shade(COL.blue, -.5)) : col; c.fillRect(bx + 5, sy + 6, 4, 4);
+      light(bx + 7, sy + 8, 20, live ? COL.blue : col, .5);
+      if (live && r.progress && r.progress.total) {
+        const k = Math.min(1, r.progress.done / r.progress.total);
+        c.fillStyle = '#1b1d20'; c.fillRect(bx, sy - 7, sw, 4); c.fillStyle = COL.blue; c.fillRect(bx, sy - 7, Math.round(sw * k), 4);
+      }
+    });
+    // le pupitre : d'ou l'on choisit la destination
+    const dx = x + w / 2 - 1.6 * TS, dy = y + 4.6 * TS;
+    box(c, dx, dy, 3.2 * TS, .9 * TS, COL.desk, COL.deskLight, COL.deskDark);
+    G.emit.push(() => { c.fillStyle = COL.screen; c.fillRect(dx + 1.1 * TS, dy - .7 * TS, 1 * TS, .7 * TS); c.fillStyle = '#e0b84a'; c.fillRect(dx + 1.1 * TS + 3, dy - .7 * TS + 3, 8, 1); c.fillRect(dx + 1.1 * TS + 3, dy - .7 * TS + 6, 5, 1); });
+    light(x + w / 2, y + hh / 2, 70, '#ffe3a8', .7);
+  }
+  // Les archives : une cassette par sauvegarde (verte : reussie, rouge : echec, bleue qui clignote : en
+  // cours) sur une etagere, et le disque de destination sur la table.
+  function drawArchivesRoom(c, W, t) {
+    const R = W.arroom, x = R.x * TS, y = R.y * TS, w = R.w * TS, hh = R.h * TS, SV = svOf(G.M), runs = (SV && SV.runs) || [];
+    planks(c, x, y, w, hh, shade(COL.floor, -.1));
+    walls(c, R, { side: 'top', x: R.x + .6, w: 1.6, open: true });
+    const bx = x + WALL + 6, bw = w - 2 * WALL - 12, by = y + hh - WALL - 2.2 * TS, bh = 1.9 * TS;
+    box(c, bx, by, bw, bh, '#4a4f55', '#626870', '#2c3035');
+    const blink = reduced || Math.floor(t * 2) % 2 === 0;
+    runs.slice(0, 16).forEach((r, i) => {
+      const nx = bx + 6 + (i % 8) * ((bw - 12) / 8), ny = by + 5 + Math.floor(i / 8) * (bh / 2 - 1);
+      const col = svLive(r) ? (blink ? COL.blue : '#9cc9ef') : r.step === 'erreur' ? COL.ko : COL.ok;
+      c.fillStyle = '#202326'; c.fillRect(nx, ny, 10, 14);
+      c.fillStyle = col; c.fillRect(nx + 1, ny + 2, 8, 4);
+      if (!SC) { c.fillStyle = '#5b6168'; c.fillRect(nx + 2, ny + 8, 2, 3); c.fillRect(nx + 6, ny + 8, 2, 3); }
+    });
+    // le disque externe sur la table, son voyant clignote quand la tour y ecrit
+    const dx = x + w / 2 - 1.4 * TS, dy = y + 1.6 * TS;
+    box(c, dx, dy, 2.8 * TS, 1 * TS, COL.desk, COL.deskLight, COL.deskDark);
+    box(c, dx + .8 * TS, dy - .5 * TS, 1.2 * TS, .7 * TS, '#2c3035', '#4a4f55', '#16181a');
+    const live = svLive(svCurrent(G.M));
+    if (!SC) { c.fillStyle = live ? (blink ? COL.blue : '#26313d') : COL.ok; c.fillRect(dx + 1.75 * TS, dy - .3 * TS, 3, 3); }
+    light(x + w / 2, y + hh / 2, 60, live ? '#9cc9ef' : '#ffe3a8', .55);
+  }
+
   // Coins de selection facon jeu : quatre equerres qui respirent autour de l'element choisi.
   function brackets(c, b, t) {
     const pad = 4 + (reduced ? 0 : Math.sin(t * 5) * 1.5), x = b.x * TS - pad, y = b.y * TS - pad, w = b.w * TS + pad * 2, hh = b.h * TS + pad * 2, k = 8;
@@ -954,6 +1043,7 @@
     if (sel.kind === 'docs') return W.droom;
     if (sel.kind === 'git') return W.groom;
     if (sel.kind === 'github') return W.hroom;
+    if (sel.kind === 'sauvegarde') return W.sroom;
     if (sel.kind === 'unreal') return W.uroom;
     if (sel.kind === 'conseil') return W.kroom;
     if (sel.kind === 'ok') return W.okChest;
@@ -992,6 +1082,8 @@
     drawUnrealRoom(c, W, t);
     drawGitRoom(c, W, t);
     drawGithubRoom(c, W, t);
+    drawCoffreRoom(c, W, t);
+    drawArchivesRoom(c, W, t);
     if (W.eroom) drawEnvoisRoom(c, W, t);
     drawConseilRoom(c, W, t);
     drawVerdictsRoom(c, W, t);
@@ -1084,8 +1176,8 @@
     // les batiments core et feature : leur enseigne au-dessus de l'entree, et la salle libre des features
     for (const b of W.blds) {
       if (!b.name) continue;
-      const [bx, by] = S(b.x + b.w / 2, b.y - (b.name === 'doc' || b.name === 'git' || b.name === 'chef' || b.name === 'conseil' ? 1.5 : 1.1));
-      const sign = { core: ['Core · la mémoire du jeu', COL.ok], feature: ['Features · les nouvelles idées', COL.warn], doc: ['Documentation', COL.blue], git: ['Dépôts', COL.ok], chef: ['Chef · toutes tes demandes', COL.select], conseil: ['Conseil · les vrais choix', '#b48ee8'] }[b.name];
+      const [bx, by] = S(b.x + b.w / 2, b.y - (b.name === 'doc' || b.name === 'git' || b.name === 'sauvegarde' || b.name === 'chef' || b.name === 'conseil' ? 1.5 : 1.1));
+      const sign = { core: ['Core · la mémoire du jeu', COL.ok], feature: ['Features · les nouvelles idées', COL.warn], doc: ['Documentation', COL.blue], git: ['Dépôts', COL.ok], sauvegarde: ['Sauvegarde', '#e0b84a'], chef: ['Chef · toutes tes demandes', COL.select], conseil: ['Conseil · les vrais choix', '#b48ee8'] }[b.name];
       if (sign) label(c, sign[0], bx, by, { edge: sign[1], size: small ? 12 : 14, weight: 700 });
     }
     if (z >= .6) for (const f of W.fillers) if (f.free === 'feature' && f.top) { const [fx, fy] = S(f.x + f.w / 2, f.y + f.h / 2); label(c, '+ Nouvelle feature', fx, fy, { edge: COL.warn, weight: 700, size: small ? 11 : 13 }); }
@@ -1133,6 +1225,14 @@
     label(c, !GT ? 'Git : lecture…' : !GT.git ? 'Git pas installé' : gko ? `Git : ${gko} à voir` : `Git : ${T.plural(GT.repos.length, 'dépôt', 'dépôts')}`, glx, gly, { edge: !GT ? '#777' : !GT.git || gko ? COL.ko : COL.ok, weight: 700, max: Math.max(90, W.groom.w * TS * z) });
     const [hlx, hly] = S(W.hroom.x + W.hroom.w / 2, W.hroom.y + W.hroom.h + .55);
     label(c, npr ? `GitHub : ${T.plural(npr, 'PR ouverte', 'PR ouvertes')}` : 'GitHub', hlx, hly, { edge: COL.ok, weight: 700, max: Math.max(90, W.hroom.w * TS * z) });
+    {
+      const SV = svOf(G.M), cur = svCurrent(G.M), todo = SV ? SV.projects.filter(p => ['ko', 'warn'].includes(svTone(p, SV, G.M.now)[0])).length : 0;
+      const [slx, sly] = S(W.sroom.x + W.sroom.w / 2, W.sroom.y - .55);
+      label(c, !SV ? 'Coffre : lecture…' : todo ? `Coffre : ${todo} à protéger` : 'Coffre : à jour', slx, sly, { edge: !SV ? '#777' : todo ? COL.warn : COL.ok, weight: 700, max: Math.max(90, W.sroom.w * TS * z) });
+      const n = SV ? SV.runs.filter(r => r.ok).length : 0;
+      const [alx, aly] = S(W.arroom.x + W.arroom.w / 2, W.arroom.y + W.arroom.h + .55);
+      label(c, cur ? `Sauvegarde : ${T.lower(cur.stepText || 'en cours')}` : `Archives : ${n}`, alx, aly, { edge: cur ? COL.blue : '#e0b84a', weight: 700, max: Math.max(90, W.arroom.w * TS * z) });
+    }
     if (W.eroom && G.M.chef) {
       const E = G.M.chef.envois, wait = E.filter(e => e.status === 'proposé').length;
       const [elx, ely] = S(W.eroom.x + W.eroom.w / 2, W.eroom.y + W.eroom.h + .55);
@@ -1236,6 +1336,8 @@
     c.fillStyle = gitAlert(G.M) ? COL.ko : COL.steel; c.fillRect(W.groom.x * TS + 6, W.groom.y * TS + 6, W.groom.w * TS - 12, W.groom.h * TS - 12);
     if (W.eroom) { c.fillStyle = G.M.chef && G.M.chef.envois.some(e => e.status === 'proposé') ? COL.warn : COL.desk; c.fillRect(W.eroom.x * TS + 6, W.eroom.y * TS + 6, W.eroom.w * TS - 12, W.eroom.h * TS - 12); }
     { const K = conseilOf(G.M), live = K && isLive(K.runs[0]); c.fillStyle = live ? COL.blue : '#7a4f9a'; c.fillRect(W.kroom.x * TS + 6, W.kroom.y * TS + 6, W.kroom.w * TS - 12, W.kroom.h * TS - 12); c.fillStyle = COL.desk; c.fillRect(W.vdroom.x * TS + 6, W.vdroom.y * TS + 6, W.vdroom.w * TS - 12, W.vdroom.h * TS - 12); }
+    c.fillStyle = svCurrent(G.M) ? COL.blue : svAlert(G.M) ? COL.warn : '#8a7330'; c.fillRect(W.sroom.x * TS + 6, W.sroom.y * TS + 6, W.sroom.w * TS - 12, W.sroom.h * TS - 12);
+    c.fillStyle = COL.steel; c.fillRect(W.arroom.x * TS + 6, W.arroom.y * TS + 6, W.arroom.w * TS - 12, W.arroom.h * TS - 12);
     c.fillStyle = COL.ok; c.fillRect(W.hroom.x * TS + 6, W.hroom.y * TS + 6, W.hroom.w * TS - 12, W.hroom.h * TS - 12);
     c.fillStyle = COL.blue; c.fillRect(W.uroom.x * TS + 6, W.uroom.y * TS + 6, W.uroom.w * TS - 12, W.uroom.h * TS - 12);
     const { vw, vh } = view();
@@ -1262,6 +1364,7 @@
     if (inR(W.droom)) return { kind: 'docs' };
     if (inR(W.groom)) return { kind: 'git' };
     if (inR(W.hroom)) return { kind: 'github' };
+    if (inR(W.sroom) || inR(W.arroom)) return { kind: 'sauvegarde' };
     if (inR(W.uroom)) return { kind: 'unreal' };
     if (W.eroom && inR(W.eroom)) return chefSel();
     if (inR(W.kroom) || inR(W.vdroom)) return { kind: 'conseil' };
@@ -1287,6 +1390,10 @@
     if (s.kind === 'docs') { const D = docsOf(M), late = docDebts(M).filter(d => d.owed).length; return ['Documentation', D ? `${T.plural(D.total, 'page', 'pages')} à lire${late ? `, ${late} doc${late > 1 ? 's' : ''} en retard` : ''}` : 'Lecture en cours']; }
     if (s.kind === 'git') { const Gt = gitOf(M); return ['Dépôts git', !Gt ? 'Lecture en cours' : !Gt.git ? 'Git n\'est pas installé : clique pour l\'installer' : Gt.repos.map(r => `${r.name} : ${repoTone(r, Gt)[1]}`).join(' · ')]; }
     if (s.kind === 'github') { const n = prsOf(M).length; return ['Quai GitHub', n ? `${T.plural(n, 'PR ouverte', 'PR ouvertes')} ; clique pour les voir` : 'Ce qui arrive sur GitHub : commits poussés, PR ouvertes']; }
+    if (s.kind === 'sauvegarde') {
+      const SV = svOf(M), cur = svCurrent(M);
+      return ['Sauvegarde', !SV ? 'Lecture en cours' : cur ? `${cur.name} : ${T.lower(cur.stepText)}` : SV.projects.map(p => `${p.name} : ${svTone(p, SV, M.now)[1]}`).join(' · ') || 'Une copie complète de chaque projet, ailleurs que sur son disque (touche R)'];
+    }
     if (s.kind === 'unreal') return ['Rayon Unreal Engine', 'La doc officielle par thème, que les sessions ouvrent quand elles ont une question'];
     if (s.kind === 'conseil') {
       const K = conseilOf(M), r = K && K.runs[0];
@@ -1391,6 +1498,7 @@
       else if (e.key === 'a' || e.key === 'A') select({ kind: 'roster' }, true);
       else if (e.key === 'd' || e.key === 'D') select({ kind: 'docs' }, true);
       else if (e.key === 'g' || e.key === 'G') select({ kind: 'git' }, true);
+      else if (e.key === 'r' || e.key === 'R') select({ kind: 'sauvegarde' }, true);
       else if (e.key === 's' || e.key === 'S') sideToggle('sujets');
       else if ((e.key === 'c' || e.key === 'C') && chefSel()) select(chefSel(), true);
       else if (e.key === 'k' || e.key === 'K') select({ kind: 'conseil' }, true);
@@ -1542,6 +1650,9 @@
     } else if (s.kind === 'git' || s.kind === 'github') {
       title = 'Dépôts git et GitHub';
       body = gitBody(M, s.kind);
+    } else if (s.kind === 'sauvegarde') {
+      title = 'Sauvegarde';
+      body = svBody(M);
     } else if (s.kind === 'unreal') {
       title = 'Rayon Unreal Engine';
       body = unrealBody(M);
@@ -2305,6 +2416,112 @@
       h('small', { class: 'us-dim' }, 'S\'il n\'a pas encore git, la tour te proposera de l\'initialiser.'),
       h('div', { class: 'us-actions' }, btn(gitUi.busy === 'refresh:' ? 'Lecture…' : 'Relire', () => gitDo('refresh:', '/api/git/refresh', {}, 'Dépôts relus.'), '', { disabled: !!gitUi.busy }),
         Gt.git ? h('span', { class: 'us-dim' }, `git ${Gt.git.version}`) : null),
+    ];
+  }
+
+  // La sauvegarde : pour chaque projet, sa destination (un dossier ailleurs, ou un depot git) et le bouton
+  // qui lance une copie complete ; puis les dernieres sauvegardes, avec ce qui a ete copie et les erreurs.
+  async function svDo(key, path, body, done) {
+    svUi.busy = key; renderHud();
+    const r = await T.api(path, body);
+    svUi.busy = ''; renderHud();
+    if (!r) return null;
+    if (!r.ok) { T.toast(r.error || 'Échec.'); return r; }
+    if (done) T.toast(done);
+    return r;
+  }
+  function svSummary(r) {
+    const R = r.result || {}, L = R.lfs || {}, P = R.wip || {}, out = [];
+    if (R.head) out.push(`dernier commit ${R.head.slice(0, 7)}, ${T.plural(R.branches || 0, 'branche', 'branches')}${R.tags ? `, ${T.plural(R.tags, 'étiquette', 'étiquettes')}` : ''}${R.stashes ? `, ${T.plural(R.stashes, 'stash', 'stash')}` : ''}`);
+    const lfs = (n, one, many) => `${T.num(n)} ${n > 1 ? many : one}`;
+    if (L.files) out.push(r.type === 'depot' ? `${lfs(L.files, 'fichier LFS envoyé', 'fichiers LFS envoyés')} (${octets(L.bytes)})` : L.copied ? `${lfs(L.copied, 'fichier LFS copié', 'fichiers LFS copiés')} (${octets(L.copiedBytes)}) sur ${T.num(L.files)}` : `${lfs(L.files, 'fichier LFS déjà là', 'fichiers LFS déjà là')}`);
+    if (P.unchanged) out.push('travail en cours inchangé depuis la dernière fois');
+    else if (P.files || P.removed || P.extra) out.push([P.files && `${T.plural(P.files, 'fichier pas commité', 'fichiers pas commités')}`, P.removed && `${P.removed} supprimé${P.removed > 1 ? 's' : ''}`, P.extra && `${P.extra} dans Saved/Tour`].filter(Boolean).join(', ') + (P.bytes ? ` (${octets(P.bytes)})` : ''));
+    else out.push('rien de pas commité');
+    return out;
+  }
+  function svRunBlock(r, M) {
+    if (svLive(r)) {
+      const p = r.progress, k = p && p.total ? Math.round(100 * p.done / p.total) : null;
+      return h('div', { class: 'us-task', role: 'status' },
+        h('p', null, h('span', { class: 'us-dot us-d-blue' }), ' ', h('b', null, r.stepText || 'En cours'), ' · depuis ', T.forEl(r.startedAt)),
+        k != null ? [h('div', { class: 'us-bar' }, h('i', { style: `width:${k}%` })), h('small', { class: 'us-dim' }, `${T.num(p.done)} sur ${T.num(p.total)}${p.totalBytes ? ` · ${octets(p.bytes || 0)} sur ${octets(p.totalBytes)}` : ''}`)] : null,
+        h('div', { class: 'us-actions' }, btn(svUi.busy === 'stop' ? 'Arrêt…' : 'Arrêter', () => svDo('stop', '/api/sauvegarde/stop', {}, 'Sauvegarde arrêtée.'), 'us-danger', { disabled: !!svUi.busy || M.demo })));
+    }
+    if (r.step === 'erreur') return h('div', { class: 'us-task us-sk-ko' }, h('p', { class: 'us-t-ko' }, h('b', null, 'Échec '), T.agoEl(r.endedAt), ' : ', r.error || 'erreur inconnue'));
+    const R = r.result || {};
+    return h('div', { class: 'us-task' },
+      h('p', { class: R.warnings && R.warnings.length ? 'us-t-warn' : 'us-t-ok' }, h('b', null, R.verified ? 'Réussie et vérifiée' : 'Terminée'), ' ', T.agoEl(r.endedAt), `, en ${T.dur(r.endedAt - r.startedAt)}`),
+      h('ul', { class: 'us-doclist' }, svSummary(r).map(x => h('li', null, x)), R.size ? h('li', null, `Taille de la sauvegarde : ${octets(R.size)}`) : null, R.location ? h('li', null, h('span', { class: 'us-path' }, R.location)) : null),
+      R.warnings && R.warnings.length ? h('ul', { class: 'us-doclist' }, R.warnings.map(w => h('li', { class: 'us-t-warn' }, w))) : null,
+      R.wip && R.wip.skipped && R.wip.skipped.length ? h('small', { class: 'us-dim' }, `Pas envoyés : ${R.wip.skipped.map(x => x.rel).join(', ')}`) : null);
+  }
+  function svCard(p, M, SV) {
+    const [tone, text] = svTone(p, SV, M.now), open = svUi.open.has(p.root), cur = svCurrent(M);
+    const kind = { tour: 'la tour', projet: p.info && p.info.uproject ? 'le jeu' : 'projet', suivi: 'dossier ajouté' }[p.kind] || '';
+    const head = h('button', { type: 'button', class: 'us-runbtn', 'aria-expanded': String(open), onclick: () => { if (open) svUi.open.delete(p.root); else svUi.open.add(p.root); renderHud(); } },
+      h('span', { class: `us-dot us-d-${tone}` }), h('b', null, p.name), h('span', { class: 'us-dim' }, kind), h('span', { class: `us-skst us-t-${tone === 'off' ? 'unused' : tone}` }, text));
+    if (!open) return h('li', { class: 'us-task us-doc' }, head);
+    const I = p.info || {}, part = [h('small', { class: 'us-dim us-path' }, p.root)];
+    // ce qui part dans la sauvegarde
+    part.push(h('p', null, 'À sauvegarder : ', I.isRepo ? [
+      'tout l\'historique git', I.lfsFiles ? `, ${T.num(I.lfsFiles)} ${I.lfsFiles > 1 ? 'fichiers' : 'fichier'} LFS (${octets(I.lfsBytes)})` : '', ', le travail pas encore commité', I.uproject ? ' et Saved/Tour' : '', '.',
+    ] : ['tous les fichiers du dossier', I.uproject ? ' sauf ce qu\'Unreal régénère (Binaries, Intermediate, DerivedDataCache, Saved hors Saved/Tour)' : '', '. Pas de git ici : chaque sauvegarde garde une version de plus.']));
+    // la destination
+    const type = svUi.type[p.root] || (p.target && p.target.type) || 'dossier';
+    const val = svUi.dest[p.root] != null ? svUi.dest[p.root] : p.target && p.target.type === type ? p.target.dest : '';
+    const save = () => {
+      const d = String(svUi.dest[p.root] != null ? svUi.dest[p.root] : val || '').trim();
+      if (!d) return T.toast(type === 'dossier' ? 'Colle le chemin du dossier.' : 'Colle l\'adresse du dépôt.');
+      svDo('cible:' + p.root, '/api/sauvegarde/cible', { root: p.root, type, dest: d }, 'Destination enregistrée.').then((r) => { if (r && r.ok) { delete svUi.dest[p.root]; delete svUi.type[p.root]; } });
+    };
+    const seg = (id, label) => h('button', { type: 'button', class: 'us-segbtn', 'aria-pressed': String(type === id), onclick: () => { svUi.type[p.root] = id; delete svUi.dest[p.root]; renderHud(); } }, label);
+    part.push(h('div', { class: 'us-sub' }, 'Où sauvegarder'));
+    if (p.target) part.push(h('p', null, p.target.type === 'dossier' ? ['Dans ', h('code', { class: 'us-path' }, p.target.dest)] : ['Vers ', h('code', { class: 'us-path' }, p.target.dest)]));
+    part.push(h('div', { class: 'us-seg us-sv-seg', role: 'group', 'aria-label': `Type de destination pour ${p.name}` }, seg('dossier', 'Un dossier (autre disque, NAS)'), seg('depot', 'Un dépôt git')));
+    part.push(h('div', { class: 'us-row' },
+      h('input', { type: type === 'depot' ? 'url' : 'text', name: 'sauvegarde-destination', class: 'us-docq', 'data-keep': 'svdest' + type + hash(p.root), value: val, placeholder: type === 'depot' ? 'https://github.com/toi/jeu-sauvegarde.git' : 'E:\\Sauvegardes', 'aria-label': type === 'depot' ? `Adresse du dépôt de sauvegarde de ${p.name}` : `Dossier de sauvegarde de ${p.name}`,
+        oninput: (e) => { svUi.dest[p.root] = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } } }),
+      btn(svUi.busy === 'cible:' + p.root ? 'Enregistrement…' : 'Enregistrer', save, p.target ? '' : 'us-go', { disabled: !!svUi.busy })));
+    if (type === 'dossier') {
+      part.push(h('small', { class: 'us-dim' }, `Un autre disque, un disque externe ou un dossier réseau (\\\\NAS\\partage). La tour y range ${p.name}.git et un LISEZMOI qui explique comment tout récupérer.`));
+      if (p.target && p.target.sameDisk) part.push(h('p', { class: 'us-t-warn' }, 'Même disque que le projet : si ce disque lâche, tu perds les deux. Préfère un disque externe ou un NAS.'));
+    } else {
+      part.push(h('small', { class: 'us-dim' }, 'Un dépôt vide, privé de préférence (GitHub, GitLab, un serveur). Rien n\'y est écrasé : si une branche y a des commits que le PC n\'a pas, la tour le signale. Les fichiers pas commités de plus de 50 Mo restent sur le PC.'));
+      if (!I.isRepo && I.exists) part.push(h('p', { class: 'us-t-warn' }, 'Ce dossier n\'a pas git : il ne peut partir que dans un dossier, ou après « Initialiser git » dans le bâtiment Dépôts.'));
+      const gh = /github\.com/i.test(String(val || '')) || (p.target && p.target.github);
+      if (gh && I.lfsBytes > SV.githubLfsFree) part.push(h('p', { class: 'us-t-warn' }, `Ce projet a ${octets(I.lfsBytes)} de fichiers LFS : GitHub gratuit en garde 10 Go, l'envoi s'arrêtera au-delà. Un disque externe n'a pas cette limite.`));
+    }
+    // lancer
+    const r = svRun(SV, p.last), mine = cur && cur.root === p.root;
+    const go = () => {
+      if (!M.demo && p.target.type === 'depot' && !confirm(`Envoyer ${p.name} vers ${p.target.dest} ?\n\nLa tour y pousse l'historique, les fichiers LFS et le travail en cours (branche tour-sauvegarde/en-cours). Rien n'y est écrasé, et le projet n'est pas modifié.`)) return;
+      svDo('lancer:' + p.root, '/api/sauvegarde/lancer', { root: p.root }, 'Sauvegarde lancée.');
+    };
+    part.push(h('div', { class: 'us-actions' },
+      btn(svUi.busy === 'lancer:' + p.root ? 'Lancement…' : 'Sauvegarder maintenant', go, 'us-go', { disabled: !p.target || !!cur || !!svUi.busy, title: !p.target ? 'Choisis d\'abord où sauvegarder' : cur && !mine ? `Une sauvegarde de ${cur.name} est en cours` : '' }),
+      p.target && !mine ? btn('Retirer la destination', () => svDo('cible:' + p.root, '/api/sauvegarde/cible', { root: p.root, type: '' }, 'Destination retirée.'), 'us-link') : null));
+    if (r && !svLive(r)) part.push(svRunBlock(r, M)); // celle en cours est deja en haut de la fiche
+    return h('li', { class: 'us-task us-doc' }, head, part);
+  }
+  function svBody(M) {
+    const SV = svOf(M);
+    if (!SV) return [h('p', { class: 'us-dim' }, 'La tour prépare le coffre…')];
+    // a la premiere ouverture, le jeu (ou le premier projet a proteger) est deplie
+    if (!svUi.seen && SV.projects.length) { svUi.seen = true; const first = SV.projects.find(p => svTone(p, SV, M.now)[0] !== 'ok') || SV.projects[0]; svUi.open.add(first.root); }
+    const cur = svCurrent(M), others = SV.runs.filter(r => !svLive(r)).slice(0, 8);
+    return [
+      h('p', null, 'Une copie complète de chaque projet, ailleurs que sur son disque : tout l\'historique git, les fichiers LFS, le travail pas encore commité et Saved/Tour. Le projet lui-même n\'est jamais modifié : ni commit, ni stash.'),
+      cur ? [h('div', { class: 'us-sub' }, `En cours : ${cur.name}`), svRunBlock(cur, M)] : null,
+      h('ul', { class: 'us-tuto-list' }, SV.projects.map(p => svCard(p, M, SV))),
+      others.length ? [h('div', { class: 'us-sub' }, 'Dernières sauvegardes'), h('ul', { class: 'us-tuto-list' }, others.map(r => {
+        const open = svUi.run === r.id, ok = r.step !== 'erreur';
+        return h('li', { class: 'us-task us-doc' },
+          h('button', { type: 'button', class: 'us-runbtn', 'aria-expanded': String(open), onclick: () => { svUi.run = open ? null : r.id; renderHud(); } },
+            h('span', { class: `us-dot us-d-${ok ? 'ok' : 'ko'}` }), h('b', null, r.name), h('span', { class: 'us-dim' }, r.type === 'depot' ? 'dépôt' : 'dossier'), h('span', { class: `us-skst us-t-${ok ? 'ok' : 'ko'}` }, T.agoEl(r.endedAt))),
+          open ? svRunBlock(r, M) : null);
+      }))] : null,
+      h('div', { class: 'us-actions' }, btn(svUi.busy === 'relire' ? 'Lecture…' : 'Relire les projets', () => svDo('relire', '/api/sauvegarde/relire', {}, 'Projets relus.'), '', { disabled: !!svUi.busy })),
     ];
   }
 
@@ -3095,6 +3312,9 @@
     G.hud.conseilBtn.classList.toggle('run', isLive(conseilOf(M) && conseilOf(M).runs[0]));
     G.hud.gitBtn.classList.toggle('on', !G.side && !!G.sel && (G.sel.kind === 'git' || G.sel.kind === 'github'));
     G.hud.gitBtn.classList.toggle('alert', gitAlert(M));
+    G.hud.saveBtn.classList.toggle('on', !G.side && !!G.sel && G.sel.kind === 'sauvegarde');
+    G.hud.saveBtn.classList.toggle('alert', !svCurrent(M) && svAlert(M));
+    G.hud.saveBtn.classList.toggle('run', !!svCurrent(M));
     G.hud.tutoBtn.classList.toggle('run', !!(M.S.tuto && M.S.tuto.running));
   }
 
@@ -3120,7 +3340,7 @@
     };
     G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
-      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), h('nav', { class: 'us-nav', 'aria-label': 'Les bâtiments de la tour' }, G.hud.chefBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le chef : tu lui confies toutes tes demandes sur le jeu ; il vérifie, te répond, et confie les changements aux sessions core ou à une feature (touche C)', onclick: () => { if (G.side) sideToggle(G.side, false); const cs = chefSel(); if (!cs) { T.toast('Connecte d\'abord ton projet Unreal : le chef travaille dans son dossier.'); return; } select(G.sel && G.sel.kind === 'agent' && G.sel.id === cs.id ? null : cs, true); } }, 'Chef'), G.hud.conseilBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le conseil : pour un vrai choix. Cinq membres répondent chacun de leur côté, se relisent, et le président tranche (touche K)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'conseil' ? null : { kind: 'conseil' }, true); } }, 'Conseil'), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions core : une par sujet du jeu (animation, interface, menus, armes...), sa mémoire, ses règles, et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Core'), G.hud.featBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions feature : une par nouvelle idée, à créer ici (touche N pour une nouvelle)', onclick: () => sideToggle('features') }, 'Features'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.docBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La documentation du jeu : à lire, à chercher ; les sessions y écrivent la leur. Et la doc Unreal Engine par thème (touche D)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal') ? null : { kind: 'docs' }, true); } }, 'Doc'), G.hud.gitBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les dépôts : l\'état git de chaque projet et ce qui se passe sur GitHub ; initialiser git dans un dossier (touche G)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'git' || G.sel.kind === 'github') ? null : { kind: 'git' }, true); } }, 'Git'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos')), prefsMenu()),
+      h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), h('nav', { class: 'us-nav', 'aria-label': 'Les bâtiments de la tour' }, G.hud.chefBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le chef : tu lui confies toutes tes demandes sur le jeu ; il vérifie, te répond, et confie les changements aux sessions core ou à une feature (touche C)', onclick: () => { if (G.side) sideToggle(G.side, false); const cs = chefSel(); if (!cs) { T.toast('Connecte d\'abord ton projet Unreal : le chef travaille dans son dossier.'); return; } select(G.sel && G.sel.kind === 'agent' && G.sel.id === cs.id ? null : cs, true); } }, 'Chef'), G.hud.conseilBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le conseil : pour un vrai choix. Cinq membres répondent chacun de leur côté, se relisent, et le président tranche (touche K)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'conseil' ? null : { kind: 'conseil' }, true); } }, 'Conseil'), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions core : une par sujet du jeu (animation, interface, menus, armes...), sa mémoire, ses règles, et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Core'), G.hud.featBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions feature : une par nouvelle idée, à créer ici (touche N pour une nouvelle)', onclick: () => sideToggle('features') }, 'Features'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.docBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La documentation du jeu : à lire, à chercher ; les sessions y écrivent la leur. Et la doc Unreal Engine par thème (touche D)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal') ? null : { kind: 'docs' }, true); } }, 'Doc'), G.hud.gitBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les dépôts : l\'état git de chaque projet et ce qui se passe sur GitHub ; initialiser git dans un dossier (touche G)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'git' || G.sel.kind === 'github') ? null : { kind: 'git' }, true); } }, 'Git'), G.hud.saveBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La sauvegarde : une copie complète de chaque projet (historique, fichiers LFS, travail pas commité, Saved/Tour) dans un dossier ou vers un dépôt (touche R)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'sauvegarde' ? null : { kind: 'sauvegarde' }, true); } }, 'Sauvegarde'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos')), prefsMenu()),
       G.hud.mode,
       G.hud.entity);
     root.replaceChildren(G.app);

@@ -422,12 +422,41 @@ function demoConseil() {
   state.conseil = { model: 'sonnet', revue: true, cadrage: true, runs: [now, done] };
 }
 
+// La sauvegarde (lib/sauvegarde.js) : CTB vers un disque externe, en pleine copie de ses fichiers LFS,
+// apres une sauvegarde reussie la veille ; la tour vers un depot GitHub ; le prototype sans destination.
+async function demoSauvegarde() {
+  const SV = require('../lib/sauvegarde');
+  const list = () => state.git.repos.map(r => ({ name: r.name, root: r.root, kind: r.kind }));
+  const sv = SV.create(state, { list, dataDir: fs.mkdtempSync(path.join(ROOT, 'data-')) });
+  await sv.refresh();
+  const lfs = { lfsFiles: 5402, lfsBytes: 21.4 * 1024 ** 3 };
+  state.sauvegardeView = () => {
+    const v = sv.view();
+    for (const p of v.projects) if (p.name === 'ConquerTheBackrooms' && p.info) Object.assign(p.info, lfs);
+    return { ...v, current: 'sv-demo-now' };
+  };
+  const ctb = state.git.repos.find(r => r.name === 'ConquerTheBackrooms').root;
+  const tower = state.git.repos.find(r => r.kind === 'tour').root;
+  const E = 'E:\\Sauvegardes';
+  state.sauvegarde.cibles[ctb.toLowerCase()] = { type: 'dossier', dest: E, at: T0 - 26 * 3600_000 };
+  state.sauvegarde.cibles[tower.toLowerCase()] = { type: 'depot', dest: 'https://github.com/Alkatrazz24/AlkatrazzTower.git', at: T0 - 26 * 3600_000 };
+  const base = { root: ctb, name: 'ConquerTheBackrooms', type: 'dossier', dest: E };
+  state.sauvegarde.runs = [
+    { ...base, id: 'sv-demo-now', startedAt: T0 - 3 * 60_000, step: 'lfs', stepText: 'Copie des fichiers LFS : 312 à copier sur 5402', progress: { done: 128, total: 312, bytes: 0.9 * 1024 ** 3, totalBytes: 2.3 * 1024 ** 3 } },
+    { id: 'sv-demo-tour', root: tower, name: 'Alkatrazz Tower', type: 'depot', dest: 'https://github.com/Alkatrazz24/AlkatrazzTower.git', startedAt: T0 - 5 * 3600_000, endedAt: T0 - 5 * 3600_000 + 9000, step: 'fini', stepText: 'Terminée', ok: true,
+      result: { head: 'c09e2525f0', branches: 1, tags: 1, stashes: 0, lfs: { files: 0, bytes: 0, copied: 0, copiedBytes: 0 }, wip: { files: 0, removed: 0, extra: 0, bytes: 0, skipped: [], commit: 'aa11bb22cc', unchanged: false }, warnings: [], size: null, verified: true } },
+    { ...base, id: 'sv-demo-hier', startedAt: T0 - 22 * 3600_000, endedAt: T0 - 22 * 3600_000 + 41 * 60_000, step: 'fini', stepText: 'Terminée', ok: true,
+      result: { head: 'b7c8d9e0f1', branches: 2, tags: 0, stashes: 1, lfs: { files: 5090, bytes: 19.1 * 1024 ** 3, copied: 5090, copiedBytes: 19.1 * 1024 ** 3 }, wip: { files: 47, removed: 2, extra: 18, bytes: 812 * 1024 ** 2, skipped: [], commit: 'e1f2a3b4c5', unchanged: false }, warnings: [], size: 19.9 * 1024 ** 3, verified: true, location: `${E}\\ConquerTheBackrooms.git` } },
+  ];
+}
+
 (async () => {
 await demoSkills();
 demoConseil();
 demoSujets();
 demoDocs();
 await demoGit();
+await demoSauvegarde();
 
 // Les chemins du dossier temporaire deviennent des chemins Windows plausibles.
 const WIN = 'C:\\Users\\Alkatrazz\\Documents\\Unreal Projects';

@@ -29,6 +29,7 @@ hooks sortent toujours en 0, sans rien dire, et `TOWER_OFF=1` coupe tout sans ri
 - [Le quartier des agents](#le-quartier-des-agents)
 - [La documentation](#la-documentation)
 - [Les dépôts : git et GitHub](#les-dépôts--git-et-github)
+- [La sauvegarde](#la-sauvegarde)
 - [La carte du projet](#la-carte-du-projet)
 - [Version à sortir : finir le jeu comme une partie](#version-à-sortir--finir-le-jeu-comme-une-partie)
 - [Plugin Unreal : la tour dans l'éditeur](#plugin-unreal--la-tour-dans-léditeur)
@@ -101,7 +102,7 @@ ailes, une par projet (ou par dossier). Au bout du couloir, la **forge** : un se
 agents qui attendent font la queue devant sa porte, puis le build part au coffre des réussis ou des
 échecs. En face, la **salle de lancement** : la version est une fusée qui monte à chaque feature prête.
 Dehors, le long de la rue, les autres bâtiments : Core, Features, Chef, Conseil, la bibliothèque des skills, le
-quartier des agents, la Documentation et les Dépôts.
+quartier des agents, la Documentation, les Dépôts et la Sauvegarde.
 
 On glisse pour se déplacer, la molette zoome, un clic ouvre une fiche ; touches 1 à 9 pour un agent,
 F la forge, V la version, 0 pour recadrer, et une touche par bâtiment (S, N, C, B, A, D, G).
@@ -438,6 +439,28 @@ dépôt, chacun sur ton clic et après confirmation : **Initialiser git** (`git 
 (`git remote add origin`, sans rien pousser) et **Récupérer de GitHub** (`git fetch`). Rien ne pousse.
 Si git n'est pas installé, la tour le dit (bâtiment et « À traiter ») avec le lien de téléchargement.
 
+## La sauvegarde
+
+Le bâtiment **Sauvegarde** (touche R), à côté des Dépôts, fait une copie complète de chaque projet ailleurs
+que sur son disque. Pour chaque projet, tu choisis où :
+
+- **un dossier** : un autre disque, un disque externe ou un dossier réseau (`\\NAS\partage`). La tour y
+  tient un dépôt git `<Projet>.git` et un `LISEZMOI` qui explique comment tout récupérer ;
+- **un dépôt git** : l'adresse d'un dépôt vide (GitHub, GitLab, un serveur), privé de préférence.
+
+Chaque sauvegarde emporte tout l'historique (branches, étiquettes, stash), tous les fichiers Git LFS, et une
+branche `tour-sauvegarde/en-cours` avec le travail pas encore commité et `Saved/Tour` (carnets, rapports,
+verdicts). Un dossier sans git est copié en entier, sauf ce qu'Unreal régénère. Dans un dossier, les 20
+dernières versions du travail en cours restent (`refs/tour-sauvegarde/`), et les fichiers LFS déjà copiés
+ne sont pas recopiés.
+
+Le projet n'est jamais modifié : ni commit, ni stash, ni index. La tour lit le projet (`git fetch` depuis
+lui, `git status --no-optional-locks`) et n'écrit que dans la destination. Vers un dépôt distant, rien n'y
+est écrasé : une branche qui y a des commits que le PC n'a pas est signalée, pas forcée ; les fichiers pas
+commités de plus de 50 Mo restent sur le PC (un dépôt distant les refuse). GitHub gratuit garde 10 Go de
+LFS : au-delà, préfère un disque. Les sauvegardes partent du bouton **Sauvegarder maintenant** ; la fiche
+montre l'étape en cours, ce qui a été copié, la taille, la vérification et les erreurs.
+
 ## La carte du projet
 
 Le projet est aussi une petite ville. La maison au centre, c'est le jeu, avec son nom, sa version
@@ -561,6 +584,7 @@ Les consignes de travail de Claude sur ce dépôt sont dans [CLAUDE.md](CLAUDE.m
 | `lib/equipe.js` | l'équipe d'un projet : ses agents rangés par section |
 | `lib/docs.js` | bâtiment Documentation : rayons, recherche, doc obligatoire, rayon Unreal par thème |
 | `lib/git.js` | bâtiment Dépôts : état git de chaque dossier suivi, GitHub, initialiser et relier |
+| `lib/sauvegarde.js` | bâtiment Sauvegarde : copie complète d'un projet dans un dossier ou vers un dépôt, sans toucher au projet |
 | `lib/inventory.js`, `web/map.js` | carte du projet : comptage des assets et dessin de la ville |
 | `lib/projects.js` | recherche et connexion des projets Unreal |
 | `lib/characters.js`, `web/avatar.js` | personnages : allure, validation, dessin en pixels |

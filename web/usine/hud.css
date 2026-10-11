@@ -487,3 +487,7 @@ h1, h2, h3, p { margin: 0; }
 .us-cs-members li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .us-cs-avis { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 8px; }
 .us-cs-avis .us-pre { font-size: 13px; margin: 4px 0 4px 10px; }
+
+/* la sauvegarde : le choix de la destination */
+.us-sv-seg { align-self: flex-start; }
+.us-sv-seg .us-segbtn[aria-pressed="true"] { background: var(--us-orange); color: var(--us-on-orange); }
