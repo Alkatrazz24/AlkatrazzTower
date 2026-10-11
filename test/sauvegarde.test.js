@@ -58,6 +58,14 @@ test('git status -z : les chemins, renommages compris', () => {
   assert.deepStrictEqual(SV.parseStatusZ(' M a.txt\0?? dossier/nouveau é.txt\0R  neuf.txt\0vieux.txt\0 D b.txt\0'), ['a.txt', 'dossier/nouveau é.txt', 'neuf.txt', 'vieux.txt', 'b.txt']);
 });
 
+test('un projet ouvert par un autre chemin (nom court Windows, lien) reste un depot git', { skip: !hasGit }, async () => {
+  const base = tmp('tower-sv-');
+  fs.mkdirSync(path.join(base, 'Long', 'Jeu'), { recursive: true });
+  git(path.join(base, 'Long', 'Jeu'), 'init', '-q');
+  try { fs.symlinkSync(path.join(base, 'Long'), path.join(base, 'COURT~1'), 'junction'); } catch { return; } // liens interdits ici
+  assert.ok((await SV.inspect(path.join(base, 'COURT~1', 'Jeu'))).isRepo);
+});
+
 test('sauvegarde dans un dossier : tout y est, le projet n\'a pas bouge', { skip: !hasGit }, async () => {
   const { base, src, data } = projet();
   const avant = empreinte(src);
