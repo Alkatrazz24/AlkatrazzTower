@@ -429,6 +429,21 @@ class TowerState {
     return true;
   }
 
+  // Les hooks sont globaux : chaque session Claude Code du PC laisse une fiche. Celles qu'on n'a plus
+  // vues depuis longtemps sont oubliees (jamais une qui tient la forge, y attend ou attend une reponse).
+  pruneAgents(maxAgeMs = 30 * 24 * 3600_000) {
+    const limit = this.now() - maxAgeMs;
+    const busy = new Set([this.lock && this.lock.sessionId, ...this.queue.map(e => e.sessionId)].filter(Boolean));
+    let n = 0;
+    for (const [id, a] of Object.entries(this.agents)) {
+      if ((a.lastSeen || a.firstSeen || 0) >= limit || busy.has(id) || a.ask) continue;
+      delete this.agents[id];
+      n++;
+    }
+    if (n) this.changed();
+    return n;
+  }
+
   label(sessionId) {
     if (String(sessionId).startsWith('editor:')) return `Editeur Unreal (${String(sessionId).slice(7)})`;
     if (String(sessionId).startsWith('verif:')) return `verif de fin de tache, ${this.label(String(sessionId).slice(6))}`;

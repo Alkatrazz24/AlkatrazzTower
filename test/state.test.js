@@ -55,3 +55,18 @@ test('le resultat va sur la fiche de l\'agent', () => {
   assert.strictEqual(s.agents.A.lastTest.ok, false);
   assert.strictEqual(s.agents.A.lastBuild, null);
 });
+
+test('les sessions plus vues depuis un mois sont oubliees, sauf celle qui tient la forge', () => {
+  const { TowerState } = require('../server/state');
+  const s = new TowerState();
+  let t = 1_000_000;
+  s.now = () => t;
+  s.event({ session_id: 'VIEILLE', hook_event_name: 'SessionStart', cwd: '/tmp' });
+  s.event({ session_id: 'FORGE', hook_event_name: 'SessionStart', cwd: '/tmp' });
+  s.acquire({ sessionId: 'FORGE', kind: 'build', command: 'Build.bat' });
+  t += 31 * 24 * 3600_000;
+  s.lock.lastSeen = t; // le build donne encore signe de vie
+  s.event({ session_id: 'RECENTE', hook_event_name: 'SessionStart', cwd: '/tmp' });
+  assert.strictEqual(s.pruneAgents(), 1);
+  assert.deepStrictEqual(Object.keys(s.agents).sort(), ['FORGE', 'RECENTE']);
+});

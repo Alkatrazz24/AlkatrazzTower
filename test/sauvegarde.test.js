@@ -167,11 +167,11 @@ test('le batiment : destination par projet, une sauvegarde a la fois, reprise ap
   const list = () => [{ name: 'Mon Jeu', root: src, kind: 'projet' }];
   const sv = SV.create(state, { list, dataDir: data });
   assert.match(sv.start(src).error, /Choisis d'abord/);
-  assert.match(sv.setTarget(src, { type: 'dossier', dest: 'Sauvegardes' }).error, /Chemin complet/);
-  assert.match(sv.setTarget(src, { type: 'dossier', dest: path.join(src, 'Saved') }).error, /dans le projet/);
-  assert.match(sv.setTarget(src, { type: 'depot', dest: '--upload-pack=calc' }).error, /Adresse de dépôt/);
-  assert.match(sv.setTarget(path.join(base, 'ailleurs'), { type: 'dossier', dest: base }).error, /pas suivi/);
-  assert.ok(sv.setTarget(src, { type: 'dossier', dest: path.join(base, 'Disque') }).ok);
+  assert.match((await sv.setTarget(src, { type: 'dossier', dest: 'Sauvegardes' })).error, /Chemin complet/);
+  assert.match((await sv.setTarget(src, { type: 'dossier', dest: path.join(src, 'Saved') })).error, /dans le projet/);
+  assert.match((await sv.setTarget(src, { type: 'depot', dest: '--upload-pack=calc' })).error, /Adresse de dépôt/);
+  assert.match((await sv.setTarget(path.join(base, 'ailleurs'), { type: 'dossier', dest: base })).error, /pas suivi/);
+  assert.ok((await sv.setTarget(src, { type: 'dossier', dest: path.join(base, 'Disque') })).ok);
   await sv.refresh();
   let v = sv.view();
   assert.strictEqual(v.projects[0].target.type, 'dossier');
@@ -179,7 +179,7 @@ test('le batiment : destination par projet, une sauvegarde a la fois, reprise ap
   const s = sv.start(src);
   assert.ok(s.ok);
   assert.match(sv.start(src).error, /déjà en cours/);
-  assert.match(sv.setTarget(src, { type: '' }).error, /en cours/);
+  assert.match((await sv.setTarget(src, { type: '' })).error, /en cours/);
   for (let i = 0; i < 200 && sv.view().current; i++) await new Promise(r => setTimeout(r, 50));
   v = sv.view();
   assert.strictEqual(v.runs[0].step, 'fini', v.runs[0].error);
@@ -213,4 +213,22 @@ test('un depot deja dans la destination, que la tour n\'a pas cree, n\'est jamai
   const dest2 = tmp('tower-sv-dest-');
   await SV.backup({ root: src, name: 'Mon Jeu', type: 'dossier', dest: dest2 }, ctxOf(data));
   await assert.rejects(SV.backup({ root: other, name: 'Mon Jeu', type: 'dossier', dest: dest2 }, ctxOf(data)), /sauvegarde d'un autre projet/);
+});
+
+test('un fichier qui disparait ou se verrouille pendant la sauvegarde est laisse de cote, pas toute la sauvegarde', { skip: !hasGit }, async () => {
+  const { base, src, data } = projet();
+  const dest = path.join(base, 'Disque');
+  const ctx = ctxOf(data);
+  let gone = false;
+  // juste avant la lecture des fichiers, un build supprime « nouveau é.txt »
+  ctx.progress = (p) => { if (!gone && p && !('bytes' in p)) { gone = true; fs.unlinkSync(path.join(src, 'nouveau é.txt')); } };
+  const r = await SV.backup({ root: src, name: 'Mon Jeu', type: 'dossier', dest }, ctx);
+  assert.ok(r.verified);
+  assert.ok(r.warnings.some(w => /verrouillé/.test(w) && /nouveau é\.txt/.test(w)), r.warnings.join("\n"));
+  assert.strictEqual(r.wip.files, 1);
+});
+
+test('une destination sur un disque absent est refusee sans attendre', { skip: process.platform !== 'win32' }, async () => {
+  const { src, data } = projet();
+  await assert.rejects(SV.backup({ root: src, name: 'Mon Jeu', type: 'dossier', dest: 'Q:\\Sauvegardes' }, ctxOf(data)), /introuvable/);
 });
