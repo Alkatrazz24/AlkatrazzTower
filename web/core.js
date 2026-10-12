@@ -527,6 +527,8 @@
   function chosen() {
     const q = params.get('t') || hashTokens.find(x => TEMPLATES.some(t => t.id === x));
     if (q && TEMPLATES.some(t => t.id === q)) return q;
+    // Une fois, a l'arrivee de l'application : elle remplace le template retenu de l'ancienne interface.
+    try { if (!localStorage.getItem('tower.appli')) { localStorage.setItem('tower.appli', '1'); localStorage.setItem('tower.template', DEFAULT); } } catch { /* stockage bloque */ }
     try { const s = localStorage.getItem('tower.template'); if (s && TEMPLATES.some(t => t.id === s)) return s; } catch { /* stockage bloque */ }
     return DEFAULT;
   }
