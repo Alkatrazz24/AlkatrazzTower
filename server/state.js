@@ -12,6 +12,8 @@ const taches = require('../lib/taches');
 const suivi = require('../lib/suivi');
 const { salleOf } = require('../lib/salles');
 const equipe = require('../lib/equipe');
+// Des noms qui designent le prototype d'un objet : jamais utilises comme cle (session, projet).
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 const sujets = require('../lib/sujets');
 const features = require('../lib/features');
 const regles = require('../lib/regles');
@@ -102,7 +104,7 @@ class TowerState {
   // ---- agents -------------------------------------------------------------------------------
 
   agent(sessionId, cwd) {
-    let a = this.agents[sessionId];
+    let a = Object.hasOwn(this.agents, sessionId) ? this.agents[sessionId] : null;
     if (!a) {
       a = this.agents[sessionId] = {
         sessionId,
@@ -132,7 +134,7 @@ class TowerState {
   }
 
   event(ev) {
-    if (!ev || typeof ev !== 'object' || !ev.session_id) return false;
+    if (!ev || typeof ev !== 'object' || !ev.session_id || UNSAFE_KEYS.has(String(ev.session_id))) return false;
     const a = this.agent(String(ev.session_id), ev.cwd);
     const t = this.now();
     a.lastSeen = t;
@@ -400,7 +402,7 @@ class TowerState {
   }
 
   setSujets(project, v) {
-    if (!project || !v) return false;
+    if (!project || !v || UNSAFE_KEYS.has(String(project))) return false;
     if (JSON.stringify(this.sujets[project]) === JSON.stringify(v)) return false;
     this.sujets[project] = v;
     this.changed();
@@ -714,7 +716,7 @@ class TowerState {
 
   // Le plugin envoie l'etat de l'editeur toutes les quelques secondes.
   editorState(b) {
-    if (!b || !b.project) return false;
+    if (!b || !b.project || UNSAFE_KEYS.has(String(b.project))) return false;
     const name = String(b.project).slice(0, 80);
     const prev = this.editors[name] || {};
     this.editors[name] = {
@@ -838,7 +840,7 @@ class TowerState {
 
   // Le hook ouvre une question : la salle passe « attend ta reponse » avec ses options.
   openAsk(req) {
-    if (!req || !req.sessionId) return null;
+    if (!req || !req.sessionId || UNSAFE_KEYS.has(String(req.sessionId))) return null;
     const a = this.agent(String(req.sessionId), req.cwd);
     const t = this.now();
     const id = `Q${++this.seq}-${t.toString(36)}`;

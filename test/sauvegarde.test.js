@@ -194,3 +194,23 @@ test('le batiment : destination par projet, une sauvegarde a la fois, reprise ap
   assert.match(st2.sauvegarde.runs[0].error, /redémarré/);
   assert.strictEqual(Object.keys(st2.sauvegarde.cibles).length, 1);
 });
+
+test('git status -z : un renommage dans l\'arbre de travail (git add -N) garde ses deux chemins', () => {
+  assert.deepStrictEqual(SV.parseStatusZ(' R src/Bar.cpp\0src/Foo.cpp\0 M a.txt\0'), ['src/Bar.cpp', 'src/Foo.cpp', 'a.txt']);
+});
+
+test('un depot deja dans la destination, que la tour n\'a pas cree, n\'est jamais touche', { skip: !hasGit }, async () => {
+  const { src } = projet();
+  const dest = tmp('tower-sv-dest-'), data = tmp('tower-sv-data-');
+  // le depot partage d'ali, au meme nom que la sauvegarde
+  const shared = path.join(dest, 'Mon Jeu.git');
+  git(dest, 'init', '-q', '--bare', shared);
+  const before = git(shared, 'for-each-ref');
+  await assert.rejects(SV.backup({ root: src, name: 'Mon Jeu', type: 'dossier', dest }, ctxOf(data)), /pas été créé par la tour/);
+  assert.strictEqual(git(shared, 'for-each-ref'), before);
+  // la sauvegarde d'un autre projet du meme nom non plus
+  const other = projet().src;
+  const dest2 = tmp('tower-sv-dest-');
+  await SV.backup({ root: src, name: 'Mon Jeu', type: 'dossier', dest: dest2 }, ctxOf(data));
+  await assert.rejects(SV.backup({ root: other, name: 'Mon Jeu', type: 'dossier', dest: dest2 }, ctxOf(data)), /sauvegarde d'un autre projet/);
+});

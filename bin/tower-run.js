@@ -30,7 +30,10 @@ function parseArgs(argv) {
   return o;
 }
 
-function say(msg) { process.stdout.write(`[tour] ${msg}\n`); }
+// Toujours en ASCII : la console PowerShell des agents ne lit pas l'UTF-8 (un titre de session ou un
+// nom de projet peut porter des accents).
+function ascii(s) { return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\u2026]/g, '...').replace(/[^\x20-\x7e\n]/g, '?'); }
+function say(msg) { process.stdout.write(`[tour] ${ascii(msg)}\n`); }
 
 function ago(ms) {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -45,12 +48,16 @@ function holderText(st) {
 }
 
 // Attend son tour. Renvoie le ticket, ou null pour lancer sans verrou.
-async function takeLock(o) {
+function lockRequest(o) {
   const project = findProject(process.cwd());
-  const req = {
+  return {
     sessionId: o.session, kind: o.kind, command: o.cmd, cwd: process.cwd(), pid: process.pid,
     target: buildTarget(o.cmd, project && project.name), testFilter: testFilter(o.cmd),
   };
+}
+
+async function takeLock(o) {
+  const req = lockRequest(o);
   let st = await post('/api/lock/acquire', req, 1500);
   if (!st) return null;
   // Le plugin de l'editeur dit ce qui s'y passe : on previent avant un echec previsible.
@@ -129,14 +136,26 @@ async function main() {
   const o = parseArgs(process.argv.slice(2));
   if (!o.cmd.trim()) { say('aucune commande a lancer.'); process.exit(2); }
 
-  const ticket = process.env.TOWER_NO_LOCK === '1' ? null : await takeLock(o);
+  let ticket = process.env.TOWER_NO_LOCK === '1' ? null : await takeLock(o);
 
   let beat = null;
   if (ticket) {
-    let warned = false;
+    let busy = false;
     beat = setInterval(async () => {
-      const r = await post('/api/lock/heartbeat', { ticket }, 2000);
-      if (r && r.ok === false && !warned) { warned = true; say('verrou perdu (la tour a redemarre ?) : le build continue.'); }
+      if (busy) return;
+      busy = true;
+      try {
+        const r = await post('/api/lock/heartbeat', { ticket }, 2000);
+        if (r && r.ok === false) {
+          // Tour redemarree pendant le build : on reprend un ticket, pour que le build suivant attende
+          // celui-ci au lieu de partir en meme temps.
+          const again = await post('/api/lock/acquire', lockRequest(o), 1500);
+          if (again && again.ticket) {
+            ticket = again.ticket;
+            say(again.granted ? 'la tour a redemarre : verrou repris, le build continue.' : 'la tour a redemarre : le build continue, ticket repris en file.');
+          }
+        }
+      } finally { busy = false; }
     }, HEARTBEAT_MS);
   }
 
@@ -188,4 +207,4 @@ if (require.main === module) {
   main().catch((e) => { say(`erreur interne : ${e.message}`); process.exit(1); });
 }
 
-module.exports = { parseArgs };
+module.exports = { parseArgs, ascii };

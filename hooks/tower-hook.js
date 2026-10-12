@@ -10,6 +10,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const RUNNER = path.join(ROOT, 'bin', 'tower-run.js');
 const BUDGET_MS = 400;
+const MAX_TOOL_MS = 600_000; // delai maximum que Claude Code accepte pour Bash et PowerShell
 
 function quit() { process.exit(0); }
 // Filet de securite : quoi qu'il arrive, on rend la main.
@@ -126,7 +127,9 @@ async function main() {
     const { classify } = require('../lib/detect');
     const hit = classify(cmd);
     if (hit) {
-      const updatedInput = Object.assign({}, ev.tool_input, { command: wrap(ev.tool_name, cmd, ev.session_id, hit.kind) });
+      // L'attente dans la file compte dans le delai de l'outil : on lui donne le maximum (10 min).
+      const timeout = Math.max(Number(ev.tool_input.timeout) || 0, MAX_TOOL_MS);
+      const updatedInput = Object.assign({}, ev.tool_input, { command: wrap(ev.tool_name, cmd, ev.session_id, hit.kind), timeout });
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', updatedInput } }), quit);
       return;
     }
