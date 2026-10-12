@@ -18,7 +18,7 @@ hooks sortent toujours en 0, sans rien dire, et `TOWER_OFF=1` coupe tout sans ri
 
 - [Ce qu'il y a dans la v0.1](#ce-quil-y-a-dans-la-v01)
 - [Installer sur un PC](#installer-sur-un-pc)
-- [La page : un bâtiment en direct](#la-page--un-bâtiment-en-direct)
+- [La page : une application de conversations](#la-page--une-application-de-conversations)
 - [Le verrou de build](#le-verrou-de-build)
 - [Tâches : lancer le travail courant](#tâches--lancer-le-travail-courant)
 - [Les questions des agents dans la tour](#les-questions-des-agents-dans-la-tour)
@@ -31,7 +31,6 @@ hooks sortent toujours en 0, sans rien dire, et `TOWER_OFF=1` coupe tout sans ri
 - [La documentation](#la-documentation)
 - [Les dépôts : git et GitHub](#les-dépôts--git-et-github)
 - [La sauvegarde](#la-sauvegarde)
-- [La carte du projet](#la-carte-du-projet)
 - [Version à sortir : finir le jeu comme une partie](#version-à-sortir--finir-le-jeu-comme-une-partie)
 - [Plugin Unreal : la tour dans l'éditeur](#plugin-unreal--la-tour-dans-léditeur)
 - [Réglages](#réglages)
@@ -94,64 +93,26 @@ n'ont rien à décider partent en arrière-plan.
 Si `hooks/` ou `scripts/install-hooks.js` ont changé, repasser `node scripts\install-hooks.js --apply`.
 Si `unreal/` a changé, fermer et rouvrir l'éditeur pour qu'Unreal recompile le plugin.
 
-## La page : un bâtiment en direct
+## La page : une application de conversations
 
-La page est un jeu de gestion qui tourne en fond, en direct, vu de dessus comme un bâtiment : chaque
-session Claude Code est une **salle**, son agent y est assis à son bureau (un personnage en pixels) et
-ses sous-agents travaillent autour d'une table. Les salles bordent un couloir et sont regroupées en
-ailes, une par projet (ou par dossier). Au bout du couloir, la **forge** : un seul build à la fois, les
-agents qui attendent font la queue devant sa porte, puis le build part au coffre des réussis ou des
-échecs. En face, la **salle de lancement** : la version est une fusée qui monte à chaque feature prête.
-Dehors, le long de la rue, les autres bâtiments : Core, Features, Chef, Conseil, la bibliothèque des skills, le
-quartier des agents, la Documentation, les Dépôts et la Sauvegarde.
+La page (<http://127.0.0.1:4777>) se lit comme une messagerie. C'est la seule interface de la tour :
+l'ancienne interface en jeu (bâtiment, salles, personnages, carte) a été retirée.
 
-On glisse pour se déplacer, la molette zoome, un clic ouvre une fiche ; touches 1 à 9 pour un agent,
-F la forge, V la version, 0 pour recadrer, et une touche par bâtiment (S, N, C, B, A, D, G).
+- **À gauche**, les conversations : le Chef et le Conseil épinglés, puis chaque session Claude Code
+  (celles qui attendent ta réponse d'abord), puis les sujets en sommeil. Écrire à un sujet en sommeil le
+  réveille. « Anciennes » remontre les sessions terminées, rangées ou sans rien de neuf depuis une heure.
+- **Au centre**, la conversation ouverte : ce que la session a fait, ses questions avec des choix
+  cliquables, et chaque demande que tu envoies, étape par étape. Entrée envoie.
+- **À droite**, ce qui t'attend, la forge (un seul build à la fois et sa file), la version à sortir et la
+  santé du projet (sauvegarde, git, doc, skills, agents, Unreal). Chaque ligne ouvre sa fiche dans un volet.
+- **Réglages** (⚙) : les projets Unreal connectés, le thème sombre ou clair.
 
-**Une fiche par session** : projet, dossier, demande, dernier outil, état (travaille, attend une
-réponse, à toi, terminé), dernier build et derniers tests (verdict, erreurs, tests ratés), tokens. La
-page dit aussi si `UnrealEditor.exe` est ouvert et montre les verrous de domaine
-`Saved/chantiers/*.txt` des projets vus.
-
-**Le nom d'une salle** dit ce qu'elle fait : le nom que tu lui as donné dans la tour, sinon la tâche
+Le nom d'une session dit ce qu'elle fait : le nom que tu lui as donné dans la tour, sinon la tâche
 lancée, le titre de la session dans Claude Code (`/rename` ou celui qu'il génère), sa première demande
-résumée, et à défaut le projet. Les **anciennes sessions** (terminées, rangées, ou sans rien de neuf
-depuis une heure) quittent le bâtiment ; « Anciennes » les remontre, « Ranger la salle » en range une à
-la main. Rien n'est effacé, et une session rangée qui reprend revient d'elle-même.
+résumée, et à défaut le projet. Rien n'est effacé : une session rangée qui reprend revient d'elle-même.
 
-### Fonctionnement et ambiance
-
-Les cinq façons de travailler ne changent pas le décor mais la façon de se servir de la tour. Le menu
-**Fonctionnement** passe de l'une à l'autre ; le choix est retenu par le navigateur. **Galerie**
-(<http://127.0.0.1:4777/galerie.html>) les compare côte à côte en captures.
-
-| Fonctionnement | Comment on s'en sert |
-| --- | --- |
-| À traiter (par défaut) | une liste de ce qui t'attend, un bouton par sujet ; liste vide, rien à faire |
-| L'équipe | une carte par agent (ce qu'il fait, depuis quand) ; la caméra suit celui qu'on choisit |
-| La version | la version à sortir pilote tout : la prochaine étape en grand, puis chaque feature et ses preuves |
-| Coup d'œil | pour un second écran : la tour en grand, une phrase qui dit l'essentiel, des notifications |
-| Au clavier | une barre de commande (`/` ou Ctrl+K) : on tape un nom ou « forge », Entrée fait l'action |
-
-Le décor se choisit à part, dans le menu **Ambiance** : Jour (par défaut), Nuit, Plan, Volcan ou
-Banquise.
-
-- `?t=equipe` dans l'adresse ouvre un fonctionnement précis, `?w=nuit` une ambiance ; `?demo` joue une
-  matinée de démonstration (`web/demo/state.json`, régénérée par `node scripts/demo-state.js`) sans
-  toucher à la tour.
-- L'ancienne page reste disponible : <http://127.0.0.1:4777/classique.html>.
-
-### Les agents sont des personnages
-
-Chaque agent est un personnage façon Minecraft, dessiné par nous. Il tape avec son outil quand il
-travaille, une bulle « ? » apparaît quand il attend ta réponse, une bulle « ! » quand il a fini. Quand il
-compile, il se tient devant la forge, et ceux qui attendent leur tour font la queue derrière.
-
-Un personnage dure plus longtemps qu'une session : la tour le redonne à l'agent suivant. Clique sur un
-personnage pour changer son nom, ses cheveux, sa tenue, son chapeau, son accessoire, son outil et ses
-couleurs, ou pour l'attacher à un rôle (titre de session, par exemple `ctb-armes`). Tu peux aussi
-demander à n'importe quel agent : « donne un casque de chantier jaune à Brique ». Le skill
-`alkatrazz-tower-personnages` lui explique l'API (`POST /api/characters/update`).
+`?demo` joue une matinée de démonstration (`web/demo/state.json`, régénérée par
+`node scripts/demo-state.js`) sans toucher à la tour.
 
 ### Tutos : voir la tour marcher sur ton projet
 
@@ -494,24 +455,6 @@ commités de plus de 50 Mo restent sur le PC (un dépôt distant les refuse). Gi
 LFS : au-delà, préfère un disque. Les sauvegardes partent du bouton **Sauvegarder maintenant** ; la fiche
 montre l'étape en cours, ce qui a été copié, la taille, la vérification et les erreurs.
 
-## La carte du projet
-
-Le projet est aussi une petite ville. La maison au centre, c'est le jeu, avec son nom, sa version
-d'Unreal et le drapeau de la version en cours. Autour, une extension par domaine : Blueprints,
-Animations, Personnages, Décors, Matériaux, Textures, Sons, Effets, Niveaux, Interface, Données, IA,
-Cinématiques, Code C++ et Tests.
-
-- **Sa taille** suit le nombre d'éléments, et son panneau l'affiche.
-- **Des échafaudages** montrent ce qui a été modifié ces 3 derniers jours (« +146 » sur le panneau).
-- **Les personnages** se tiennent devant l'extension du fichier que leur agent touche, et devant la
-  forge quand il compile.
-- **Un clic** sur une extension montre ses dossiers et ses derniers éléments modifiés ; un clic sur la
-  maison, le résumé du projet (assets, lignes de C++, classes, tests).
-
-La tour compte le projet en lisant `Content` et `Source` (lecture seule) : le type d'un asset vient de
-son préfixe (`BP_`, `AM_`, `T_`…), sinon de son dossier, sinon de l'en-tête du `.uasset`. Le comptage
-tourne dans un thread à part, se refait toutes les 10 minutes et à la demande (« Actualiser »).
-
 ## Version à sortir : finir le jeu comme une partie
 
 Le haut de la page, c'est la version que tu veux sortir (par exemple « CTB 0.3 »). Clique sur
@@ -541,7 +484,7 @@ L'API accepte aussi un texte, une feature par ligne : `Lampe torche | tests:CTB.
 Le plugin `unreal/AlkatrazzTower` (UE 5.8, Win64) relie l'éditeur à la tour : bouton **Tour** dans la
 barre d'outils et onglet avec la page, notifications (agent qui attend ta réponse, build en échec,
 compilation d'un agent, version validée), Live Coding sous le verrou de build, avertissement quand tu
-ouvres un asset qu'un agent travaille, carte du projet mise à jour à chaque asset sauvegardé. Il reste
+ouvres un asset qu'un agent travaille, comptage du projet mis à jour à chaque asset sauvegardé. Il reste
 en sommeil dans les `UnrealEditor-Cmd` des agents, et sans la tour il ne fait rien de visible. Détails
 et installation : [unreal/README.md](unreal/README.md).
 
@@ -619,15 +562,14 @@ Les consignes de travail de Claude sur ce dépôt sont dans [CLAUDE.md](CLAUDE.m
 | `lib/git.js` | bâtiment Dépôts : état git de chaque dossier suivi, GitHub, initialiser et relier |
 | `lib/modifs.js` | suivi des modifications : doc écrite, `git commit` et `git push` des sessions |
 | `lib/sauvegarde.js` | bâtiment Sauvegarde : copie complète d'un projet dans un dossier ou vers un dépôt, sans toucher au projet |
-| `lib/inventory.js`, `web/map.js` | carte du projet : comptage des assets et dessin de la ville |
+| `lib/inventory.js` | comptage des assets du projet, par domaine |
 | `lib/projects.js` | recherche et connexion des projets Unreal |
-| `lib/characters.js`, `web/avatar.js` | personnages : allure, validation, dessin en pixels |
+| `lib/characters.js` | personnages des agents (l'API reste, la page ne les dessine plus) |
 | `web/index.html`, `web/core.js`, `web/core.css` | la page : flux en direct, données, actions et dialogues communs |
-| `web/templates/` | les cinq façons de se servir de la page (`list.js` les déclare et fixe celle par défaut) et leurs captures |
-| `web/usine/` | le moteur du bâtiment, son HUD et les ambiances (`mondes/`) |
-| `web/galerie.html`, `web/demo/`, `scripts/demo-state.js` | galerie des fonctionnements et état de démonstration |
+| `web/appli/` | l'application : la page (`moteur.js`), ses fiches (`fiches.js`) et son thème (`hud.css`) |
+| `web/templates/` | `conversations.js` et `.css`, que `list.js` déclare, et leurs captures |
+| `web/demo/`, `scripts/demo-state.js` | état de démonstration |
 | `web/fonts/` | polices servies en local (SIL Open Font License) |
-| `web/classique.html` | l'ancienne page, gardée en secours |
 | `scripts/install-hooks.js` | branchement des hooks |
 | `scripts/doc-ctb.js` | écrit la règle « doc obligatoire » dans le `CLAUDE.md` et les agents d'un projet |
 | `scripts/skills-ctb.js`, `lib/skills-ctb.js` | copie dans un projet Unreal les skills des sessions de la tour et ceux de ponytail |

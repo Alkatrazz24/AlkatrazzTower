@@ -524,9 +524,6 @@
       h('div', { class: 'us-sub' }, 'Apparence'),
       h('div', { class: 'us-seg', role: 'group', 'aria-label': 'Thème' }, [['sombre', 'Sombre'], ['clair', 'Clair']].map(([v, txt]) =>
         h('button', { type: 'button', class: 'us-segbtn', 'aria-pressed': String(theme === v), onclick: () => { setTheme(v); paint(); } }, txt))),
-      h('div', { class: 'us-sub' }, 'Ancienne interface'),
-      h('p', { class: 'us-dim' }, 'La tour en jeu (carte, salles, personnages) reste là le temps de comparer. Tout ce qu\'elle montre est aussi ici.'),
-      h('div', { class: 'us-actions' }, F.btn('Ouvrir l\'ancienne interface', () => T.choose('atraiter'))),
     ];
   }
 

@@ -1,8 +1,7 @@
 'use strict';
-// Socle commun des templates de la tour : flux en direct, modele de donnees, actions, dialogues.
-// Un template ne fait que dessiner : il s'enregistre avec Tower.register({ id, render(root, M) })
-// et recoit a chaque changement le modele M deja calcule (agents, verrou, version, carte...).
-//   ?t=<id>   choisit un template (retenu dans le navigateur)
+// Socle de la page : flux en direct, modele de donnees, actions, dialogues.
+// L'application (web/appli) ne fait que dessiner : elle s'enregistre avec Tower.register({ id, render(root, M) })
+// et recoit a chaque changement le modele M deja calcule (agents, verrou, version...).
 //   ?demo     joue l'etat de demonstration web/demo/state.json, sans serveur
 
 (function () {
@@ -13,6 +12,12 @@
   const OLD_MS = 60 * 60 * 1000;
   const STATUS = { working: 'travaille', waiting: 'attend ta réponse', idle: 'a fini, à toi', ready: 'prêt', ended: 'terminé', silent: 'silencieux', sujet: 'en sommeil' };
   const KIND = { build: 'Compilation', test: 'Tests', package: 'Package', commandlet: 'Commandlet', livecoding: 'Live Coding' };
+  // Le domaine du projet que touche une session (lib/inventory.js range les assets par domaine).
+  const ROOMS = {
+    blueprints: 'Blueprints', animations: 'Animations', personnages: 'Personnages', decors: 'Décors', materiaux: 'Matériaux',
+    textures: 'Textures', sons: 'Sons', effets: 'Effets', niveaux: 'Niveaux', interface: 'Interface', donnees: 'Données', ia: 'IA',
+    cinematiques: 'Cinématiques', code: 'Code C++', tests: 'Tests', autres: 'Autres',
+  };
   const FEAT = { proven: 'Prête', progress: 'En cours', failing: 'En échec', broken: 'Cassée', todo: 'À vérifier' };
   // Reglages par l'adresse : ?demo&t=nuit, ou #demo.nuit (le # passe la ou ?... est retire).
   const params = new URLSearchParams(location.search);
@@ -85,7 +90,7 @@
   }
 
   // Etat d'interface garde d'un rendu a l'autre.
-  const ui = { showEnded: false, openBuilds: new Set(), mapProject: null, mapRoom: 'maison', journalOpen: false };
+  const ui = { showEnded: false, openBuilds: new Set(), mapProject: null, journalOpen: false };
 
   // ---------- modele ----------
   function statusOf(a) { return a.status === 'working' && now() - a.lastSeen > SILENT_MS ? 'silent' : a.status; }
@@ -138,7 +143,6 @@
   }
 
   function model() {
-    const R = window.ProjectMap ? window.ProjectMap.ROOMS : {};
     const agents = S.agents.map(a => {
       const st = statusOf(a);
       const ch = charOf(a);
@@ -155,7 +159,7 @@
         subList: Object.entries(a.subagents || {}).map(([id, v]) => ({ id, type: v.type || 'agent', section: v.section || '', lastSeen: v.lastSeen })),
         lastBuild: a.lastBuild, lastTest: a.lastTest, docs: docsOf(a), error: a.lastError,
         where: folder(a.cwd), project: a.project ? a.project.name : '', lastSeen: a.lastSeen,
-        room: a.room || null, roomName: a.room && R[a.room] ? R[a.room][0] : '',
+        room: a.room || null, roomName: (a.room && ROOMS[a.room]) || '',
         usage: a.usage || null, task: a.task || null,
         // session core (un sujet du jeu) ou feature (une nouvelle idee) : l'id de son sujet ou de sa feature
         // (ou le chef, qui recoit toutes les demandes et les confie aux autres)
@@ -275,44 +279,6 @@
     };
   }
 
-  // ---------- carte ----------
-  function peopleOn(inv) {
-    return S.agents.filter(a => a.status !== 'ended' && a.project && a.project.name === inv.project).map(a => {
-      const ch = charOf(a);
-      return { look: ch ? ch.look : {}, name: ch ? ch.name : agentName(a), state: statusOf(a), room: a.room, building: !!(S.lock && S.lock.sessionId === a.sessionId) };
-    });
-  }
-  // La carte SVG du projet ; onPick(roomId) quand on clique une extension.
-  function mapEl(inv, onPick) {
-    const camp = (S.campaigns || []).find(c => !c.archived && c.project === inv.project);
-    const box = h('div', { class: 'tw-map' });
-    box.innerHTML = window.ProjectMap.render(inv, peopleOn(inv), { campaign: camp, lockHeld: !!S.lock });
-    box.querySelectorAll('[data-room]').forEach(el => {
-      if (el.dataset.room === ui.mapRoom) el.classList.add('sel');
-      const pick = () => { ui.mapRoom = el.dataset.room; (onPick || rerender)(el.dataset.room); };
-      el.addEventListener('click', pick);
-      el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
-    });
-    return box;
-  }
-  // Les extensions d'un inventaire, triees par taille, avec leur nom et leur couleur.
-  function rooms(inv) {
-    const R = window.ProjectMap.ROOMS;
-    return Object.values(inv.rooms).filter(r => r.count).sort((a, b) => b.count - a.count)
-      .map(r => ({ ...r, name: R[r.id][0], color: R[r.id][1] }));
-  }
-  function room(inv, id) {
-    const r = inv && inv.rooms[id];
-    if (!r) return null;
-    const R = window.ProjectMap.ROOMS;
-    return { ...r, name: R[id][0], color: R[id][1], workers: peopleOn(inv).filter(p => p.room === id).map(p => p.name) };
-  }
-
-  // ---------- personnages ----------
-  function avatar(look, state, size) { return svg(window.Avatar.render(look, { state, size })); }
-  function forge(size, lit) { return svg(window.Avatar.forge(size, lit)); }
-  function youAvatar(state, size) { return avatar({ hat: 'casquette', hatColor: '#78a6ff', accessory: 'casque-audio', tool: 'clavier', shirt: '#334155' }, state, size); }
-
   // ---------- actions ----------
   const act = {
     manual: (featureId, ok) => S && model().campaign && api('/api/campaigns/manual', { id: model().campaign.id, featureId, ok }),
@@ -326,22 +292,11 @@
     refreshMap: () => { api('/api/inventory/refresh'); toast('La tour recompte le projet.'); },
     toggleEnded: (v) => { ui.showEnded = v === undefined ? !ui.showEnded : v; rerender(); },
     toggleBuild: (id) => { ui.openBuilds.has(id) ? ui.openBuilds.delete(id) : ui.openBuilds.add(id); rerender(); },
-    openChar: (id) => openChar(id),
     openProjects: () => openProjects(),
     openBuilder: () => openBuilder(),
   };
 
   // ---------- dialogues partages ----------
-  const STY = {
-    hairStyle: [['court', 'Courts'], ['long', 'Longs'], ['chauve', 'Chauve'], ['crete', 'Crête'], ['queue', 'Queue de cheval']],
-    shirtStyle: [['uni', 'T-shirt'], ['rayures', 'Rayé'], ['veste', 'Veste'], ['salopette', 'Salopette']],
-    hat: [['aucun', 'Aucun'], ['casquette', 'Casquette'], ['casque', 'Casque de chantier'], ['couronne', 'Couronne'], ['bandana', 'Bandana'], ['chapeau', 'Chapeau'], ['capuche', 'Capuche']],
-    accessory: [['aucun', 'Aucun'], ['lunettes', 'Lunettes'], ['barbe', 'Barbe'], ['masque', 'Masque'], ['casque-audio', 'Casque audio'], ['cache-oeil', 'Cache-œil']],
-    tool: [['aucun', 'Rien'], ['pioche', 'Pioche'], ['marteau', 'Marteau'], ['cle', 'Clé'], ['epee', 'Épée'], ['clavier', 'Clavier'], ['pinceau', 'Pinceau']],
-  };
-  const COL = [['skin', 'Peau'], ['hair', 'Cheveux'], ['eyes', 'Yeux'], ['shirt', 'Haut'], ['pants', 'Pantalon'], ['shoes', 'Chaussures'], ['hatColor', 'Chapeau'], ['accessoryColor', 'Accessoire']];
-  const cap = (k) => 'c' + k[0].toUpperCase() + k.slice(1);
-
   function buildDialogs() {
     const close = (id) => h('button', { type: 'button', class: 'tw-quiet', onclick: () => $(id).close() }, 'Fermer');
     document.body.append(
@@ -351,24 +306,6 @@
         h('div', { id: 'scanList', class: 'tw-scan' }),
         h('div', { class: 'tw-row' }, h('input', { id: 'projPath', class: 'tw-grow', placeholder: 'Ou colle le chemin d\'un .uproject ou de son dossier' }), h('button', { type: 'button', id: 'projPathBtn' }, 'Connecter')),
         h('div', { id: 'projErr', class: 'tw-err' })),
-      h('dialog', { id: 'charDialog', class: 'tw-dialog' },
-        h('div', { class: 'tw-dhead' }, h('h2', null, 'Personnage'), close('charDialog')),
-        h('div', { class: 'tw-editor' },
-          h('div', { class: 'tw-preview' }, h('div', { id: 'cPreview' }), h('button', { type: 'button', id: 'cRandom' }, 'Au hasard')),
-          h('div', null,
-            h('div', { class: 'tw-fields' },
-              h('label', null, 'Nom', h('input', { id: 'cName', maxlength: 32 })),
-              h('label', null, 'Rôle (titre de session, facultatif)', h('input', { id: 'cRole', maxlength: 32, placeholder: 'ex. ctb-armes' })),
-              h('label', null, 'Cheveux', h('select', { id: 'cHairStyle' })), h('label', null, 'Haut', h('select', { id: 'cShirtStyle' })),
-              h('label', null, 'Chapeau', h('select', { id: 'cHat' })), h('label', null, 'Accessoire', h('select', { id: 'cAccessory' })),
-              h('label', null, 'Outil', h('select', { id: 'cTool' })), h('label', null, 'Utilisé par cet agent', h('select', { id: 'cAssign' }))),
-            h('div', { class: 'tw-colors', id: 'cColors' }),
-            h('div', { class: 'tw-askbox' },
-              h('b', null, 'Ou demande à Claude'),
-              h('span', null, 'Dans n\'importe quelle session Claude Code, dis par exemple :'),
-              h('code', { id: 'cAsk' }),
-              h('div', { class: 'tw-row' }, h('button', { type: 'button', id: 'cCopy' }, 'Copier'), h('span', { class: 'tw-hint' }, 'Le skill « alkatrazz-tower-personnages » lui apprend à modifier le personnage.'))),
-            h('div', { class: 'tw-row' }, h('button', { type: 'button', class: 'tw-primary', id: 'cSave' }, 'Enregistrer'), h('span', { id: 'cErr', class: 'tw-err' }))))),
       h('dialog', { id: 'buildDialog', class: 'tw-dialog tw-wide' },
         h('form', { id: 'builder', autocomplete: 'off' },
           h('div', { class: 'tw-dhead' }, h('h2', null, 'Préparer une version'), h('button', { type: 'button', class: 'tw-quiet', onclick: () => $('buildDialog').close() }, 'Annuler')),
@@ -389,37 +326,6 @@
     wireDialogs();
   }
 
-  let editing = null; // { id, look, sessionId }
-  function previewChar() {
-    const look = {};
-    for (const k of Object.keys(STY)) look[k] = $(cap(k)).value;
-    for (const [k] of COL) look[k] = $('col-' + k).value;
-    editing.look = look;
-    $('cPreview').replaceChildren(avatar(look, 'working', 150));
-    const nm = $('cName').value.trim() || 'ce personnage';
-    $('cAsk').textContent = `Change le personnage « ${nm} » de la tour Alkatrazz : donne-lui ${['un casque de chantier jaune', 'une barbe rousse et une pioche', 'une tenue de pirate'][Math.floor(Math.random() * 3)]}.`;
-  }
-  function openChar(sessionId) {
-    const a = S.agents.find(x => x.sessionId === sessionId);
-    const c = a && charOf(a);
-    if (!c) return;
-    editing = { id: c.id, sessionId };
-    $('cName').value = c.name;
-    $('cRole').value = c.role || '';
-    for (const [k, opts] of Object.entries(STY)) {
-      const el = $(cap(k));
-      el.replaceChildren(...opts.map(([v, t]) => h('option', { value: v }, t)));
-      el.value = c.look[k] || opts[0][0];
-    }
-    $('cColors').replaceChildren(...COL.map(([k, t]) => h('label', null, h('input', { type: 'color', id: 'col-' + k, value: c.look[k] || '#888888' }), t)));
-    const others = Object.values(S.characters || {});
-    $('cAssign').replaceChildren(...others.map(o => h('option', { value: o.id }, o.id === c.id ? `${o.name} (celui-ci)` : o.name)), h('option', { value: '__new' }, 'Nouveau personnage'));
-    $('cAssign').value = c.id;
-    $('cErr').textContent = '';
-    previewChar();
-    if (!$('charDialog').open) $('charDialog').showModal();
-  }
-
   async function openProjects() {
     $('projErr').textContent = '';
     $('scanList').replaceChildren(h('div', { class: 'tw-hint' }, 'Recherche des projets Unreal…'));
@@ -437,10 +343,10 @@
 
   const CHECKS = [['tests', 'Ses tests d\'automatisation passent'], ['build', 'Le jeu compile'], ['manual', 'Je la teste en jeu moi-même']];
   function addFeatureRow(title = '', type = 'tests', arg = '') {
-    const name = h('input', { placeholder: 'Nom de la feature, ex. Lampe torche', value: title, 'aria-label': 'Nom de la feature' });
-    const sel = h('select', { 'aria-label': 'Comment la vérifier' }, CHECKS.map(([v, t]) => h('option', { value: v }, t)));
+    const name = h('input', { name: 'fname', placeholder: 'Nom de la feature, ex. Lampe torche', value: title, 'aria-label': 'Nom de la feature' });
+    const sel = h('select', { name: 'fcheck', 'aria-label': 'Comment la vérifier' }, CHECKS.map(([v, t]) => h('option', { value: v }, t)));
     sel.value = type;
-    const extra = h('input', { list: 'testGroups', value: arg, 'aria-label': 'Groupe de tests ou cible' });
+    const extra = h('input', { name: 'farg', list: 'testGroups', value: arg, 'aria-label': 'Groupe de tests ou cible' });
     const del = h('button', { type: 'button', class: 'tw-quiet', title: 'Retirer cette feature', 'aria-label': 'Retirer cette feature' }, '✕');
     const row = h('div', { class: 'tw-frow' }, name, sel, extra, del);
     const sync = () => {
@@ -480,24 +386,6 @@
       $('projPath').value = '';
       $('projDialog').close();
     });
-    $('charDialog').addEventListener('input', (e) => { if (e.target.id !== 'cAssign' && editing) previewChar(); });
-    $('cAssign').addEventListener('change', async () => {
-      const v = $('cAssign').value;
-      let id = v;
-      if (v === '__new') { const r = await api('/api/characters', {}); if (!r || !r.ok) return; id = r.character.id; }
-      await api('/api/agents/character', { sessionId: editing.sessionId, characterId: id });
-      setTimeout(() => openChar(editing.sessionId), 250);
-    });
-    $('cRandom').addEventListener('click', async () => {
-      const r = await api('/api/characters/update', { id: editing.id, randomize: true });
-      if (r && r.ok) setTimeout(() => openChar(editing.sessionId), 200);
-    });
-    $('cCopy').addEventListener('click', () => { try { navigator.clipboard.writeText($('cAsk').textContent); $('cCopy').textContent = 'Copié'; setTimeout(() => { $('cCopy').textContent = 'Copier'; }, 1500); } catch { /* presse-papiers refuse */ } });
-    $('cSave').addEventListener('click', async () => {
-      const r = await api('/api/characters/update', { id: editing.id, newName: $('cName').value, role: $('cRole').value, look: editing.look });
-      if (!r || !r.ok) { $('cErr').textContent = DEMO ? '' : (r && r.error) || 'La tour ne répond pas.'; return; }
-      $('charDialog').close();
-    });
     $('bProject').addEventListener('change', fillGroups);
     $('bAdd').addEventListener('click', () => addFeatureRow().focus());
     $('builder').addEventListener('submit', async (e) => {
@@ -525,35 +413,12 @@
     });
   }
 
-  // ---------- choix du template ----------
-  function chosen() {
-    const q = params.get('t') || hashTokens.find(x => TEMPLATES.some(t => t.id === x));
-    if (q && TEMPLATES.some(t => t.id === q)) return q;
-    // Une fois, a l'arrivee de l'application : elle remplace le template retenu de l'ancienne interface.
-    try { if (!localStorage.getItem('tower.appli')) { localStorage.setItem('tower.appli', '1'); localStorage.setItem('tower.template', DEFAULT); } } catch { /* stockage bloque */ }
-    try { const s = localStorage.getItem('tower.template'); if (s && TEMPLATES.some(t => t.id === s)) return s; } catch { /* stockage bloque */ }
-    return DEFAULT;
-  }
-  function choose(id) {
-    try { localStorage.setItem('tower.template', id); } catch { /* stockage bloque */ }
-    if (hashTokens.length) {
-      location.hash = [DEMO ? 'demo' : null, id].filter(Boolean).join('.');
-      location.reload();
-      return;
-    }
-    const p = new URLSearchParams(location.search);
-    p.set('t', id);
-    location.search = p.toString();
-  }
-  // Le selecteur a poser dans l'en-tete de chaque template.
-  function switcher(label = 'Apparence') {
-    const sel = h('select', { name: 'template', 'aria-label': 'Template de la tour', onchange: (e) => choose(e.target.value) },
-      TEMPLATES.map(t => h('option', { value: t.id, selected: t.id === current }, t.name)));
-    return h('label', { class: 'tw-switch' }, h('span', null, label), sel, h('a', { href: 'galerie.html', title: 'Comparer les templates' }, 'Galerie'));
-  }
+  // ---------- interface ----------
+  // Une seule : l'application « Conversations ». Les anciens choix retenus dans le navigateur sont oublies.
+  try { localStorage.removeItem('tower.template'); localStorage.removeItem('tower.appli'); } catch { /* stockage bloque */ }
 
   // ---------- rendu ----------
-  let current = chosen(), tpl = null, root = null;
+  let current = DEFAULT, tpl = null, root = null;
   function rerender() {
     if (!S || !tpl) return;
     tpl.render(root, model());
@@ -611,8 +476,8 @@
   setInterval(() => { tick++; tickTexts(); if (tick % 15 === 0) rerender(); }, 1000);
 
   window.Tower = {
-    register, h, svg, ago, dur, clock, folder, plural, lower, num, agoEl, forEl, avatar, forge, youAvatar, mapEl, rooms, room,
-    act, ui, api, toast, switcher, choose, rerender, TEMPLATES, KIND, STATUS, FEAT, get current() { return current; }, get demo() { return DEMO; },
+    register, h, svg, ago, dur, clock, folder, plural, lower, num, agoEl, forEl,
+    act, ui, api, toast, rerender, TEMPLATES, KIND, STATUS, FEAT, get current() { return current; }, get demo() { return DEMO; },
   };
   buildDialogs();
   load();

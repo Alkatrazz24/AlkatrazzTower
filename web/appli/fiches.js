@@ -1,8 +1,7 @@
 'use strict';
 // Les fiches de l'application : tout ce que la tour sait montrer et faire, hors de la carte du jeu.
-// Repris des fiches de web/usine/moteur.js (skills, agents, doc, depots, sauvegarde, conseil, chef,
-// sujets, features, taches, demandes, tutos, suivi d'une tache, questions) ; l'ancienne interface garde
-// les siennes tant qu'elle existe. web/appli/moteur.js les place dans les conversations et les feuillets.
+// Skills, agents, doc, depots, sauvegarde, conseil, chef, sujets, features, taches, demandes, tutos,
+// suivi d'une tache, questions : web/appli/moteur.js les place dans les conversations et les feuillets.
 // Ce fichier attend window.Appli.nav (ouvrir une conversation ou un feuillet, redessiner) avant d'etre utilise.
 
 (function () {
