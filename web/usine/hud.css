@@ -499,3 +499,71 @@ h1, h2, h3, p { margin: 0; }
 .us-mod .us-modat { margin-left: auto; }
 .us-mod .us-modst { font-weight: 600; }
 .us-mod .us-modst.us-t-unused { color: var(--us-muted); }
+
+/* La barre des demandes (web/usine/moteur.js, demBar) : en bas du jeu, entre les panneaux du mode et la
+   fiche. Une puce par demande qui tourne, attend ali, ou vient de finir sans qu'il l'ait vue. */
+.us-dem { position: absolute; left: var(--us-dem-l, 16px); right: var(--us-dem-r, 16px); bottom: var(--us-dem-b, 16px); z-index: 3; display: flex; justify-content: center; align-items: stretch; gap: 8px; pointer-events: none; }
+.us-dem[hidden] { display: none; }
+.us-dem > * { pointer-events: auto; }
+.us-dem-all, .us-dem-more { flex: none; display: inline-flex; align-items: center; gap: 7px; padding: 0 14px; min-height: 44px; border-radius: 999px; cursor: pointer;
+  background: var(--us-glass); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border: 1px solid var(--us-line); box-shadow: var(--us-panel-shadow);
+  color: var(--us-ink); font: 600 15px/1 var(--us-text); transition: background var(--us-ease); }
+.us-dem-all:hover, .us-dem-more:hover { background: var(--us-soft2); }
+.us-dem-all.on { background: var(--us-orange); border-color: transparent; color: var(--us-on-orange); }
+.us-dem-n { min-width: 20px; padding: 3px 6px; border-radius: 999px; background: var(--us-blue); color: #0b1824; font: 700 13px/1 var(--us-cond); text-align: center; }
+.us-dem-chip { flex: 0 1 300px; min-width: 220px; display: flex; align-items: center; gap: 2px; padding-right: 4px; border-radius: var(--us-radius);
+  background: var(--us-glass); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border: 1px solid var(--us-line); border-left: 4px solid var(--us-grey); box-shadow: var(--us-panel-shadow); }
+.us-dem-chip.us-dem-en-cours { border-left-color: var(--us-blue); }
+.us-dem-chip.us-dem-attend { border-left-color: var(--us-warn); }
+.us-dem-chip.us-dem-fini { border-left-color: var(--us-ok); }
+.us-dem-chip.us-dem-erreur { border-left-color: var(--us-ko); }
+.us-dem-main { all: unset; flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 7px 4px 7px 11px; cursor: pointer; border-radius: inherit; }
+.us-dem-main:hover .us-dem-who b { text-decoration: underline; }
+.us-dem-main:focus-visible { outline: 2px solid var(--us-orange); outline-offset: 2px; }
+.us-dem-txt { min-width: 0; display: grid; gap: 1px; }
+.us-dem-who { display: flex; align-items: baseline; gap: 7px; min-width: 0; white-space: nowrap; font-size: 14px; }
+.us-dem-who b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+.us-dem-who .us-dim { margin-left: auto; font: 500 13px/1 var(--us-cond); font-variant-numeric: tabular-nums; }
+.us-dem-st { font: 600 12px/1 var(--us-text); text-transform: uppercase; letter-spacing: .05em; color: var(--us-muted); }
+.us-dem-en-cours .us-dem-st { color: var(--us-blue); }
+.us-dem-attend .us-dem-st { color: var(--us-warn); }
+.us-dem-fini .us-dem-st { color: var(--us-ok); }
+.us-dem-erreur .us-dem-st { color: var(--us-ko); }
+.us-dem-now { font-size: 13px; line-height: 1.3; color: var(--us-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.us-dem-chip .us-x { width: 28px; height: 28px; }
+/* qui tourne pulse, qui attend ali clignote */
+.us-dem-en-cours .us-dot, .us-dem-envoyee .us-dot { animation: us-dem-pulse 1.6s ease-in-out infinite; }
+.us-dem-attend .us-dot { animation: us-blink 1.1s steps(2) infinite; }
+@keyframes us-dem-pulse { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--us-blue) 55%, transparent); } 60% { box-shadow: 0 0 0 6px transparent; } }
+
+/* Le panneau des demandes : la liste, chacune ouverte sur son parcours et son resultat. */
+.us-dems .us-ehead .us-dem-seen { flex: none; padding: 4px 10px; font-size: 13px; }
+.us-dem-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.us-dem-item { display: grid; gap: 4px; padding: 8px 10px; border-radius: var(--us-r-sm); border: 1px solid transparent; border-left: 3px solid var(--us-grey); }
+.us-dem-item.us-dem-en-cours { border-left-color: var(--us-blue); }
+.us-dem-item.us-dem-attend { border-left-color: var(--us-warn); }
+.us-dem-item.us-dem-fini { border-left-color: var(--us-ok); }
+.us-dem-item.us-dem-erreur { border-left-color: var(--us-ko); }
+.us-dem-item.on { background: var(--us-field); border-color: var(--us-line); border-left-width: 3px; }
+.us-dem-item > .us-runbtn { align-items: center; }
+.us-dem-item .us-dem-when { margin-left: auto; font: 500 13px/1 var(--us-cond); font-variant-numeric: tabular-nums; }
+.us-dem-item.us-dem-en-cours > .us-runbtn .us-dem-st { color: var(--us-blue); }
+.us-dem-item.us-dem-attend > .us-runbtn .us-dem-st { color: var(--us-warn); }
+.us-dem-item.us-dem-fini > .us-runbtn .us-dem-st { color: var(--us-ok); }
+.us-dem-item.us-dem-erreur > .us-runbtn .us-dem-st { color: var(--us-ko); }
+.us-dem-text { overflow-wrap: anywhere; white-space: pre-wrap; }
+.us-clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; white-space: normal; }
+.us-dem-phases { list-style: none; margin: 2px 0; padding: 0 0 0 10px; border-left: 2px solid var(--us-line2); display: grid; gap: 2px; font-size: 13px; color: var(--us-muted); }
+.us-dem-phases li:last-child { color: var(--us-ink); }
+.us-dem-res { display: grid; gap: 2px; padding: 8px 10px; border-radius: var(--us-r-sm); background: color-mix(in srgb, var(--us-ok) 10%, transparent); }
+.us-dem-res p { overflow-wrap: anywhere; }
+.us-dem-kids { margin-left: 4px; padding-left: 8px; border-left: 1px dashed var(--us-line2); }
+.us-dem-kids .us-dem-item { padding: 6px 8px; }
+@media (max-width: 900px) {
+  /* sur telephone, les panneaux du mode s'empilent en bas : la barre passe sous la barre du haut */
+  .us-dem { left: 8px; right: 8px; top: var(--us-top, 60px); bottom: auto; justify-content: flex-start; }
+  .us-dem-who .us-dim { display: none; }
+  .us-dem-chip { flex: 1 1 auto; min-width: 0; }
+  .us-dem-all, .us-dem-more { padding: 0 11px; }
+}
+@media (prefers-reduced-motion: reduce) { .us-dem .us-dot, .us-dem-item .us-dot { animation: none; } }

@@ -77,6 +77,8 @@ class TowerState {
     this.chef = { ask: false, envois: [] }; // le chef et ses envois (lib/chef.js)
     this.conseil = { runs: [] }; // le conseil : ses deliberations et ses reglages (lib/conseil.js)
     this.conseilView = null;     // () => ce que la page affiche du conseil, branche par le serveur
+    this.demandes = [];    // ce qu'ali envoie depuis la tour, suivi jusqu'a son resultat (lib/demandes.js)
+    this.demandesView = null; // () => les demandes en arbre, branche par le serveur
     this.regles = {};      // id de sujet ou de feature -> { action: 'oui' | 'demander' | 'non' } (lib/regles.js)
     this.docs = {};        // projet -> sa documentation : etageres, rayon Unreal (lib/docs.js), relue par le serveur
     this.docRules = { unreal: 'question' }; // quand les sessions lisent la doc Unreal : 'question' ou 'modif'
@@ -963,6 +965,7 @@ class TowerState {
       regles: Object.fromEntries([...Object.values(this.sujets).flatMap(v => (v && v.topics) || []), ...this.features, { id: chefLib.ID }].map(x => [x.id, regles.rulesOf(this.regles[x.id], this.rulesBase(x.id))])),
       chef: { ask: !!this.chef.ask, envois: this.chef.envois || [] },
       conseil: this.conseilView ? this.conseilView() : null,
+      demandes: this.demandesView ? this.demandesView() : [],
       actions: regles.ACTIONS,
       miseEnPlace: this.miseView ? this.miseView() : { budgets: [], budget: 0, current: null, queue: [], runs: this.misePlace },
     };
@@ -973,7 +976,7 @@ class TowerState {
     return {
       agents: keep(this.agents, a => !isTuto(a.sessionId)), builds: this.builds.filter(b => !isTuto(b.sessionId)), seq: this.seq,
       campaigns: this.campaigns, testGroups: this.testGroups, characters: keep(this.characters, c => !c.tuto), projects: this.projects,
-      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles, misePlace: this.misePlace, chef: this.chef, conseil: this.conseil, docRules: this.docRules, gitFollow: this.gitFollow, sauvegarde: this.sauvegarde, modifs: this.modifs,
+      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles, misePlace: this.misePlace, chef: this.chef, conseil: this.conseil, demandes: this.demandes, docRules: this.docRules, gitFollow: this.gitFollow, sauvegarde: this.sauvegarde, modifs: this.modifs,
     };
   }
 
@@ -994,6 +997,7 @@ class TowerState {
     if (saved.regles && typeof saved.regles === 'object') this.regles = saved.regles;
     if (saved.chef && typeof saved.chef === 'object') this.chef = { ask: !!saved.chef.ask, envois: Array.isArray(saved.chef.envois) ? saved.chef.envois : [] };
     if (saved.conseil && typeof saved.conseil === 'object') this.conseil = require('../lib/conseil').restore(saved.conseil);
+    if (Array.isArray(saved.demandes)) this.demandes = require('../lib/demandes').restore(saved.demandes);
     if (saved.sauvegarde && typeof saved.sauvegarde === 'object') this.sauvegarde = require('../lib/sauvegarde').restore(saved.sauvegarde);
     if (saved.modifs) this.modifs = modifs.restore(saved.modifs);
     if (Array.isArray(saved.gitFollow)) this.gitFollow = saved.gitFollow.filter(x => x && typeof x.root === 'string');
