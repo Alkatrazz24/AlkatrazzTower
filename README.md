@@ -25,6 +25,7 @@ hooks sortent toujours en 0, sans rien dire, et `TOWER_OFF=1` coupe tout sans ri
 - [Sujets, Core et Features](#sujets-core-et-features)
 - [Le chef : toutes tes demandes au même endroit](#le-chef--toutes-tes-demandes-au-même-endroit)
 - [Le conseil : pour les vrais choix](#le-conseil--pour-les-vrais-choix)
+- [Le suivi des demandes](#le-suivi-des-demandes)
 - [La bibliothèque des skills](#la-bibliothèque-des-skills)
 - [Le quartier des agents](#le-quartier-des-agents)
 - [La documentation](#la-documentation)
@@ -346,6 +347,23 @@ Le verdict s'affiche dans la fiche (les cinq avis se déplient) et s'écrit dans
 `Saved/Tour/conseil/` du projet. **Confier au chef** lui passe la décision : dans sa discussion s'il
 tourne dans la tour, sinon la tour le lance ; il vérifie, puis confie les changements aux sessions. Le
 chef, de son côté, propose le conseil quand une demande est un vrai choix.
+
+## Le suivi des demandes
+
+Tout ce que tu envoies depuis la tour devient une **demande** suivie jusqu'à son résultat : une question
+au conseil, un message au chef ou à une salle, une tâche lancée (dans une fenêtre ou en fond). Dès
+qu'elle part, une puce apparaît dans la **barre des demandes**, en bas du jeu : à qui, son état (envoyée,
+en cours, attend ta réponse, fini), ce qui se passe en ce moment (« lit Source/… », « les membres
+réfléchissent · 3 avis sur 5 »), depuis combien de temps. Une demande qui attend ta réponse passe en
+tête ; une demande finie affiche son résultat et reste là jusqu'à ce que tu cliques **Vu**.
+
+Un clic ouvre le panneau **Tes demandes** : le parcours de chaque demande heure par heure, la réponse ou
+la décision, le rapport à lire, et le bouton pour répondre, ouvrir la discussion ou voir le conseil. Ce
+que le chef confie aux sessions pendant ta demande s'y range en dessous : la demande n'est finie que
+quand les sessions ont fini aussi (leur ligne au tableau pour « Chef » sert de réponse).
+
+Le chef et les sessions suivent les mêmes demandes dans `Saved/Tour/demandes.md`, que la tour réécrit ;
+le chef le lit avant chaque demande.
 
 ## La bibliothèque des skills
 

@@ -312,22 +312,34 @@ const taches = require('../lib/taches').create(state);
 // Fin de tache : la tour compile et lance les tests elle-meme (lib/verif.js).
 const verif = require('../lib/verif').create(state);
 // Discuter avec une session depuis la tour (lib/discussion.js) : chaque message relance la session sans fenetre.
-const discussion = require('../lib/discussion').create(state, { launchEnv: require('../lib/taches').launchEnv });
+const discussion = require('../lib/discussion').create(state, { launchEnv: require('../lib/taches').launchEnv, onTurn: (e) => demandes.turn(e) });
+// Le suivi des demandes (lib/demandes.js) : ce qu'ali envoie depuis la tour, suivi jusqu'a son resultat.
+// La discussion ne lui parle qu'une fois un message parti : il est cree juste apres elle.
+const demandes = require('../lib/demandes').create(state, {
+  conseilRun: (id) => ((state.conseil && state.conseil.runs) || []).find(r => r.id === id),
+  envoiOf: (id) => ((state.chef && state.chef.envois) || []).find(e => e.id === id),
+  busy: (sid) => discussion.busy(sid),
+});
+state.demandesView = demandes.tree;
+// relue a chaque changement (sans en provoquer un), et toutes les 5 s pour ce qui depend de l'heure
+state.onChange(() => { demandes.refresh(); });
+setInterval(() => { if (demandes.refresh()) state.changed(); }, 5000).unref();
+setInterval(() => demandes.writeFiles(state.projects), 10_000).unref();
 // Mise en place des sessions core (lib/miseenplace.js) : un sujet apres l'autre, en fond et en lecture seule.
 const misePlace = require('../lib/miseenplace').create(state, discussion, { projectFor: (n) => projectFor(n) });
 state.miseView = misePlace.view;
 // Le chef (lib/chef.js) : ses envois deposes dans Saved/Tour/chef/envois/, transmis aux sessions core ou feature.
-const chef = require('../lib/chef').create(state, discussion, { projectFor: (n) => projectFor(n), prepare: (o) => taches.prepare(o) });
+const chef = require('../lib/chef').create(state, discussion, { projectFor: (n) => projectFor(n), prepare: (o) => taches.prepare(o), onEnvoi: (e, tag) => demandes.onEnvoi(e, tag) });
 setInterval(() => { try { chef.scan(); } catch (e) { console.error('[tower] envois du chef :', e.message); } }, 10_000).unref();
 // Le conseil (lib/conseil.js) : cinq membres deliberent sur un vrai choix, le president tranche. ali peut
 // confier la decision au chef : dans sa discussion s'il tourne dans la tour, sinon la tour le lance.
-function toChef(p, text) {
+function toChef(p, text, { tag } = {}) {
   const live = chef.liveOf('chef');
-  if (live && discussion.canChat(live)) { const r = discussion.send(live.sessionId, text); return r.ok ? { ok: true, sessionId: live.sessionId } : r; }
+  if (live && discussion.canChat(live)) { const r = discussion.send(live.sessionId, text, { tag }); return r.ok ? { ok: true, sessionId: live.sessionId } : r; }
   if (live) return { ok: false, error: 'Le chef tourne dans sa fenêtre : ferme-la pour lui écrire depuis la tour, ou colle-lui le verdict.' };
   const r = taches.prepare({ id: 'chef', project: p });
   if (!r.ok) return r;
-  return discussion.start({ cwd: p.root, text: `${r.ask}\n\n${text}`, def: 'chef' });
+  return discussion.start({ cwd: p.root, text: `${r.ask}\n\n${text}`, def: 'chef', tag });
 }
 const conseil = require('../lib/conseil').create(state, { projectFor: (n) => projectFor(n), launchEnv: require('../lib/taches').launchEnv, toChef, dataDir: DATA_DIR });
 state.conseilView = conseil.view;
@@ -450,13 +462,24 @@ const routes = {
   'POST /api/ask/close': (b) => ({ ok: state.closeAsk(String(b.id || '')) }),
   'POST /api/agents/rename': (b) => ({ ok: state.renameRoom(String(b.sessionId || ''), b.label) }),
   'GET /api/chat': (b, url) => discussion.read(String(url.searchParams.get('session') || ''), Math.min(200, Number(url.searchParams.get('n')) || 60)),
-  'POST /api/chat/send': (b) => discussion.send(String(b.sessionId || ''), b.text),
+  'POST /api/chat/send': (b) => {
+    const sid = String(b.sessionId || ''), tag = demandes.newTag();
+    const r = discussion.send(sid, b.text, { tag });
+    if (r.ok) {
+      const a = state.agents[sid] || {}, isChef = !!(a.task && a.task.id === 'chef');
+      demandes.add({ id: tag, kind: isChef ? 'chef' : 'discussion', to: isChef ? 'Chef' : demandes.roomOf(sid), text: b.text, project: a.project ? a.project.name : '', ref: { tag, session: sid } });
+    }
+    return r;
+  },
   'POST /api/chat/stop': (b) => discussion.stop(String(b.sessionId || '')),
   // Une tache ou un sujet dans une discussion de la tour plutot que dans une fenetre.
   'POST /api/chat/start': (b) => {
     const r = taches.prepare({ id: b.id, project: projectFor(b.project) });
     if (!r.ok) return r;
-    return discussion.start({ cwd: r.project.root, text: r.ask, def: r.task.id });
+    const tag = demandes.newTag();
+    const s = discussion.start({ cwd: r.project.root, text: r.ask, def: r.task.id, tag });
+    if (s.ok) demandes.add({ id: tag, kind: r.task.id === 'chef' ? 'chef' : 'discussion', to: r.task.title, text: r.task.text || r.task.title, project: r.project.name, ref: { tag, session: s.sessionId } });
+    return s;
   },
   'POST /api/miseenplace': (b) => misePlace.start({ ids: b.ids, budget: b.budget }),
   'POST /api/miseenplace/stop': () => misePlace.stop(),
@@ -464,10 +487,27 @@ const routes = {
   'POST /api/chef/envoi': (b) => chef.decide(String(b.id || ''), b.go !== false),
   'POST /api/chef/ask': (b) => chef.setAsk(!!b.ask),
   // Le conseil : poser une question, l'arreter, ses reglages, et confier son verdict au chef.
-  'POST /api/conseil': (b) => { const r = conseil.ask({ question: b.question, project: b.project, model: b.model, revue: b.revue, cadrage: b.cadrage }); return r.ok ? { ok: true, id: r.id } : r; },
+  'POST /api/conseil': (b) => {
+    const r = conseil.ask({ question: b.question, project: b.project, model: b.model, revue: b.revue, cadrage: b.cadrage });
+    if (!r.ok) return r;
+    const run = state.conseil.runs.find(x => x.id === r.id);
+    demandes.add({ kind: 'conseil', to: 'Conseil', text: run ? run.question : b.question, project: run ? run.project : '', ref: { conseil: r.id } });
+    return { ok: true, id: r.id };
+  },
   'POST /api/conseil/stop': () => conseil.stop(),
   'POST /api/conseil/reglages': (b) => conseil.settings({ model: b.model, revue: b.revue, cadrage: b.cadrage }),
-  'POST /api/conseil/chef': (b) => conseil.chef(String(b.id || '')),
+  'POST /api/conseil/chef': (b) => {
+    const id = String(b.id || ''), tag = demandes.newTag();
+    const r = conseil.chef(id, { tag });
+    if (r && r.ok) {
+      const run = state.conseil.runs.find(x => x.id === id) || {};
+      const parent = (state.demandes || []).find(d => d.ref.conseil === id);
+      demandes.add({ id: tag, kind: 'chef', to: 'Chef', text: `Mettre en œuvre le verdict du conseil : ${run.decision || run.question || ''}`, project: run.project || '', parent: parent ? parent.id : '', ref: { tag, session: r.sessionId } });
+    }
+    return r;
+  },
+  // Le suivi des demandes : ali a vu une demande finie (ou toutes) ; elle quitte la barre.
+  'POST /api/demandes/vu': (b) => demandes.seen(b.id ? String(b.id) : ''),
   // Sessions feature : une nouvelle idee, creee depuis la tour, puis lancee en discussion (ou dans une fenetre).
   'POST /api/features': (b) => {
     const p = projectFor(b.project);
@@ -624,7 +664,12 @@ const server = http.createServer(async (req, res) => {
   if (key === 'POST /api/tasks/launch') {
     const b = await readBody(req);
     if (!b) return send(res, 400, { error: 'JSON invalide' });
-    const r = await taches.launch({ id: b.id, project: projectFor(b.project), background: !!b.background }).catch(e => ({ ok: false, error: e.message }));
+    const p = projectFor(b.project);
+    const r = await taches.launch({ id: b.id, project: p, background: !!b.background }).catch(e => ({ ok: false, error: e.message }));
+    if (r && r.ok) {
+      const t = taches.find(r.task) || { title: r.task };
+      demandes.add({ kind: 'tache', to: t.title, text: t.text || t.title, project: p ? p.name : '', ref: { task: r.task, background: !!r.background } });
+    }
     return send(res, 200, r);
   }
 

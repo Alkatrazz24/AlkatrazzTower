@@ -1482,7 +1482,7 @@
     });
     if (G.keysBound) return; // la fenetre et le clavier ne s'abonnent qu'une fois, meme si on revient sur ce template
     G.keysBound = true;
-    window.addEventListener('resize', () => { if (G.canvas.isConnected) { resize(); G.dirty = true; } });
+    window.addEventListener('resize', () => { if (G.canvas.isConnected) { resize(); G.dirty = true; if (G.M) renderHud(); } });
     document.addEventListener('keydown', (e) => {
       if (!G.canvas.isConnected || document.querySelector('dialog[open]')) return;
       if (MODE.onKey && MODE.onKey(e, api)) { e.preventDefault(); return; }
@@ -3333,6 +3333,107 @@
           : h('p', { class: 'us-dim' }, 'Rien de compté aujourd\'hui. La tour lit les journaux de Claude Code à chaque action des agents.')));
   }
 
+  // ---------- les demandes (lib/demandes.js) ----------
+  // Tout ce qu'ali envoie depuis la tour (au conseil, au chef, a une salle, une tache) : une barre en bas
+  // du jeu des que ca part, son etat en direct, et son resultat. Elle quitte la barre quand ali l'a vue finie.
+  const demUi = { open: null, states: null };
+  const DEM_DOT = { envoyee: 'grey', 'en-cours': 'blue', attend: 'warn', fini: 'ok', erreur: 'ko', arretee: 'grey' };
+  const DEM_RANK = { attend: 0, 'en-cours': 1, envoyee: 1, fini: 2, erreur: 2, arretee: 3 };
+  const demsOf = (M) => (M && M.S && M.S.demandes) || [];
+  const demFinal = (x) => x.state === 'fini' || x.state === 'erreur' || x.state === 'arretee';
+  const demSort = (a, b) => (DEM_RANK[a.state] - DEM_RANK[b.state]) || (b.at - a.at);
+  const demBarList = (M) => demsOf(M).filter(x => !demFinal(x) || !x.seenAt).sort(demSort);
+  const demLine = (s, n) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
+  // Ou en est une demande, en une ligne : l'etape, ce qui se passe, ou le resultat.
+  function demNow(x) {
+    if (x.state === 'fini') return x.result && x.result.text ? x.result.text : 'fini';
+    if (x.state === 'attend') return x.live || x.phase;
+    if (demFinal(x)) return x.phase;
+    return x.live ? `${x.phase} · ${x.live}` : x.phase;
+  }
+  function openDem(id) { demUi.open = id; if (G.side !== 'demandes') sideToggle('demandes', true); else renderHud(); }
+  const demSeen = (id) => T.api('/api/demandes/vu', id ? { id } : {});
+
+  function demBar(M, room) {
+    const all = demsOf(M);
+    if (!all.length) return [];
+    const list = demBarList(M), live = all.filter(x => !demFinal(x)).length;
+    // autant de puces que la place le permet (une puce lisible fait 240 px), trois au plus
+    const shown = list.slice(0, Math.max(window.innerWidth > 900 ? 0 : 1, Math.min(3, Math.floor((room - 200) / 250))));
+    const chip = (x) => h('div', { class: `us-dem-chip us-dem-${x.state}` },
+      h('button', { type: 'button', class: 'us-dem-main', onclick: () => openDem(x.id), title: `${x.to} : ${demLine(x.text, 300)}` },
+        h('span', { class: `us-dot us-d-${DEM_DOT[x.state]}` }),
+        h('span', { class: 'us-dem-txt' },
+          h('span', { class: 'us-dem-who' }, h('b', null, x.to), h('span', { class: 'us-dem-st' }, x.stateText), demFinal(x) ? h('span', { class: 'us-dim' }, T.clock(x.doneAt)) : T.forEl(x.at, 'span', { class: 'us-dim' })),
+          h('span', { class: 'us-dem-now' }, demLine(demNow(x), 120)))),
+      demFinal(x) ? btn('Vu', () => demSeen(x.id), 'us-x', { 'aria-label': `Vu : retirer « ${x.to} » de la barre`, title: 'Vu : la demande quitte la barre (elle reste dans la liste)' }) : null);
+    return [
+      h('button', { type: 'button', class: `us-dem-all${G.side === 'demandes' ? ' on' : ''}`, 'aria-expanded': String(G.side === 'demandes'), onclick: () => sideToggle('demandes'), title: 'Toutes tes demandes et leur suivi' },
+        'Demandes', live ? h('span', { class: 'us-dem-n' }, String(live)) : null),
+      shown.map(chip),
+      list.length > shown.length ? h('button', { type: 'button', class: 'us-dem-more', onclick: () => sideToggle('demandes', true) }, `+${list.length - shown.length}`) : null,
+    ];
+  }
+
+  // Une demande dans la liste : son etat, puis ouverte, son parcours, son resultat, ce qu'elle a confie.
+  function demCard(M, x, depth = 0) {
+    const open = demUi.open === x.id;
+    const ag = x.ref && x.ref.session ? M.agents.find(a => a.id === x.ref.session) : null;
+    const goAgent = () => { sideToggle('demandes', false); select({ kind: 'agent', id: ag.id }, true); };
+    const acts = [];
+    if (x.state === 'attend' && x.kind === 'envoi' && x.phase === 'attend ta validation') acts.push(btn('Valider dans le bâtiment du chef', () => { const cs = chefSel(); sideToggle('demandes', false); if (cs) select(cs, true); }, 'us-go'));
+    else if (x.status === 'attend' && ag) acts.push(btn('Répondre', goAgent, 'us-go'));
+    if (x.ref && x.ref.conseil) acts.push(btn(x.status === 'fini' ? 'Lire le verdict' : 'Voir le conseil', () => { sideToggle('demandes', false); select({ kind: 'conseil' }, true); }));
+    if (x.result && x.result.file && ag && ag.raw.task) acts.push(btn('Lire le rapport', () => fileView(x.to, x.result.file, `/api/tasks/file?session=${encodeURIComponent(ag.id)}&path=${encodeURIComponent(x.result.file)}`)));
+    if (ag && canChat(ag)) acts.push(btn('Ouvrir la discussion', () => chatDialog(ag.id)));
+    else if (ag && x.status !== 'attend') acts.push(btn('Voir la salle', goAgent));
+    if (!demFinal(x) && x.ref && x.ref.conseil && x.status !== 'fini') acts.push(btn('Arrêter', () => T.api('/api/conseil/stop'), 'us-danger', M.demo ? { disabled: true } : {}));
+    else if (!demFinal(x) && x.status !== 'fini' && ag && ag.raw.chat && ag.raw.chat.busy && x.status === 'en-cours') acts.push(btn('Arrêter', () => T.api('/api/chat/stop', { sessionId: ag.id }), 'us-danger', M.demo ? { disabled: true } : { title: 'Arrête ce que fait la session : elle garde son historique' }));
+    if (!depth && demFinal(x) && !x.seenAt) acts.push(btn('Vu', () => demSeen(x.id)));
+    const res = x.result || {};
+    return h('li', { class: `us-dem-item us-dem-${x.state}${open ? ' on' : ''}` },
+      h('button', { type: 'button', class: 'us-runbtn', 'aria-expanded': String(open), onclick: () => { demUi.open = open ? null : x.id; renderHud(); } },
+        h('span', { class: `us-dot us-d-${DEM_DOT[x.state]}` }), h('b', null, x.to), h('span', { class: `us-dem-st` }, x.stateText),
+        h('span', { class: 'us-dim us-dem-when' }, demFinal(x) ? T.clock(x.doneAt) : T.forEl(x.at))),
+      h('p', { class: open ? 'us-dem-text' : 'us-dem-text us-clamp' }, x.text),
+      !demFinal(x) ? h('p', { class: x.state === 'attend' ? 'us-t-warn' : 'us-dim' }, demNow(x)) : null,
+      open ? [
+        h('ol', { class: 'us-dem-phases', 'aria-label': 'Son parcours' }, (x.phases || []).map(p => h('li', null, h('span', { class: 'us-time' }, T.clock(p.at)), ' ', p.text))),
+        x.status === 'fini' && res.text ? h('div', { class: 'us-dem-res' }, h('b', null, x.ref && x.ref.conseil ? 'Décision' : 'Réponse'), h('p', null, res.text)) : null,
+        x.status === 'erreur' || x.status === 'arretee' ? h('p', { class: 'us-t-ko' }, x.phase) : null,
+        res.file ? h('p', { class: 'us-dim us-path' }, res.file) : null,
+        res.questions && res.questions.length ? [h('b', null, 'Ses questions pour toi'), h('ul', { class: 'us-suivi-list' }, res.questions.map(q => h('li', null, q)))] : null,
+        acts.length ? h('div', { class: 'us-actions' }, acts) : null,
+      ] : null,
+      x.children && x.children.length ? [h('small', { class: 'us-dim' }, `Confié pendant la demande : ${T.plural(x.children.length, 'envoi', 'envois')}`),
+        h('ul', { class: 'us-dem-list us-dem-kids' }, x.children.map(k => demCard(M, k, depth + 1)))] : null);
+  }
+
+  function demandesPanel(M) {
+    const all = demsOf(M).slice().sort(demSort);
+    const live = all.filter(x => !demFinal(x)), done = all.filter(demFinal).sort((a, b) => b.doneAt - a.doneAt).slice(0, 20);
+    if (demUi.open === null && live[0]) demUi.open = live[0].id;
+    const unseen = done.some(x => !x.seenAt);
+    return h('section', { class: 'us-panel us-entity us-dems', 'aria-label': 'Demandes' },
+      h('div', { class: 'us-ehead' }, h('h2', null, 'Tes demandes'), unseen ? btn('Tout vu', () => demSeen(''), 'us-dem-seen', M.demo ? { disabled: true } : { title: 'Retire de la barre toutes les demandes finies' }) : null,
+        btn('Fermer', () => sideToggle('demandes', false), 'us-x', { 'aria-label': 'Fermer les demandes', title: 'Échap' })),
+      h('div', { class: 'us-ebody' },
+        h('p', { class: 'us-dim' }, 'Ce que tu envoies depuis la tour (au conseil, au chef, à une salle, une tâche) : où ça en est, en direct, et le résultat. Le chef et les sessions le lisent dans Saved/Tour/demandes.md.'),
+        h('div', { class: 'us-sub' }, `En cours${live.length ? ` · ${live.length}` : ''}`),
+        live.length ? h('ul', { class: 'us-dem-list' }, live.map(x => demCard(M, x))) : h('p', { class: 'us-dim' }, 'Rien ne tourne. Pose une question au conseil, écris au chef ou à une salle : la demande apparaît en bas de l\'écran dès qu\'elle part.'),
+        done.length ? [h('div', { class: 'us-sub' }, 'Finies'), h('ul', { class: 'us-dem-list' }, done.map(x => demCard(M, x)))] : null));
+  }
+
+  // Une demande qui finit pendant qu'ali regarde ailleurs : un mot en bas de l'ecran.
+  function demNotice(M) {
+    const now = new Map(demsOf(M).map(x => [x.id, x.state]));
+    if (demUi.states) for (const x of demsOf(M)) {
+      const was = demUi.states.get(x.id);
+      if (was && was !== x.state && (demFinal(x) || x.state === 'attend')) T.toast(x.state === 'attend' ? `${x.to} attend ta réponse.` : `${x.to} : ${x.stateText}.`);
+    }
+    demUi.states = now;
+  }
+
   function sideToggle(which, on) {
     const open = on === undefined ? G.side !== which : on;
     if (!open && G.side !== which) return;
@@ -3384,7 +3485,7 @@
     const M = G.M; if (!M) return;
     G.hud.chips.replaceChildren(...chips(M).filter(Boolean));
     G.hud.res.replaceChildren(...(MODE.counters ? counters(M) : []));
-    const ent = G.side === 'tuto' ? tutoPanel(M) : G.side === 'taches' ? tachesPanel(M) : G.side === 'sujets' ? sujetsPanel(M) : G.side === 'features' ? featuresPanel(M) : G.side === 'equipe' ? equipePanel(M) : entityPanel(M);
+    const ent = G.side === 'tuto' ? tutoPanel(M) : G.side === 'demandes' ? demandesPanel(M) : G.side === 'taches' ? tachesPanel(M) : G.side === 'sujets' ? sujetsPanel(M) : G.side === 'features' ? featuresPanel(M) : G.side === 'equipe' ? equipePanel(M) : entityPanel(M);
     // La fiche est refaite a chaque nouvelle donnee : on garde l'endroit ou on l'avait fait defiler.
     const was = G.hud.entity.firstChild, view = was && ent && ent.getAttribute('aria-label') === was.getAttribute('aria-label') ? snapView(G.hud.entity) : null;
     // un champ de la fiche en cours de saisie (la recherche de la doc) garde le focus et le curseur
@@ -3398,6 +3499,14 @@
     // Un mode peut rendre les memes noeuds d'une fois sur l'autre (un champ de saisie garde alors son focus).
     const nodes = (MODE.hud ? MODE.hud(M, api) : []).filter(Boolean);
     if (!same(nodes, [...G.hud.mode.children])) { const back = snapView(G.hud.mode); G.hud.mode.replaceChildren(...nodes); back(); }
+    // La barre des demandes, entre les panneaux du mode et la fiche (leurs bords : MODE.pads), au-dessus
+    // d'un panneau du mode pose en bas sur toute la largeur (les cartes de « L'équipe »).
+    { const wide = window.innerWidth > 900, P = wide && MODE.pads ? MODE.pads(!!G.sel || !!G.side) : { l: 16, r: 16, b: 16 };
+      let b = wide ? Math.max(16, P.b) : 8;
+      for (const el of G.hud.mode.children) { const r = el.getBoundingClientRect(); if (r.height && r.bottom > window.innerHeight - 40 && r.width > window.innerWidth / 2) b = Math.max(b, Math.ceil(window.innerHeight - r.top + 10)); }
+      G.hud.dem.style.setProperty('--us-dem-l', `${Math.max(16, P.l)}px`); G.hud.dem.style.setProperty('--us-dem-r', `${Math.max(16, P.r)}px`); G.hud.dem.style.setProperty('--us-dem-b', `${b}px`);
+      const bar = demBar(M, window.innerWidth - (wide ? Math.max(16, P.l) + Math.max(16, P.r) : 16));
+      G.hud.dem.replaceChildren(...bar.flat().filter(Boolean)); G.hud.dem.hidden = !bar.length; }
     const none = !G.world || !G.world.machines.length;
     if (none) G.hud.empty.replaceChildren(h('p', null, M.projects.length ? 'Aucune session ouverte. Lance Claude Code (ou une tâche) : sa salle apparaît ici, avec son personnage et ses sous-agents.' : 'Connecte ton projet Unreal (bouton en haut), puis lance Claude Code : chaque session aura sa salle ici.'));
     G.hud.empty.hidden = !none;
@@ -3445,11 +3554,13 @@
       chips: h('span', { class: 'us-chips' }), res: h('div', { class: 'us-res', 'aria-label': 'Compteurs' }),
       mode: h('div', { class: 'us-hud' }), entity: h('div', { class: 'us-entitybox' }), empty: h('div', { class: 'us-emptymap' }),
       tip: h('div', { class: 'us-tip', hidden: true, 'aria-hidden': 'true' }),
+      dem: h('div', { class: 'us-dem', role: 'region', 'aria-label': 'Tes demandes en cours', hidden: true }),
     };
     G.app = h('div', { class: `us-app us-m-${MODE.id}` },
       h('div', { class: 'us-stage' }, G.canvas, G.hud.empty, G.hud.tip),
       h('header', { class: 'us-top' }, h('span', { class: 'us-brand' }, 'Alkatrazz Tower'), h('span', { class: 'us-sub2' }, MODE.name), G.hud.chips, G.hud.res, h('span', { class: 'us-grow' }), h('nav', { class: 'us-nav', 'aria-label': 'Les bâtiments de la tour' }, G.hud.chefBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le chef : tu lui confies toutes tes demandes sur le jeu ; il vérifie, te répond, et confie les changements aux sessions core ou à une feature (touche C)', onclick: () => { if (G.side) sideToggle(G.side, false); const cs = chefSel(); if (!cs) { T.toast('Connecte d\'abord ton projet Unreal : le chef travaille dans son dossier.'); return; } select(G.sel && G.sel.kind === 'agent' && G.sel.id === cs.id ? null : cs, true); } }, 'Chef'), G.hud.conseilBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le conseil : pour un vrai choix. Cinq membres répondent chacun de leur côté, se relisent, et le président tranche (touche K)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'conseil' ? null : { kind: 'conseil' }, true); } }, 'Conseil'), G.hud.sujetBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions core : une par sujet du jeu (animation, interface, menus, armes...), sa mémoire, ses règles, et le tableau partagé (touche S)', onclick: () => sideToggle('sujets') }, 'Core'), G.hud.featBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions feature : une par nouvelle idée, à créer ici (touche N pour une nouvelle)', onclick: () => sideToggle('features') }, 'Features'), G.hud.oldBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les sessions terminées, rangées ou sans rien de neuf depuis une heure', onclick: () => T.act.toggleEnded() }, 'Anciennes'), G.hud.taskBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Relecture, anomalies, idées de features, et tes propres tâches ; tokens de chaque session', onclick: () => sideToggle('taches') }, 'Tâches'), G.hud.teamBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les agents de ton projet, par section (animation, interface, menus...)', onclick: () => sideToggle('equipe') }, 'Équipe'), G.hud.skillBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La bibliothèque : tous les skills installés, s\'ils marchent et s\'ils servent (touche B)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'skills' ? null : { kind: 'skills' }, true); } }, 'Skills'), G.hud.agentBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Le quartier des agents : tous les agents que Claude Code peut appeler, leur fichier, leurs skills, et ce qu\'ils ont fait (touche A)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'roster' ? null : { kind: 'roster' }, true); } }, 'Agents'), G.hud.docBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La documentation du jeu : à lire, à chercher ; les sessions y écrivent la leur. Et la doc Unreal Engine par thème (touche D)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'docs' || G.sel.kind === 'unreal') ? null : { kind: 'docs' }, true); } }, 'Doc'), G.hud.gitBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Les dépôts : l\'état git de chaque projet et ce qui se passe sur GitHub ; initialiser git dans un dossier (touche G)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && (G.sel.kind === 'git' || G.sel.kind === 'github') ? null : { kind: 'git' }, true); } }, 'Git'), G.hud.saveBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'La sauvegarde : une copie complète de chaque projet (historique, fichiers LFS, travail pas commité, Saved/Tour) dans un dossier ou vers un dépôt (touche R)', onclick: () => { if (G.side) sideToggle(G.side, false); select(G.sel && G.sel.kind === 'sauvegarde' ? null : { kind: 'sauvegarde' }, true); } }, 'Sauvegarde'), G.hud.tutoBtn = h('button', { type: 'button', class: 'us-chip2 us-tutobtn', title: 'Des scénarios courts pour voir chaque partie de la tour marcher sur ton projet', onclick: () => tutoToggle() }, 'Tutos')), prefsMenu()),
       G.hud.mode,
+      G.hud.dem,
       G.hud.entity);
     root.replaceChildren(G.app);
     // La barre du haut passe sur deux lignes quand la fenetre est etroite : les panneaux se placent dessous.
@@ -3473,6 +3584,7 @@
     if (!G.userMoved && (!prev || prev.w !== G.world.w)) fit();
     if (MODE.follow && G.sel && !G.drag) center(G.sel);
     G.dirty = true;
+    demNotice(M);
     renderHud();
     refreshChat(false);
   }

@@ -450,6 +450,36 @@ async function demoSauvegarde() {
   ];
 }
 
+// Le suivi des demandes (lib/demandes.js) : ce qu'ali a envoye depuis la tour, ecrit tel que le serveur le
+// garde. Une question au conseil qui delibere, deux messages a des salles (l'une attend sa reponse), une
+// demande au chef finie dont un envoi travaille et l'autre attend sa validation, une relecture finie.
+function demoDemandes() {
+  const D = require('../lib/demandes');
+  const P = 'ConquerTheBackrooms';
+  const m = (min) => T0 + min * 60_000;
+  const d = (id, min, o) => ({ id, at: m(min), kind: 'discussion', to: 'Session', text: '', project: P, ref: {}, parent: '', status: 'en-cours', phase: 'prise en charge', live: '', phases: [{ at: m(min), text: 'envoyée' }, { at: m(min), text: 'prise en charge' }], result: null, doneAt: 0, seenAt: 0, ...o });
+  const fini = (min) => ({ status: 'fini', phase: 'fini', doneAt: m(min), live: '' });
+  state.demandes = [
+    d('d-demo-lampe', -2, { kind: 'conseil', to: 'Conseil', text: 'Lampe torche : batterie à recharger, ou lumière infinie mais qui attire les entités ?', ref: { conseil: 'c-demo-lampe' }, phase: 'relecture croisée',
+      phases: [{ at: m(-2), text: 'envoyée' }, { at: m(-2), text: 'cadre la question' }, { at: m(-1.6), text: 'les membres réfléchissent' }, { at: m(-0.7), text: 'relecture croisée' }] }),
+    d('d-demo-armes', -10, { to: 'Armes', text: 'Le test FusilPompe échoue : la recharge cartouche par cartouche ne s\'interrompt pas quand on tire. Corrige puis relance les tests Munitions.', ref: { tag: 'd-demo-armes', session: 's-armes' }, live: 'modifie Weapons/CTBAmmoComponent.cpp' }),
+    d('d-demo-ia', -12, { to: 'IA', text: 'Les tests CTB.IA.Ecoute et Abandon échouent depuis le changement du rayon d\'écoute. Trouve pourquoi.', ref: { tag: 'd-demo-ia', session: 's-ia' }, status: 'attend', phase: 'attend ta réponse',
+      live: 'Odile veut supprimer BT_Stalker_old.uasset et deux Blackboards qui ne servent plus. Tu autorises ?', phases: [{ at: m(-12), text: 'envoyée' }, { at: m(-12), text: 'prise en charge' }, { at: m(-4), text: 'attend ta réponse' }] }),
+    d('d-demo-chef', -14, { kind: 'chef', to: 'Chef', text: 'Le rechargement ne joue pas en jeu, et j\'ai importé des assets dans Content/Characters/New : tu peux regarder ?', ref: { tag: 'd-demo-chef', session: 's-chef' }, ...fini(-11),
+      phases: [{ at: m(-14), text: 'envoyée' }, { at: m(-14), text: 'prise en charge' }, { at: m(-11), text: 'fini' }],
+      result: { text: 'Le montage A_Arms_Reload n\'a pas de slot UpperBody : j\'ai confié la correction au sujet Animation. Les assets de Content/Characters/New sont bien rangés ; deux textures sont en 8K.', session: 's-chef' } }),
+    d('d-demo-envoi-anim', -12, { kind: 'envoi', to: 'Animation', parent: 'd-demo-chef', text: 'Le rechargement ne joue pas : le montage A_Arms_Reload n\'a pas de slot UpperBody. Ajoute le slot ou change le slot du montage, puis dis-moi au tableau ce que tu as fait.', ref: { envoi: 'e-demo--12', tag: 'envoi:e-demo--12' }, live: 'lit Animations/ABP_Arms.uasset' }),
+    d('d-demo-envoi-ui', -11, { kind: 'envoi', to: 'Interface', parent: 'd-demo-chef', text: 'Les deux textures 8K importées dans Content/Characters/New : passe-les en 2K et vérifie que le HUD n\'en souffre pas.', ref: { envoi: 'e-demo--11', tag: 'envoi:e-demo--11' }, status: 'attend', phase: 'attend ta validation', live: 'dans le bâtiment du chef : Envoyer ou Ignorer', phases: [{ at: m(-11), text: 'envoyée' }, { at: m(-11), text: 'attend ta validation' }] }),
+    d('d-demo-relecture', -95, { kind: 'tache', to: 'Relecture complète et rapport', text: 'Relit tout le jeu (code, Blueprints, niveaux, config) et écrit un rapport, sans rien modifier.', ref: { task: 'relecture', session: 's-test' }, ...fini(-31),
+      phases: [{ at: m(-95), text: 'envoyée' }, { at: m(-95), text: 'prise en charge' }, { at: m(-31), text: 'fini' }],
+      result: { text: 'Rapport écrit : le jeu compile, 662 tests verts, un rouge connu (CTB.Ragdoll). Les 10 actions les plus utiles sont en fin de rapport.', file: 'Saved/Tour/rapports/relecture-2026-10-09.md', questions: ['On garde le SAS au badge ?'], session: 's-test' } }),
+    d('d-demo-sas', -50, { kind: 'conseil', to: 'Conseil', text: 'La porte du SAS doit-elle pouvoir s\'ouvrir d\'un coup de pied, comme les portes des parcelles ?', ref: { conseil: 'c-demo-sas' }, ...fini(-46), phase: 'verdict rendu', seenAt: m(-40),
+      phases: [{ at: m(-50), text: 'envoyée' }, { at: m(-50), text: 'cadre la question' }, { at: m(-49), text: 'les membres réfléchissent' }, { at: m(-47), text: 'relecture croisée' }, { at: m(-46.5), text: 'le président tranche' }, { at: m(-46), text: 'verdict rendu' }],
+      result: { text: 'Non : la porte du SAS reste fermée au coup de pied, elle s\'ouvre au badge.', file: 'Saved/Tour/conseil/2026-10-09-11-10-la-porte-du-sas.md' } }),
+  ];
+  state.demandesView = D.create(state).tree;
+}
+
 (async () => {
 await demoSkills();
 demoConseil();
@@ -457,6 +487,7 @@ demoSujets();
 demoDocs();
 await demoGit();
 await demoSauvegarde();
+demoDemandes();
 
 // Les chemins du dossier temporaire deviennent des chemins Windows plausibles.
 const WIN = 'C:\\Users\\Alkatrazz\\Documents\\Unreal Projects';
