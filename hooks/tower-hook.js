@@ -17,7 +17,8 @@ setTimeout(quit, 1500).unref();
 process.on('uncaughtException', quit);
 process.on('unhandledRejection', quit);
 
-// Garde seulement ce que la tour affiche : pas de contenu de fichier, pas de reponse d'outil. Le chemin
+// Garde seulement ce que la tour affiche : pas de contenu de fichier, pas de reponse d'outil (sauf le
+// debut de la sortie d'un git commit ou d'un git push). Le chemin
 // du journal (transcript_path) sert a compter les tokens : la tour le lit elle-meme, hors du hook.
 function slim(ev) {
   // Heure de l'evenement : les hooks asynchrones peuvent arriver dans le desordre.
@@ -39,6 +40,13 @@ function slim(ev) {
       const opts = Array.isArray(q.options) ? q.options.map(o => (o && typeof o.label === 'string' ? o.label : '')).filter(Boolean) : [];
       out.tool_input.question = (q.question + (opts.length ? ` (${opts.join(' / ')})` : '')).slice(0, 500);
     }
+  }
+  // Un git commit ou un git push : la tour garde le debut de sa sortie (sha, branche, resultat du push)
+  // pour le suivi des modifications (lib/modifs.js). Rien d'autre de la reponse d'un outil.
+  if ((ev.tool_name === 'Bash' || ev.tool_name === 'PowerShell') && ti && typeof ti.command === 'string' && /\bgit\b[^\n]*\b(commit|push)\b/i.test(ti.command)) {
+    const r = ev.tool_response;
+    const text = typeof r === 'string' ? r : r && typeof r === 'object' ? ['stdout', 'stderr', 'output'].map(k => (typeof r[k] === 'string' ? r[k] : '')).filter(Boolean).join('\n') : '';
+    if (text) out.git_out = text.slice(0, 1500);
   }
   // Les agents travaillent les assets par MCP ou par scripts Python, pas en editant le .uasset :
   // on releve les chemins /Game/... cites dans l'appel, pour prevenir l'humain qui ouvre le meme.
