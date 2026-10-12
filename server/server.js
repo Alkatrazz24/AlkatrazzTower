@@ -180,6 +180,35 @@ function gitList() {
 const gitTrack = gitLib.create({ list: gitList, publish: (v) => state.setGit(v) });
 const gitSafe = (p) => p.catch(e => { console.error('[tower] git illisible :', e.message); return null; });
 
+// Le suivi des modifications (lib/modifs.js) : un git commit ou un git push d'une session arrive par
+// les hooks ; la tour retrouve son depot parmi ceux qu'elle suit, lit les fichiers du commit (git show,
+// sans rien ecrire) et relit les depots pour que « pousse ou pas » soit a jour.
+const modifsLib = require('../lib/modifs');
+const realOf = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
+async function completeGit(entries) {
+  let push = false;
+  for (const e of entries) {
+    try {
+      const top = e.cwd ? await gitLib.run(['rev-parse', '--show-toplevel'], e.cwd, { timeout: 5000 }) : null;
+      const root = top && top.ok && top.out.trim() ? path.resolve(top.out.trim()) : '';
+      if (!root) continue;
+      const it = gitList().find(x => realOf(x.root).toLowerCase() === realOf(root).toLowerCase());
+      e.root = it ? it.root : root;
+      e.repo = it ? it.name : path.basename(root);
+      if (e.kind === 'push') { push = true; continue; }
+      if (e.state !== 'ok' && e.state !== 'unknown') continue;
+      const c = await modifsLib.commitInfo(gitLib.run, root, e.state === 'ok' ? e.short : 'HEAD');
+      // sortie inconnue (ancien hook) : HEAD n'est ce commit que s'il vient d'etre fait et n'est pas deja note
+      if (!c || (e.state === 'unknown' && (c.ct < e.at - 120_000 || state.modifs.some(x => x !== e && x.sha === c.sha)))) continue;
+      Object.assign(e, { state: 'ok', sha: c.sha, short: c.short, subject: e.subject || c.subject, count: c.count, list: c.list });
+      if (e.files == null) e.files = c.count;
+    } catch (err) { console.error('[tower] suivi git :', err.message); }
+  }
+  state.changed();
+  await gitSafe(gitTrack.refresh({ withGithub: push }));
+}
+state.onGit = (entries) => { completeGit(entries).catch(() => { /* le complement est un bonus */ }); };
+
 // Le batiment de la sauvegarde (lib/sauvegarde.js) : les memes dossiers que les depots. Chaque projet a
 // sa destination (un dossier sur un autre disque, ou un depot distant) ; une sauvegarde part d'un clic.
 const sauvegarde = require('../lib/sauvegarde').create(state, { list: gitList, dataDir: DATA_DIR });

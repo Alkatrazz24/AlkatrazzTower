@@ -439,6 +439,21 @@ dépôt, chacun sur ton clic et après confirmation : **Initialiser git** (`git 
 (`git remote add origin`, sans rien pousser) et **Récupérer de GitHub** (`git fetch`). Rien ne pousse.
 Si git n'est pas installé, la tour le dit (bâtiment et « À traiter ») avec le lien de téléchargement.
 
+## Le suivi des modifications
+
+Les bâtiments **Documentation** et **Dépôts** partagent un même journal, « Suivi des modifications » :
+
+- **doc** : chaque page de `docs/` (ou skill du projet) qu'une session ou un agent écrit, avec qui l'a
+  écrite, les fichiers du jeu qu'elle couvre, si c'est la tour qui l'a réclamée (doc en retard), et si
+  elle est déjà dans un commit ;
+- **commits** : chaque `git commit` lancé par une session, avec son sha, sa branche, ses fichiers (lus par
+  `git show`) dont ses pages de doc, et s'il est parti : sur GitHub, poussé, pas encore poussé, ou resté
+  sur le PC faute de dépôt distant. Les commits faits hors d'une session suivie apparaissent aussi ;
+- **push** : chaque `git push`, avec sa destination et son résultat (envoyé, déjà à jour, refusé, échoué).
+
+Le hook ne garde de la réponse d'un outil que le début de la sortie d'un `git commit` ou d'un `git push`
+(1 500 caractères). Le journal garde les 300 dernières entrées, et survit aux redémarrages.
+
 ## La sauvegarde
 
 Le bâtiment **Sauvegarde** (touche R), à côté des Dépôts, fait une copie complète de chaque projet ailleurs
@@ -584,6 +599,7 @@ Les consignes de travail de Claude sur ce dépôt sont dans [CLAUDE.md](CLAUDE.m
 | `lib/equipe.js` | l'équipe d'un projet : ses agents rangés par section |
 | `lib/docs.js` | bâtiment Documentation : rayons, recherche, doc obligatoire, rayon Unreal par thème |
 | `lib/git.js` | bâtiment Dépôts : état git de chaque dossier suivi, GitHub, initialiser et relier |
+| `lib/modifs.js` | suivi des modifications : doc écrite, `git commit` et `git push` des sessions |
 | `lib/sauvegarde.js` | bâtiment Sauvegarde : copie complète d'un projet dans un dossier ou vers un dépôt, sans toucher au projet |
 | `lib/inventory.js`, `web/map.js` | carte du projet : comptage des assets et dessin de la ville |
 | `lib/projects.js` | recherche et connexion des projets Unreal |

@@ -17,6 +17,7 @@ const features = require('../lib/features');
 const regles = require('../lib/regles');
 const chefLib = require('../lib/chef');
 const docsLib = require('../lib/docs');
+const modifs = require('../lib/modifs');
 
 // Agents des tutos (lib/tuto.js) : jamais sauvegardes, jamais comptes pour une version.
 const isTuto = (id) => String(id || '').startsWith('tuto-');
@@ -79,6 +80,8 @@ class TowerState {
     this.regles = {};      // id de sujet ou de feature -> { action: 'oui' | 'demander' | 'non' } (lib/regles.js)
     this.docs = {};        // projet -> sa documentation : etageres, rayon Unreal (lib/docs.js), relue par le serveur
     this.docRules = { unreal: 'question' }; // quand les sessions lisent la doc Unreal : 'question' ou 'modif'
+    this.modifs = [];      // le suivi des modifications : doc ecrite, git commit, git push, les plus recents d'abord (lib/modifs.js)
+    this.onGit = null;     // (entrees) => void : un commit ou un push vient d'arriver, le serveur le complete (git show)
     this.git = null;       // le batiment des depots : git installe ?, l'etat de chaque depot suivi (lib/git.js)
     this.sauvegarde = { cibles: {}, runs: [] }; // le batiment de la sauvegarde : destination de chaque projet, sauvegardes faites (lib/sauvegarde.js)
     this.sauvegardeView = null; // () => ce que la page affiche de la sauvegarde, branche par le serveur
@@ -136,7 +139,14 @@ class TowerState {
     // le dernier pris en compte.
     // La doc obligatoire suit chaque ecriture, meme arrivee en retard : la fin du tour en depend.
     // Seulement sur un projet connecte a la tour : une session ailleurs n'est jamais retenue.
-    if (this.isConnected(a.project)) docsLib.track(a, ev, t);
+    if (this.isConnected(a.project)) {
+      const T = a.docTrack, sub = ev.agent_id ? String(ev.agent_id) : null;
+      const before = T ? { pending: [...T.pending], owed: T.owed, sub: sub && T.subs[sub] ? { pending: [...T.subs[sub].pending] } : null } : null;
+      if (docsLib.track(a, ev, t) === 'doc') modifs.docEntry(this.modifs, a, ev, a.docTrack.written[0].rel, before, salleOf(a), t);
+    }
+    // Le suivi des modifications : chaque git commit et git push d'une session, quel que soit le projet.
+    const made = modifs.gitEntries(this.modifs, a, ev, salleOf(a), t);
+    if (made.length && this.onGit) { try { this.onGit(made); } catch { /* le complement est un bonus */ } }
     const ts = Number(ev.ts) || t;
     if (a.eventTs && ts < a.eventTs) { this.changed(); return true; }
     a.eventTs = ts;
@@ -947,6 +957,7 @@ class TowerState {
       docs: this.docs,
       docRules: this.docRules,
       git: this.git,
+      modifs: modifs.view(this.modifs),
       sauvegarde: this.sauvegardeView ? this.sauvegardeView() : null,
       features: this.features.map(f => ({ ...f, notes: this.featureNotes[f.id] || null })),
       regles: Object.fromEntries([...Object.values(this.sujets).flatMap(v => (v && v.topics) || []), ...this.features, { id: chefLib.ID }].map(x => [x.id, regles.rulesOf(this.regles[x.id], this.rulesBase(x.id))])),
@@ -962,7 +973,7 @@ class TowerState {
     return {
       agents: keep(this.agents, a => !isTuto(a.sessionId)), builds: this.builds.filter(b => !isTuto(b.sessionId)), seq: this.seq,
       campaigns: this.campaigns, testGroups: this.testGroups, characters: keep(this.characters, c => !c.tuto), projects: this.projects,
-      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles, misePlace: this.misePlace, chef: this.chef, conseil: this.conseil, docRules: this.docRules, gitFollow: this.gitFollow, sauvegarde: this.sauvegarde,
+      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles, misePlace: this.misePlace, chef: this.chef, conseil: this.conseil, docRules: this.docRules, gitFollow: this.gitFollow, sauvegarde: this.sauvegarde, modifs: this.modifs,
     };
   }
 
@@ -984,6 +995,7 @@ class TowerState {
     if (saved.chef && typeof saved.chef === 'object') this.chef = { ask: !!saved.chef.ask, envois: Array.isArray(saved.chef.envois) ? saved.chef.envois : [] };
     if (saved.conseil && typeof saved.conseil === 'object') this.conseil = require('../lib/conseil').restore(saved.conseil);
     if (saved.sauvegarde && typeof saved.sauvegarde === 'object') this.sauvegarde = require('../lib/sauvegarde').restore(saved.sauvegarde);
+    if (saved.modifs) this.modifs = modifs.restore(saved.modifs);
     if (Array.isArray(saved.gitFollow)) this.gitFollow = saved.gitFollow.filter(x => x && typeof x.root === 'string');
     if (saved.docRules && docsLib.UNREAL_MODES.includes(saved.docRules.unreal)) this.docRules = { unreal: saved.docRules.unreal };
     // une mise en place en cours ou en file est partie avec l'ancienne tour

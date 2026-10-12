@@ -491,3 +491,11 @@ h1, h2, h3, p { margin: 0; }
 /* la sauvegarde : le choix de la destination */
 .us-sv-seg { align-self: flex-start; }
 .us-sv-seg .us-segbtn[aria-pressed="true"] { background: var(--us-orange); color: var(--us-on-orange); }
+
+/* Le suivi des modifications (Documentation et Depots) : une ligne par doc ecrite, commit ou push. */
+.us-mod .us-modt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.us-mod small { white-space: normal; overflow-wrap: anywhere; }
+.us-mod .us-modt { flex: 1 1 auto; }
+.us-mod .us-modat { margin-left: auto; }
+.us-mod .us-modst { font-weight: 600; }
+.us-mod .us-modst.us-t-unused { color: var(--us-muted); }

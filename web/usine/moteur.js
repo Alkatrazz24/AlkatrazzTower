@@ -2233,7 +2233,6 @@
     const read = (rel, title) => docView(D.project, rel, title, M);
     const all = Object.keys((M.S && M.S.docs) || {});
     const debts = docDebts(M), late = debts.filter(d => d.owed), busy = debts.filter(d => !d.owed);
-    const written = M.agents.filter(a => a.raw && a.raw.docTrack).flatMap(a => a.raw.docTrack.written.map(w => ({ ...w, a }))).sort((x, y) => y.at - x.at).slice(0, 8);
     const input = h('input', { type: 'search', class: 'us-docq', name: 'docq', 'data-keep': 'docq', value: docUi.q, placeholder: 'Chercher (ex. porte, réplication)', 'aria-label': 'Chercher dans la doc',
       oninput: (e) => { docUi.q = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); docSearch(M); } } });
     const R = docUi.results;
@@ -2257,8 +2256,7 @@
           h('button', { type: 'button', class: 'us-runbtn', onclick: () => select({ kind: 'agent', id: d.a.id }, true) }, h('span', { class: 'us-dot us-d-ko' }), h('b', null, d.a.salle), h('span', { class: 'us-skst us-t-ko' }, d.owed.asked ? 'la tour lui fait écrire' : 'a fini sans l\'écrire')),
           h('small', { class: 'us-dim' }, `${T.plural(d.files.length, 'fichier modifié', 'fichiers modifiés')} : ${d.files.slice(-3).map(f => f.split('/').pop()).join(', ')}`))))] : null,
       busy.length ? h('p', { class: 'us-dim' }, `En cours : ${busy.map(d => d.a.salle).join(', ')} ${busy.length > 1 ? 'ont' : 'a'} modifié le jeu ; la doc vient avant la fin de leur tour.`) : null,
-      written.length ? [h('div', { class: 'us-sub' }, 'Écrit par les sessions'),
-        h('ul', { class: 'us-list' }, written.map(w => h('li', null, h('button', { type: 'button', class: 'us-link', onclick: () => read(w.rel, w.rel.split('/').pop()) }, w.rel), ' ', h('span', { class: 'us-dim' }, `par ${w.by || w.a.name} (« ${w.a.salle} »), `, T.agoEl(w.at)))))] : null,
+      modifsBlock(M, 'docs'),
       D.shelves.map(sh => {
         const open = docUi.open.has(sh.id);
         return h('div', { class: 'us-shelf' },
@@ -2287,6 +2285,115 @@
         h('ul', { class: 'us-doclist' }, sh.files.slice(0, 60).map(f => h('li', null, h('button', { type: 'button', class: 'us-link', onclick: () => docView(D.project, f.rel, f.title, M) }, f.title))))])] : null,
       D && D.engineDir ? [h('div', { class: 'us-sub' }, 'Signatures exactes'), h('p', { class: 'us-dim' }, 'Les en-têtes du moteur installé font foi : ', h('code', { class: 'us-path' }, `${D.engineDir}\\Engine\\Source`), '.')] : null,
       h('div', { class: 'us-actions' }, btn('Doc du jeu', () => select({ kind: 'docs' }, true))),
+    ];
+  }
+
+  // ---------- le suivi des modifications (lib/modifs.js) ----------
+  // Un seul journal pour les deux batiments : chaque page de doc ecrite par une session ou un agent,
+  // chaque git commit et chaque git push, avec qui, quand, et ou ca en est (commite ? pousse ?).
+  // La Documentation l'ouvre sur la doc, les Depots sur git ; les puces passent de l'un a l'autre.
+  const modUi = { filter: { docs: 'doc', git: 'git' }, more: { docs: false, git: false }, open: new Set() };
+  const samePath = (a, b) => !!a && !!b && String(a).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase() === String(b).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const baseName = (f) => String(f || '').split('/').pop();
+  const isDocFile = (f) => /^(docs\/.+|\.claude\/skills\/.+)\.(md|markdown|txt)$/i.test(f || '');
+  function repoOfRoot(M, root) { const Gt = gitOf(M); return Gt && root ? Gt.repos.find(r => samePath(r.root, root)) || null : null; }
+  // Un commit est-il parti ? GitHub le montre, ou un push reussi l'a suivi ; sinon il attend sur le PC.
+  function pushedOf(M, c) {
+    if (c.state !== 'ok') return null;
+    const r = repoOfRoot(M, c.root);
+    if (r && r.remote && r.remote.ok && c.short && r.remote.commits.some(k => k.sha.startsWith(c.short))) return ['ok', 'sur GitHub'];
+    if ((M.S.modifs || []).some(e => e.kind === 'push' && e.at >= c.at && samePath(e.root, c.root) && (e.state === 'ok' || e.state === 'uptodate'))) return ['ok', 'poussé'];
+    if (r && r.isRepo && !(r.remotes || []).length) return ['unused', 'reste sur le PC (pas de dépôt distant)'];
+    if (r && r.isRepo) return ['warn', 'pas encore poussé'];
+    return null;
+  }
+  // Une page de doc : deja dans un commit, ou encore dans les fichiers pas commites.
+  function docStateOf(M, e) {
+    if (e.commit) {
+      const c = (M.S.modifs || []).find(x => x.kind === 'commit' && x.short === e.commit.short && samePath(x.root, e.root));
+      const p = c && pushedOf(M, c);
+      return [p && p[0] === 'warn' ? 'warn' : 'ok', `commitée (${e.commit.short})${p ? `, ${p[1]}` : ''}`];
+    }
+    const r = repoOfRoot(M, e.root);
+    if (r && r.dirty && r.dirty.files.some(f => f.path === e.rel)) return ['warn', 'pas encore commitée'];
+    if (r && !r.isRepo) return ['unused', 'pas de git dans ce projet'];
+    return null;
+  }
+  // Qui : la salle (la session dans la tour), et l'agent quand c'est lui.
+  function byWho(M, e) {
+    const a = M.agents.find(x => x.id === e.sessionId);
+    const name = a ? a.salle : e.salle || 'une session';
+    return [e.sub ? `l'agent ${e.sub} de ` : '', a ? h('button', { type: 'button', class: 'us-link', onclick: () => select({ kind: 'agent', id: a.id }, true) }, `« ${name} »`) : `« ${name} »`];
+  }
+  function modRow(M, e) {
+    const key = e.id || `${e.kind}:${e.sha || e.short}`, isOpen = modUi.open.has(key);
+    const toggle = () => { if (isOpen) modUi.open.delete(key); else modUi.open.add(key); renderHud(); };
+    const repo = e.repo || e.project || '';
+    let dot, title, tone, state, details = [];
+    if (e.kind === 'doc') {
+      const st = docStateOf(M, e);
+      dot = 'blue'; title = [h('b', null, baseName(e.rel)), ` ${e.tool === 'Write' ? 'écrite' : 'mise à jour'}`];
+      [tone, state] = st || ['unused', ''];
+      details = [
+        h('small', null, 'Par ', byWho(M, e), e.n > 1 ? `, ${e.n} fois` : '', e.asked ? ', ' : '', e.asked ? h('span', { class: 'us-t-warn' }, 'à la demande de la tour (doc en retard)') : '', '. ',
+          h('button', { type: 'button', class: 'us-link', onclick: () => docView(e.project, e.rel, baseName(e.rel), M) }, 'Lire')),
+        e.covers && e.covers.length ? h('small', { class: 'us-dim' }, `Couvre ${T.plural(e.covers.length, 'fichier du jeu', 'fichiers du jeu')} : ${e.covers.slice(-4).map(baseName).join(', ')}${e.covers.length > 4 ? '…' : ''}`) : null,
+        isOpen ? h('small', { class: 'us-dim us-path' }, e.rel) : null];
+    } else if (e.kind === 'commit' || e.kind === 'ext') {
+      const p = pushedOf(M, { ...e, state: e.kind === 'ext' ? 'ok' : e.state });
+      dot = e.state === 'error' ? 'ko' : 'ok';
+      title = [h('b', null, 'Commit'), e.short ? [' ', h('code', null, e.short)] : '', ` ${e.subject ? `« ${e.subject} »` : ''}`];
+      [tone, state] = e.state === 'error' ? ['ko', 'échoué'] : e.state === 'unknown' ? ['unused', 'résultat inconnu'] : p || ['unused', ''];
+      const docs = (e.list || []).filter(isDocFile).length;
+      details = [
+        isOpen && e.subject ? h('small', null, h('b', null, e.subject)) : null,
+        h('small', null, e.kind === 'ext' ? `Par ${e.author || '?'}, hors d'une session suivie` : ['Par ', byWho(M, e)], repo ? ` dans ${repo}` : '', e.branch ? `, branche ${e.branch}` : '',
+          e.files != null ? `, ${T.plural(e.files, 'fichier', 'fichiers')}` : '', docs ? ` dont ${T.plural(docs, 'page de doc', 'pages de doc')}` : '', e.amend ? ' (amend)' : '', '.'),
+        e.error ? h('small', { class: 'us-t-ko' }, e.error) : null,
+        isOpen && e.list && e.list.length ? h('ul', { class: 'us-doclist' }, e.list.map(f => h('li', { class: isDocFile(f) ? '' : 'us-dim' }, isDocFile(f) && e.project
+          ? h('button', { type: 'button', class: 'us-link', onclick: () => docView(e.project, f, baseName(f), M) }, f) : h('span', { class: 'us-path' }, f))), e.count > e.list.length ? h('li', { class: 'us-dim' }, `… et ${e.count - e.list.length} autres`) : null) : null];
+    } else {
+      const ok = e.state === 'ok' || e.state === 'uptodate';
+      dot = ok ? 'ok' : e.state === 'unknown' ? 'warn' : 'ko';
+      const dest = [e.remote, e.ref].filter(Boolean).join(' ') || (e.refs && e.refs[0] ? e.refs[0].to : '');
+      title = [h('b', null, 'Push'), dest ? ` vers ${dest}` : '', e.force ? ' (forcé)' : ''];
+      [tone, state] = e.state === 'ok' ? ['ok', 'envoyé'] : e.state === 'uptodate' ? ['ok', 'déjà à jour'] : e.state === 'rejected' ? ['ko', 'refusé'] : e.state === 'error' ? ['ko', 'échoué'] : ['unused', 'résultat inconnu'];
+      details = [
+        h('small', null, 'Par ', byWho(M, e), repo ? ` depuis ${repo}` : '', e.to ? ', vers ' : '', e.to ? h('span', { class: 'us-path' }, e.to) : '', '.'),
+        e.refs && e.refs.length ? h('small', { class: 'us-dim' }, e.refs.map(r => `${r.from} → ${r.to}${r.what === 'new' ? ' (nouvelle branche)' : r.range ? ` (${r.range})` : ''}${r.what === 'rejected' ? ` refusé${r.why ? ` : ${r.why}` : ''}` : ''}`).join(' · ')) : null,
+        e.error && e.state !== 'rejected' ? h('small', { class: 'us-t-ko' }, e.error) : null,
+        e.state === 'rejected' ? h('small', { class: 'us-dim' }, 'GitHub a des commits que le PC n\'a pas : il faut d\'abord les récupérer (git pull), puis repousser.') : null];
+    }
+    return h('li', { class: 'us-task us-doc us-mod' },
+      h('button', { type: 'button', class: 'us-runbtn', 'aria-expanded': String(isOpen), onclick: toggle },
+        h('span', { class: `us-dot us-d-${dot}` }), h('span', { class: 'us-modt' }, title), h('span', { class: 'us-dim us-scope us-modat' }, T.agoEl(e.at))),
+      state ? h('small', { class: `us-modst us-t-${tone}` }, state) : null,
+      details);
+  }
+  // Le journal vu d'un batiment : place = 'docs' ou 'git'.
+  function modifsBlock(M, place) {
+    const all = M.S.modifs || [];
+    const f = modUi.filter[place];
+    const known = new Set(all.filter(e => e.kind === 'commit' && e.short).map(e => e.short));
+    // les commits faits hors des sessions suivies (ali dans un terminal, un outil) : lus dans les depots
+    const Gt = gitOf(M), oldest = all.length ? all[all.length - 1].at : 0;
+    const ext = f === 'doc' ? [] : ((Gt && Gt.repos) || []).flatMap(r => (r.commits || []).filter(k => !known.has(k.short) && k.at >= oldest - 1000)
+      .map(k => ({ kind: 'ext', id: `ext:${r.root}:${k.short}`, at: k.at, short: k.short, sha: k.sha, subject: k.subject, author: k.author, root: r.root, repo: r.name, state: 'ok' })));
+    const list = [...all, ...ext].filter(e => f === 'tout' || (f === 'doc' ? e.kind === 'doc' : e.kind !== 'doc')).sort((a, b) => b.at - a.at);
+    const shown = list.slice(0, modUi.more[place] ? 40 : 8);
+    const n = (k) => all.filter(e => k === 'doc' ? e.kind === 'doc' : e.kind !== 'doc').length;
+    const late = all.filter(e => e.kind === 'commit' && pushedOf(M, e) && pushedOf(M, e)[0] === 'warn').length;
+    const CHIPS = [['doc', `Doc (${n('doc')})`], ['git', `Commits et push (${n('git')})`], ['tout', 'Tout']];
+    const empty = f === 'doc' ? 'Rien encore : la tour note ici chaque page de doc qu\'une session ou un agent écrit, avec les fichiers du jeu qu\'elle couvre.'
+      : 'Rien encore : la tour note ici chaque git commit et chaque git push lancé par une session, avec son résultat.';
+    return [
+      h('div', { class: 'us-sub' }, 'Suivi des modifications'),
+      h('p', { class: 'us-dim' }, place === 'docs' ? 'Qui a écrit quelle page, pour quels fichiers du jeu, et si elle est déjà commitée.' : 'Qui a commité quoi, ce qui est parti sur GitHub et ce qui attend encore sur le PC.',
+        late ? [' ', h('span', { class: 'us-t-warn' }, `${T.plural(late, 'commit pas encore poussé', 'commits pas encore poussés')}.`)] : ''),
+      h('div', { class: 'us-filters', role: 'group', 'aria-label': 'Filtrer le suivi des modifications' }, CHIPS.map(([id, text]) =>
+        h('button', { type: 'button', class: 'us-chip2' + (f === id ? ' on' : ''), 'aria-pressed': String(f === id), onclick: () => { modUi.filter[place] = id; renderHud(); } }, text))),
+      shown.length ? h('ul', { class: 'us-tuto-list' }, shown.map(e => modRow(M, e))) : h('p', { class: 'us-dim' }, empty),
+      list.length > 8 ? h('div', { class: 'us-actions' }, btn(modUi.more[place] ? 'Moins' : `Voir plus (${Math.min(list.length, 40)})`, () => { modUi.more[place] = !modUi.more[place]; renderHud(); })) : null,
     ];
   }
 
@@ -2408,6 +2515,7 @@
         h('div', { class: 'us-actions' }, h('a', { class: 'us-btn us-go', href: Gt.download, target: '_blank', rel: 'noopener' }, 'Télécharger Git'), btn('Revérifier', () => gitDo('refresh:', '/api/git/refresh', {}, 'Git revérifié.')))) : null,
       h('p', null, 'Chaque dossier suivi : sa branche, ses derniers commits, ce qui n\'est pas encore commité, et ce qui se passe sur GitHub. La tour ne fait que lire ; rien ne part sur GitHub sans toi.'),
       h('ul', { class: 'us-tuto-list' }, list.map(r => repoCard(r, M, Gt))),
+      modifsBlock(M, 'git'),
       h('div', { class: 'us-sub' }, 'Suivre un autre dossier'),
       h('div', { class: 'us-row' },
         h('input', { type: 'text', class: 'us-docq', 'data-keep': 'gitpath', value: gitUi.path, placeholder: 'C:\\Users\\toi\\Documents\\MonProjet', 'aria-label': 'Chemin du dossier à suivre',
