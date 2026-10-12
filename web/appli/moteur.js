@@ -280,7 +280,9 @@
 
   // les demandes de cette conversation, au fil de leurs etapes
   function demsFor(M, pred) {
-    return F.demsOf(M).filter(x => pred(x) && (!F.demFinal(x) || !x.seenAt)).sort(F.demSort).slice(0, 4).map(x =>
+    // les envois du Chef sont des demandes filles : la session qui les recoit les montre aussi
+    const flat = (l) => l.flatMap(x => [x, ...flat(x.children || [])]);
+    return flat(F.demsOf(M)).filter(x => pred(x) && (!F.demFinal(x) || !x.seenAt)).sort(F.demSort).slice(0, 4).map(x =>
       h('button', { type: 'button', class: `ap-dem ap-dem-${x.state}`, onclick: () => F.openDem(x.id), title: 'Voir son parcours' },
         h('span', { class: `us-dot us-d-${F.DEM_DOT[x.state]}` }),
         h('span', { class: 'ap-dem-txt' }, h('b', null, x.stateText), ' ', clip(F.demNow(x), 140)),
