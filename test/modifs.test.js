@@ -126,3 +126,12 @@ test('les fichiers d un commit, lus par git show', async () => {
   assert.strictEqual((await modifs.commitInfo(git.run, root, head.short)).sha, head.sha);
   assert.strictEqual(await modifs.commitInfo(git.run, root, 'abcdef0'), null);
 });
+
+test('une ligne piegee de -c ou -C ne bloque pas la tour', () => {
+  const { gitCommands } = require('../lib/modifs');
+  const t = Date.now();
+  gitCommands('git ' + '-c '.repeat(40) + 'x');
+  gitCommands('git ' + '-C a '.repeat(40) + 'x');
+  assert.ok(Date.now() - t < 500);
+  assert.deepStrictEqual(gitCommands('git -C "C:/a b" -c user.name=x --no-pager commit -m hi').map(c => [c.verb, c.dir]), [['commit', 'C:/a b']]);
+});

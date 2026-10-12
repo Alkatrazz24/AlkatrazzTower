@@ -114,7 +114,7 @@ state.onVictory = (c) => {
   const root = agent.project.root;
   execFile('git', ['-C', root, 'rev-parse', '--short', 'HEAD'], { windowsHide: true, timeout: 5000 }, (err, sha) => {
     if (err) return;
-    execFile('git', ['-C', root, 'status', '--porcelain'], { windowsHide: true, timeout: 10000 }, (err2, dirty) => {
+    execFile('git', ['--no-optional-locks', '-C', root, 'status', '--porcelain'], { windowsHide: true, timeout: 10000 }, (err2, dirty) => {
       c.commit = { sha: String(sha).trim(), dirty: err2 ? null : String(dirty).split(/\r?\n/).filter(Boolean).length };
       state.changed();
     });
