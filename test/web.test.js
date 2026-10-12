@@ -15,8 +15,9 @@ const defs = [...list.matchAll(/\{ id: '([a-z0-9-]+)'(?:, engine: '([a-z0-9-]+)'
 const ids = defs.map(d => d.id);
 const engines = [...new Set(defs.map(d => d.engine).filter(Boolean))];
 
-test('cinq templates, chacun avec son JS et son CSS', () => {
-  assert.strictEqual(ids.length, 5);
+test('six templates, chacun avec son JS et son CSS', () => {
+  // l'application (moteur appli) et les cinq de l'ancienne interface en jeu (moteur usine)
+  assert.strictEqual(ids.length, 6);
   const def = list.match(/TOWER_DEFAULT = '([a-z0-9-]+)'/)[1];
   assert.ok(ids.includes(def), `template par defaut inconnu : ${def}`);
   for (const { id, engine } of defs) {
@@ -33,6 +34,13 @@ test('cinq templates, chacun avec son JS et son CSS', () => {
     const js = fs.readFileSync(path.join(WEB, e, 'moteur.js'), 'utf8');
     assert.ok(fs.existsSync(path.join(WEB, e, 'hud.css')), `${e}/hud.css manquant`);
     assert.match(js, /T\.register\(/, `${e}/moteur.js doit declarer le template`);
+    if (e === 'appli') {
+      // l'application : ses fiches dans un fichier a part, et le retour a l'ancienne interface dans les reglages
+      assert.match(js, /appli\/fiches\.js/);
+      assert.ok(fs.existsSync(path.join(WEB, e, 'fiches.js')), `${e}/fiches.js manquant`);
+      assert.match(js, /T\.choose\(/, `${e}/moteur.js doit permettre de revenir a l'ancienne interface`);
+      continue;
+    }
     assert.match(js, /T\.switcher\(/, `${e}/moteur.js doit proposer le choix du template`);
     // chaque ambiance proposee a son monde (decor) en JS et en CSS
     const worlds = [...js.match(/const WORLDS = \[(.*)\];/)[1].matchAll(/\['([a-z]+)'/g)].map(m => m[1]);
@@ -47,7 +55,7 @@ test('cinq templates, chacun avec son JS et son CSS', () => {
 });
 
 test('les scripts de la page sont du JavaScript valide', () => {
-  const files = ['core.js', path.join('templates', 'list.js'), 'avatar.js', 'map.js', ...engines.map(e => path.join(e, 'moteur.js')), ...ids.map(id => path.join('templates', `${id}.js`))];
+  const files = ['core.js', path.join('templates', 'list.js'), 'avatar.js', 'map.js', ...engines.map(e => path.join(e, 'moteur.js')), path.join('appli', 'fiches.js'), ...ids.map(id => path.join('templates', `${id}.js`))];
   for (const f of files) execFileSync(process.execPath, ['--check', path.join(WEB, f)]);
 });
 
