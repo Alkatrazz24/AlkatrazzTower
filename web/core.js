@@ -28,6 +28,8 @@
       if (k === 'class') e.className = v;
       else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
       else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+      // une zone de texte ignore l'attribut value : son texte de depart est son contenu
+      else if (k === 'value' && tag === 'textarea') e.textContent = String(v);
       else e.setAttribute(k, v === true ? '' : v);
     }
     for (const k of kids.flat(Infinity)) if (k != null && k !== false) e.append(k instanceof Node ? k : String(k));

@@ -230,8 +230,8 @@
   async function sendAsk(a, body) {
     if ((M_() || {}).demo) { T.toast('Mode démo : la réponse part sur la vraie tour.'); return; }
     const r = await T.api('/api/ask/answer', { id: a.pending.id, ...body });
-    if (r && r.ok === false && r.error) T.toast(r.error);
-    else picks.delete(a.pending.id);
+    if (r && r.ok) picks.delete(a.pending.id);
+    else T.toast(r && r.error ? r.error : 'La tour ne répond pas : ta réponse n\'est pas partie.');
   }
   function askBox(a) {
     const k = a.pending;
@@ -1501,7 +1501,7 @@
       h('p', null, `${done} sur ${ids.length} sujets mis en place${toks ? `, ${tok(toks)} tokens` : ''}${cost ? `, ${usd(cost)} dépensés` : ''}${busy ? ` · en cours : ${(M.sujets.find(z => z.id === R.current) || {}).title || '…'}${R.queue.length ? `, ${R.queue.length} en file` : ''}` : ''}.`),
       h('div', { class: 'us-actions' }, sel,
         btn('Tout mettre en place', () => miseStart(M, [], Number(sel.value)), 'us-go', M.demo || !M.sujetsProject ? { disabled: true } : {}),
-        busy ? btn('Arrêter la file', async () => { await T.api('/api/miseenplace/stop', {}); T.toast('File arrêtée.'); }, 'us-danger', M.demo ? { disabled: true } : {}) : null)];
+        busy ? btn('Arrêter la file', async () => { const r = await T.api('/api/miseenplace/stop', {}); T.toast(r && r.ok !== false ? 'File arrêtée.' : (r && r.error) || 'La tour ne répond pas.'); }, 'us-danger', M.demo ? { disabled: true } : {}) : null)];
   }
   let boardDlg = null;
   function boardDialog(M, to) {
