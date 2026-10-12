@@ -91,9 +91,12 @@
     for (const el of [root, ...root.querySelectorAll('*')]) if (el.scrollTop || el.scrollLeft) scrolls.push([el === root ? [] : viewPath(el, root), el.scrollTop, el.scrollLeft]);
     const act = document.activeElement;
     const typing = act && act.dataset && act.dataset.keep && root.contains(act) ? [act.dataset.keep, act.value, act.selectionStart, act.selectionEnd] : null;
+    // un bouton qui avait le focus clavier le retrouve a la meme place (Tab ne repart pas du debut)
+    const focusAt = !typing && act && act !== root && root.contains(act) ? viewPath(act, root) : null;
     root.replaceChildren(...nodes.map(n => n instanceof Node ? n : document.createTextNode(String(n))));
     for (const [p, o] of opens) { const d = viewFind(root, p); if (d && d.tagName === 'DETAILS') d.open = o; }
     for (const [p, top, left] of scrolls) { const el = p.length ? viewFind(root, p) : root; if (el) { el.scrollTop = top; el.scrollLeft = left; } }
+    if (focusAt) { const el = viewFind(root, focusAt); if (el && el.focus) el.focus({ preventScroll: true }); }
     if (typing) {
       const el = root.querySelector(`[data-keep="${CSS.escape(typing[0])}"]`);
       if (el) {
@@ -120,6 +123,15 @@
     if (a.st === 'working' && a.tool) return `${a.tool.name} ${a.tool.summary || ''}`;
     return a.prompt || a.stText;
   }
+  // Une session qu'on vient de reveiller ne devient « le chef » ou « ce sujet » qu'a son premier message
+  // (quelques secondes) : d'ici la, la conversation la montre qui demarre, et on ne la relance pas.
+  const woken = new Map(); // id de conversation -> { sid, at }
+  function justWoken(M, id, chef) {
+    const w = woken.get(id);
+    if (!w || Date.now() - w.at > 120000) { woken.delete(id); return null; }
+    const a = M.agents.find(x => x.id === w.sid);
+    return a ? { kind: 'agent', a, chef } : { kind: 'starting', id: w.sid, chef };
+  }
   function chefOf(M) { return M.chef && M.chef.session ? M.agents.find(x => x.id === M.chef.session.id) || null : null; }
   // ce que la conversation ouverte designe : une session, le chef en sommeil, le conseil, un sujet en sommeil
   function target(M, id) {
@@ -127,13 +139,13 @@
     if (id === 'chef') {
       if (!M.chef) return { kind: 'none' };
       const a = chefOf(M);
-      return a ? { kind: 'agent', a, chef: true } : { kind: 'sleep', z: M.chef, chef: true };
+      return a ? { kind: 'agent', a, chef: true } : justWoken(M, 'chef', true) || { kind: 'sleep', z: M.chef, chef: true };
     }
     if (String(id).startsWith('sujet:')) {
       const z = F.sujetOfId(M, id);
       if (!z) return { kind: 'none' };
       if (z.session) return { kind: 'agent', a: M.agents.find(x => x.id === z.session.id) || z.session };
-      return { kind: 'sleep', z };
+      return justWoken(M, id, false) || { kind: 'sleep', z };
     }
     const a = M.agents.find(x => x.id === id);
     if (a && a.kind === 'chef' && M.chef && M.chef.session && M.chef.session.id === a.id) return { kind: 'agent', a, chef: true };
@@ -216,7 +228,7 @@
   }
   // « Nouveau » : tout ce qu'on peut demander a la tour, au meme endroit.
   function newMenu(M) {
-    const item = (label, sub, fn, off) => h('li', null, h('button', { type: 'button', class: 'ap-mitem', role: 'menuitem', disabled: off || null, onclick: () => { ui.menu = false; fn(); } }, h('b', null, label), h('small', null, sub)));
+    const item = (label, sub, fn, off) => h('li', null, h('button', { type: 'button', class: 'ap-mitem', role: 'menuitem', disabled: off || null, onclick: () => { ui.menu = false; paintSide(); fn(); } }, h('b', null, label), h('small', null, sub)));
     return h('div', { class: 'ap-new' },
       h('button', { type: 'button', class: 'us-btn us-go ap-newbtn', 'aria-haspopup': 'menu', 'aria-expanded': String(ui.menu), onclick: () => { ui.menu = !ui.menu; paintSide(); } }, '+ Nouveau'),
       ui.menu ? h('ul', { class: 'ap-menu', role: 'menu' },
@@ -228,7 +240,7 @@
   }
 
   // ---------- la conversation ouverte ----------
-  const chat = { id: null, sig: '', seq: 0, mine: '' };
+  const chat = { id: null, sig: '', seq: 0, mine: '', mineId: null };
   function demoMsgs(a) {
     const out = [];
     const t0 = a.raw.startedAt || a.lastSeen - 20 * 60000;
@@ -240,7 +252,7 @@
   async function refreshChat(M, a, force) {
     const c = a.raw.chat || {};
     const sig = `${a.lastSeen}|${!!c.busy}|${a.raw.transcript || ''}`;
-    if (chat.id !== a.id) { chat.id = a.id; chat.sig = ''; chat.mine = ''; G.log.replaceChildren(h('p', { class: 'ap-hint' }, 'Lecture de la conversation…')); force = true; }
+    if (chat.id !== a.id) { chat.id = a.id; chat.sig = ''; if (chat.mineId !== a.id) chat.mine = ''; G.log.replaceChildren(h('p', { class: 'ap-hint' }, 'Lecture de la conversation…')); force = true; }
     if (!force && sig === chat.sig) return;
     chat.sig = sig;
     const near = G.scroll.scrollHeight - G.scroll.scrollTop - G.scroll.clientHeight < 80;
@@ -258,11 +270,13 @@
     if (chat.mine && !msgs.some(m => m.who === 'toi' && m.text === chat.mine)) msgs.push({ who: 'toi', kind: 'text', text: chat.mine, at: Date.now() });
     else chat.mine = '';
     const keep = G.scroll.scrollHeight - G.scroll.scrollTop - G.scroll.clientHeight < 80;
-    G.log.replaceChildren(...(msgs.length ? F.chatItems(msgs, a, M)
-      : [h('p', { class: 'ap-hint' }, r && r.ok === false ? r.error : r && r.waiting ? 'La session démarre : ses messages arrivent ici.' : 'Pas encore de message.')]));
+    // swap garde les rapports ouverts et ne refait rien si rien n'a change (selection, lecteur d'ecran)
+    swap(G.log, msgs.length ? F.chatItems(msgs, a, M)
+      : [h('p', { class: 'ap-hint' }, r && r.ok === false ? r.error : r && r.waiting ? 'La session démarre : ses messages arrivent ici.' : 'Pas encore de message.')]);
     if (keep || near || force) G.scroll.scrollTop = G.scroll.scrollHeight;
   }
-  function clearChat() { chat.id = null; chat.sig = ''; chat.mine = ''; chat.seq++; G.log.replaceChildren(); }
+  // ton dernier message (chat.mine) reste : la session qui demarre l'affichera des qu'elle est la
+  function clearChat() { chat.id = null; chat.sig = ''; chat.seq++; G.log.replaceChildren(); }
 
   // les demandes de cette conversation, au fil de leurs etapes
   function demsFor(M, pred) {
@@ -291,7 +305,7 @@
       title = t.chef ? 'Chef' : t.z ? t.z.title : '';
       chip = 'en sommeil';
       sub = [t.chef ? 'Il vérifie en lisant, te répond, puis confie les changements' : t.z && t.z.kind === 'feature' ? 'Feature' : 'Sujet du jeu (core)', M.sujetsProject];
-    } else if (t.kind === 'starting') { title = 'Nouvelle session'; chip = 'démarre'; tone = 'blue'; }
+    } else if (t.kind === 'starting') { title = t.chef ? 'Chef' : 'Nouvelle session'; chip = 'démarre'; tone = 'blue'; }
     return [
       h('button', { type: 'button', class: 'ap-back', 'aria-label': 'Retour aux conversations', onclick: () => { ui.view = 'list'; paint(); } }, '‹'),
       h('div', { class: 'ap-htext' },
@@ -320,24 +334,29 @@
           : c.error ? `Dernier message : ${c.error}` : a.st === 'ended' ? 'Session fermée : ton message la reprend ici, sans fenêtre.' : '';
     return { show: true, can, busy, note, id: a.id, place: t.chef ? 'Écris au Chef…' : `Écris à ${nameOf(a)}…` };
   }
+  let sending = false; // un envoi en cours : Envoyer reste grise meme si la tour pousse un nouvel etat
   async function send() {
     const M = A.M, t = target(M, ui.conv), st = composeState(M, t);
     const text = G.text.value.trim();
-    if (!text || !st.can || G.send.disabled) return;
+    if (!text || !st.can || sending) return;
+    sending = true;
     G.send.disabled = true;
-    let r;
-    if (st.wake) {
-      // reveiller la session (elle lit son carnet), puis lui passer le message
-      r = await T.api('/api/chat/start', { id: st.wake.id, project: M.sujetsProject });
-      if (r && r.ok) {
-        const sid = r.sessionId;
-        r = await T.api('/api/chat/send', { sessionId: sid, text });
-        if (r && r.ok && !t.chef) { ui.conv = sid; ui.at = Date.now(); store.set(CONV_KEY, sid); }
-      }
-    } else r = await T.api('/api/chat/send', { sessionId: st.id, text });
-    G.send.disabled = false;
-    if (r && r.ok) { G.text.value = ''; ui.drafts.delete(ui.conv); grow(); chat.mine = text; chat.sig = ''; paint(); }
-    else if (r && r.error) T.toast(r.error);
+    let r, sid = st.id;
+    try {
+      if (st.wake) {
+        // reveiller la session (elle lit son carnet), puis lui passer le message
+        const key = ui.conv;
+        r = await T.api('/api/chat/start', { id: st.wake.id, project: M.sujetsProject });
+        if (r && r.ok) {
+          sid = r.sessionId;
+          woken.set(key, { sid, at: Date.now() });
+          r = await T.api('/api/chat/send', { sessionId: sid, text });
+          if (r && r.ok && !t.chef) { ui.conv = sid; ui.at = Date.now(); store.set(CONV_KEY, sid); }
+        }
+      } else r = await T.api('/api/chat/send', { sessionId: st.id, text });
+    } finally { sending = false; }
+    if (r && r.ok) { G.text.value = ''; ui.drafts.delete(ui.conv); grow(); chat.mine = text; chat.mineId = sid; chat.sig = ''; paint(); }
+    else { T.toast(r && r.error ? r.error : 'La tour ne répond pas.'); paint(); }
   }
   function saveDraft() { if (G) { if (G.text.value.trim()) ui.drafts.set(ui.conv, G.text.value); else ui.drafts.delete(ui.conv); } }
   function loadDraft() { if (G) { G.text.value = ui.drafts.get(ui.conv) || ''; grow(); } }
@@ -382,7 +401,7 @@
     G.compose.hidden = !st.show;
     if (st.show) {
       G.text.disabled = !st.can;
-      G.send.disabled = !st.can;
+      G.send.disabled = !st.can || sending;
       G.text.placeholder = st.place || 'Ton message…';
       G.stop.hidden = !st.busy;
       G.note.textContent = st.note || '';
@@ -558,7 +577,8 @@
     const M = A.M;
     if (!M || !G) return;
     // une conversation qui n'existe plus (session retiree) : on revient au chef
-    if (target(M, ui.conv).kind === 'none') { ui.conv = M.chef ? 'chef' : 'conseil'; store.set(CONV_KEY, ui.conv); }
+    // (le texte en cours reste en brouillon de l'ancienne : il ne part pas au chef par erreur)
+    if (target(M, ui.conv).kind === 'none') { saveDraft(); ui.conv = M.chef ? 'chef' : 'conseil'; store.set(CONV_KEY, ui.conv); loadDraft(); }
     G.app.dataset.view = ui.view;
     paintSide();
     paintMain();
