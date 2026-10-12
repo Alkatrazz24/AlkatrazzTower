@@ -628,6 +628,22 @@ const routes = {
   'POST /api/campaigns/delete': (b) => ({ ok: state.deleteCampaign(b.id) }),
 };
 
+// Un seul parcours des disques a la fois : les demandes qui arrivent pendant ce temps partagent le resultat.
+let scanBusy = null;
+function scanProjects() {
+  if (scanBusy) return scanBusy;
+  scanBusy = new Promise((resolve) => {
+    const w = new Worker(`const { parentPort } = require('worker_threads');
+      parentPort.postMessage(require(${JSON.stringify(path.join(ROOT, 'lib', 'projects.js'))}).scan());`, { eval: true });
+    let done = false;
+    const finish = (code, body) => { if (!done) { done = true; resolve([code, body]); } };
+    w.once('message', (m) => finish(200, m));
+    w.once('error', (e) => finish(500, { error: e.message }));
+    setTimeout(() => { w.terminate(); finish(200, { projects: [], complete: false }); }, 10_000).unref();
+  }).finally(() => { scanBusy = null; });
+  return scanBusy;
+}
+
 async function handle(req, res) {
   let url;
   try { url = new URL(req.url, `http://${HOST}`); } catch { return send(res, 400, { error: 'adresse invalide' }); }
@@ -695,14 +711,8 @@ async function handle(req, res) {
   }
 
   if (key === 'GET /api/projects/scan') {
-    const w = new Worker(`const { parentPort } = require('worker_threads');
-      parentPort.postMessage(require(${JSON.stringify(path.join(ROOT, 'lib', 'projects.js'))}).scan());`, { eval: true });
-    let done = false;
-    const finish = (code, body) => { if (!done) { done = true; send(res, code, body); } };
-    w.once('message', (m) => finish(200, m));
-    w.once('error', (e) => finish(500, { error: e.message }));
-    setTimeout(() => { w.terminate(); finish(200, { projects: [], complete: false }); }, 10_000).unref();
-    return;
+    const [code, body] = await scanProjects();
+    return send(res, code, body);
   }
 
   const route = routes[key];

@@ -19,7 +19,7 @@
     cinematiques: 'Cinématiques', code: 'Code C++', tests: 'Tests', autres: 'Autres',
   };
   const FEAT = { proven: 'Prête', progress: 'En cours', failing: 'En échec', broken: 'Cassée', todo: 'À vérifier' };
-  // Reglages par l'adresse : ?demo&t=nuit, ou #demo.nuit (le # passe la ou ?... est retire).
+  // Mode demo par l'adresse : ?demo, ou #demo (le # passe la ou ?... est retire).
   const params = new URLSearchParams(location.search);
   const hashTokens = location.hash.slice(1).split('.').filter(Boolean);
   const DEMO = params.has('demo') || hashTokens.includes('demo');
@@ -79,6 +79,14 @@
     if (DEMO) { toast('Mode démo : rien n\'est envoyé à la tour.'); return null; }
     try { return await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) }).then(r => r.json()); }
     catch { return null; }
+  }
+  // Une action sans retour a afficher : si la tour refuse ou ne repond pas, on le dit quand meme.
+  async function call(path, body) {
+    const r = await api(path, body);
+    if (DEMO) return r;
+    if (!r) toast('La tour ne répond pas.');
+    else if (r.ok === false || r.error) toast(r.error || 'La tour a refusé.');
+    return r;
   }
   function toast(text) {
     let t = $('tw-toast');
@@ -281,15 +289,14 @@
 
   // ---------- actions ----------
   const act = {
-    manual: (featureId, ok) => S && model().campaign && api('/api/campaigns/manual', { id: model().campaign.id, featureId, ok }),
-    archive: () => { const c = model().campaign; if (c) api('/api/campaigns/archive', { id: c.id }); },
-    abandon: () => { const c = model().campaign; if (c && confirm(`Abandonner la version ${c.name} ?`)) api('/api/campaigns/archive', { id: c.id }); },
+    manual: (featureId, ok) => S && model().campaign && call('/api/campaigns/manual', { id: model().campaign.id, featureId, ok }),
+    archive: () => { const c = model().campaign; if (c) call('/api/campaigns/archive', { id: c.id }); },
+    abandon: () => { const c = model().campaign; if (c && confirm(`Abandonner la version ${c.name} ?`)) call('/api/campaigns/archive', { id: c.id }); },
     next: () => { act.archive(); openBuilder(); },
-    release: () => { if (confirm('Libérer la compilation ? Le build en cours continue, mais un autre pourra démarrer en même temps.')) api('/api/lock/force-release'); },
-    forget: (id) => api('/api/agents/forget', { sessionId: id }),
-    hide: (id, hidden = true) => api('/api/agents/hide', { sessionId: id, hidden }),
-    disconnect: (p) => { if (confirm(`Déconnecter ${p.name} ?`)) api('/api/projects/disconnect', { uproject: p.uproject }); },
-    refreshMap: () => { api('/api/inventory/refresh'); toast('La tour recompte le projet.'); },
+    release: () => { if (confirm('Libérer la compilation ? Le build en cours continue, mais un autre pourra démarrer en même temps.')) call('/api/lock/force-release'); },
+    forget: (id) => call('/api/agents/forget', { sessionId: id }),
+    hide: (id, hidden = true) => call('/api/agents/hide', { sessionId: id, hidden }),
+    disconnect: (p) => { if (confirm(`Déconnecter ${p.name} ?`)) call('/api/projects/disconnect', { uproject: p.uproject }); },
     toggleEnded: (v) => { ui.showEnded = v === undefined ? !ui.showEnded : v; rerender(); },
     toggleBuild: (id) => { ui.openBuilds.has(id) ? ui.openBuilds.delete(id) : ui.openBuilds.add(id); rerender(); },
     openProjects: () => openProjects(),
@@ -477,7 +484,7 @@
 
   window.Tower = {
     register, h, svg, ago, dur, clock, folder, plural, lower, num, agoEl, forEl,
-    act, ui, api, toast, rerender, TEMPLATES, KIND, STATUS, FEAT, get current() { return current; }, get demo() { return DEMO; },
+    act, ui, api, call, toast, rerender, TEMPLATES, KIND, STATUS, FEAT, get current() { return current; }, get demo() { return DEMO; },
   };
   buildDialogs();
   load();

@@ -598,7 +598,7 @@
     const all = Object.keys((M.S && M.S.docs) || {});
     const debts = docDebts(M), late = debts.filter(d => d.owed), busy = debts.filter(d => !d.owed);
     const input = h('input', { type: 'search', class: 'us-docq', name: 'docq', 'data-keep': 'docq', value: docUi.q, placeholder: 'Chercher (ex. porte, réplication)', 'aria-label': 'Chercher dans la doc',
-      oninput: (e) => { docUi.q = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); docSearch(M); } } });
+      oninput: (e) => { docUi.q = e.target.value; }, onkeydown: (e) => { if (e.key === 'Enter') { e.preventDefault(); if (!M.demo) docSearch(M); } } });
     const R = docUi.results;
     // la page d'entree : docs/COMPRENDRE.md (ecrite par la tache « Doc du projet »), sinon docs/README.md
     const has = (rel) => D.shelves.some(sh => sh.files.some(f => f.rel === rel));
@@ -636,7 +636,7 @@
   }
   function unrealBody(M) {
     const D = docsOf(M), mode = (M.S && M.S.docRules && M.S.docRules.unreal) || 'question';
-    const set = async (m) => { if (m === mode) return; const r = await T.api('/api/docs/unreal', { mode: m }); if (r && r.ok) T.toast(m === 'modif' ? 'Les sessions liront la doc Unreal avant chaque modification.' : 'Les sessions liront la doc Unreal quand elles ont une question.'); };
+    const set = async (m) => { if (m === mode) return; const r = await T.call('/api/docs/unreal', { mode: m }); if (r && r.ok) T.toast(m === 'modif' ? 'Les sessions liront la doc Unreal avant chaque modification.' : 'Les sessions liront la doc Unreal quand elles ont une question.'); };
     const MODES = [['question', 'Quand elles ont une question', 'Sur la façon de créer ou d\'utiliser quelque chose. Moins de tokens.'], ['modif', 'Avant chaque modification', 'L\'ancienne règle : vérifier chaque API avant d\'écrire.']];
     return [
       h('p', null, `La doc officielle d'Unreal Engine ${D && D.version ? D.version : '5'}, rangée par thème. Les sessions et leurs agents l'ouvrent eux-mêmes ; elle est aussi écrite pour eux dans `, h('code', null, D ? D.ueFile : 'Saved/Tour/doc-unreal.md'), '.'),
@@ -863,7 +863,7 @@
           r.fetchedAt ? h('span', { class: 'us-dim' }, 'dernier fetch ', T.agoEl(r.fetchedAt)) : null));
       }
     }
-    if (r.kind === 'suivi') part.push(h('div', { class: 'us-actions' }, btn('Ne plus suivre', () => T.api('/api/git/unfollow', { root: r.root }))));
+    if (r.kind === 'suivi') part.push(h('div', { class: 'us-actions' }, btn('Ne plus suivre', () => T.call('/api/git/unfollow', { root: r.root }))));
     return h('li', { class: 'us-task us-doc' }, head, ...part);
   }
   function gitBody(M, kind) {
@@ -1455,7 +1455,7 @@
         btn('Discuter', () => sujetLaunch(M, z), 'us-go', can ? { title: 'Lance le chef dans la tour : tu lui parles ici, sans fenêtre' } : { disabled: true }),
         btn('Dans une fenêtre', () => sujetLaunch(M, z, true), '', can ? { title: 'Ouvre Claude Code dans une fenêtre, dans le dossier du projet' } : { disabled: true })),
       h('label', { class: 'us-check us-chef-ask' }, h('input', { type: 'checkbox', checked: !!z.ask, ...(M.demo ? { disabled: true } : {}),
-        onchange: async (ev) => { const r = await T.api('/api/chef/ask', { ask: ev.target.checked }); if (r && r.ok) T.toast(r.ask ? 'Ses envois t\'attendent : tu les valides ici avant qu\'ils partent.' : 'Ses envois partent tout seuls vers les sessions.'); } }),
+        onchange: async (ev) => { const r = await T.call('/api/chef/ask', { ask: ev.target.checked }); if (r && r.ok) T.toast(r.ask ? 'Ses envois t\'attendent : tu les valides ici avant qu\'ils partent.' : 'Ses envois partent tout seuls vers les sessions.'); } }),
         'Me demander avant chaque envoi'),
       h('div', { class: 'us-sub' }, wait ? `Ses envois · ${wait} à valider` : 'Ses envois'),
       E.length ? h('ul', { class: 'us-envois' }, E.slice(0, 20).map(e => envoiItem(M, e)))
@@ -1546,7 +1546,7 @@
       h('div', { class: 'us-ehead' }, h('h2', null, 'Features : les nouvelles idées'), close),
       h('div', { class: 'us-ebody' },
         h('p', null, 'Une session feature met en place une nouvelle idée, à côté des sujets core. Elle lit la mémoire des sujets qu\'elle touche sans la réécrire, laisse au tableau ce qui change pour eux, et s\'arrête quand l\'idée est en place.'),
-        h('div', { class: 'us-actions' }, btn('Nouvelle feature', () => featureDialog(M), 'us-go', M.demo || !M.sujetsProject ? { disabled: true, title: 'Connecte d\'abord ton projet' } : { title: 'Touche N' })),
+        h('div', { class: 'us-actions' }, btn('Nouvelle feature', () => featureDialog(M), 'us-go', M.demo || !M.sujetsProject ? { disabled: true, title: 'Connecte d\'abord ton projet' } : {})),
         fs.length ? h('ul', { class: 'us-runs' }, fs.map(row)) : h('p', { class: 'us-dim' }, 'Aucune feature en cours.'),
         done.length ? [h('div', { class: 'us-sub' }, 'Terminées'), h('ul', { class: 'us-runs' }, done.map(row))] : null));
   }
@@ -1604,7 +1604,7 @@
         btn('Copier la consigne', () => copyPrompt(t, proj)),
         t.builtin ? btn('Copier en perso', () => taskDialog(t), '', M.demo ? { disabled: true } : { title: 'Crée une tâche perso à partir de celle-ci' })
           : [btn('Modifier', () => taskDialog(t), '', M.demo ? { disabled: true } : {}),
-            btn('Supprimer', () => { if (confirm(`Supprimer la tâche « ${t.title} » ?`)) T.api('/api/tasks/delete', { id: t.id }); }, 'us-danger', M.demo ? { disabled: true } : {})]));
+            btn('Supprimer', () => { if (confirm(`Supprimer la tâche « ${t.title} » ?`)) T.call('/api/tasks/delete', { id: t.id }); }, 'us-danger', M.demo ? { disabled: true } : {})]));
     const open = (a) => { NAV().close(); NAV().conv(a.id); };
     return h('section', { class: 'us-panel us-entity us-taches', 'aria-label': 'Tâches' },
       h('div', { class: 'us-ehead' }, h('h2', null, proj ? `Tâches sur ${proj}` : 'Tâches'), close),
@@ -1648,7 +1648,7 @@
     return x.live ? `${x.phase} · ${x.live}` : x.phase;
   }
   function openDem(id) { demUi.open = id; NAV().sheet('demandes'); }
-  const demSeen = (id) => T.api('/api/demandes/vu', id ? { id } : {});
+  const demSeen = (id) => T.call('/api/demandes/vu', id ? { id } : {});
 
 
   // Une demande dans la liste : son etat, puis ouverte, son parcours, son resultat, ce qu'elle a confie.
@@ -1660,10 +1660,10 @@
     if (x.state === 'attend' && x.kind === 'envoi' && x.phase === 'attend ta validation') acts.push(btn('Valider chez le Chef', () => NAV().conv('chef'), 'us-go'));
     else if (x.status === 'attend' && ag) acts.push(btn('Répondre', goAgent, 'us-go'));
     if (x.ref && x.ref.conseil) acts.push(btn(x.status === 'fini' ? 'Lire le verdict' : 'Voir le conseil', () => { NAV().close(); NAV().conv('conseil'); }));
-    if (x.result && x.result.file && ag && ag.raw.task) acts.push(btn('Lire le rapport', () => fileView(x.to, x.result.file, `/api/tasks/file?session=${encodeURIComponent(ag.id)}&path=${encodeURIComponent(x.result.file)}`)));
+    if (x.result && x.result.file && ag && ag.raw.task && !M.demo) acts.push(btn('Lire le rapport', () => fileView(x.to, x.result.file, `/api/tasks/file?session=${encodeURIComponent(ag.id)}&path=${encodeURIComponent(x.result.file)}`)));
     if (ag && x.status !== 'attend') acts.push(btn('Ouvrir la conversation', goAgent));
-    if (!demFinal(x) && x.ref && x.ref.conseil && x.status !== 'fini') acts.push(btn('Arrêter', () => T.api('/api/conseil/stop'), 'us-danger', M.demo ? { disabled: true } : {}));
-    else if (!demFinal(x) && x.status !== 'fini' && ag && ag.raw.chat && ag.raw.chat.busy && x.status === 'en-cours') acts.push(btn('Arrêter', () => T.api('/api/chat/stop', { sessionId: ag.id }), 'us-danger', M.demo ? { disabled: true } : { title: 'Arrête ce que fait la session : elle garde son historique' }));
+    if (!demFinal(x) && x.ref && x.ref.conseil && x.status !== 'fini') acts.push(btn('Arrêter', () => T.call('/api/conseil/stop'), 'us-danger', M.demo ? { disabled: true } : {}));
+    else if (!demFinal(x) && x.status !== 'fini' && ag && ag.raw.chat && ag.raw.chat.busy && x.status === 'en-cours') acts.push(btn('Arrêter', () => T.call('/api/chat/stop', { sessionId: ag.id }), 'us-danger', M.demo ? { disabled: true } : { title: 'Arrête ce que fait la session : elle garde son historique' }));
     if (!depth && demFinal(x) && !x.seenAt) acts.push(btn('Vu', () => demSeen(x.id)));
     const res = x.result || {};
     return h('li', { class: `us-dem-item us-dem-${x.state}${open ? ' on' : ''}` },
