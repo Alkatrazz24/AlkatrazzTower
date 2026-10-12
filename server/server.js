@@ -40,19 +40,29 @@ const state = new TowerState();
 
 // ---- persistance --------------------------------------------------------------------------------
 
-try { state.load(JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'))); } catch { /* premier lancement */ }
+// Un state.json abime est mis de cote (state.json.abime-<date>) au lieu d'etre ecrase par une tour vide.
+(function loadState() {
+  let raw;
+  try { raw = fs.readFileSync(STATE_FILE, 'utf8'); } catch { return; } // premier lancement
+  try { state.load(JSON.parse(raw)); return; } catch (e) { console.error('[tower] state.json illisible :', e.message); }
+  const bad = `${STATE_FILE}.abime-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  try { fs.renameSync(STATE_FILE, bad); console.error(`[tower] copie gardee dans ${bad}`); } catch { /* tant pis */ }
+})();
+
+function writeState() {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const tmp = STATE_FILE + '.tmp';
+  const fd = fs.openSync(tmp, 'w');
+  try { fs.writeSync(fd, JSON.stringify(state.toJSON())); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+  fs.renameSync(tmp, STATE_FILE);
+}
 
 let saveTimer = null;
 function scheduleSave() {
   if (saveTimer) return;
   saveTimer = setTimeout(() => {
     saveTimer = null;
-    try {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-      const tmp = STATE_FILE + '.tmp';
-      fs.writeFileSync(tmp, JSON.stringify(state.toJSON()));
-      fs.renameSync(tmp, STATE_FILE);
-    } catch (e) { console.error('[tower] sauvegarde impossible :', e.message); }
+    try { writeState(); } catch (e) { console.error('[tower] sauvegarde impossible :', e.message); }
   }, 1000);
 }
 
@@ -61,7 +71,7 @@ function scheduleSave() {
 const clients = new Set();
 let pushTimer = null;
 function pushAll() {
-  if (pushTimer) return;
+  if (pushTimer || !clients.size) return;
   pushTimer = setTimeout(() => {
     pushTimer = null;
     const data = `data: ${JSON.stringify(state.snapshot())}\n\n`;
@@ -74,6 +84,7 @@ const waiters = new Map(); // ticket -> [resolve]
 const askWaiters = new Map(); // question -> [resolve] (long-poll /api/ask/wait de hooks/tower-ask.js)
 function wakeWaiters() {
   for (const [id, list] of askWaiters) {
+    if (!list.length) { askWaiters.delete(id); continue; } // personne n'attend : la reponse reste pour le prochain appel
     const st = state.askStatus(id);
     if (st.pending) continue;
     askWaiters.delete(id);
@@ -87,6 +98,11 @@ function wakeWaiters() {
       for (const fn of list) fn(st);
     }
   }
+}
+
+function dropAskWaiter(id, fn) {
+  const list = (askWaiters.get(id) || []).filter(f => f !== fn);
+  if (list.length) askWaiters.set(id, list); else askWaiters.delete(id);
 }
 
 state.onChange(() => { scheduleSave(); pushAll(); wakeWaiters(); });
@@ -278,7 +294,7 @@ function readBody(req) {
   return new Promise((resolve) => {
     let raw = '';
     req.setEncoding('utf8');
-    req.on('data', c => { raw += c; if (raw.length > 2_000_000) req.destroy(); });
+    req.on('data', c => { raw += c; if (raw.length > 2_000_000) { resolve(null); req.destroy(); } });
     req.on('end', () => { try { resolve(raw ? JSON.parse(raw) : {}); } catch { resolve(null); } });
     req.on('error', () => resolve(null));
   });
@@ -401,7 +417,9 @@ setTimeout(refreshSkills, 2500).unref();
 
 function projectFor(name) {
   const all = knownProjects();
-  return (name && all.find(p => p.name.toLowerCase() === String(name).toLowerCase())) || all.find(p => /ctb|conquer/i.test(p.name)) || all[0] || null;
+  // Un nom donne qui ne correspond a aucun projet ne retombe jamais sur un autre projet.
+  if (name) return all.find(p => p.name.toLowerCase() === String(name).toLowerCase()) || null;
+  return all.find(p => /ctb|conquer/i.test(p.name)) || all[0] || null;
 }
 
 const routes = {
@@ -608,8 +626,9 @@ const routes = {
   'POST /api/campaigns/delete': (b) => ({ ok: state.deleteCampaign(b.id) }),
 };
 
-const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${HOST}`);
+async function handle(req, res) {
+  let url;
+  try { url = new URL(req.url, `http://${HOST}`); } catch { return send(res, 400, { error: 'adresse invalide' }); }
   const key = `${req.method} ${url.pathname}`;
 
   if (foreignHost(req) || req.method === 'POST' && foreignOrigin(req)) return send(res, 403, { error: 'origine refusee' });
@@ -633,14 +652,14 @@ const server = http.createServer(async (req, res) => {
     let done = false;
     const finish = (s) => { if (done) return; done = true; clearTimeout(timer); send(res, 200, s); };
     const timer = setTimeout(() => {
-      const list = waiters.get(b.ticket) || [];
-      waiters.set(b.ticket, list.filter(f => f !== finish));
+      const list = (waiters.get(b.ticket) || []).filter(f => f !== finish);
+      if (list.length) waiters.set(b.ticket, list); else waiters.delete(b.ticket);
       finish(state.ticketStatus(b.ticket));
     }, Math.min(Number(b.timeoutMs) || WAIT_MS, WAIT_MS));
     const list = waiters.get(b.ticket) || [];
     list.push(finish);
     waiters.set(b.ticket, list);
-    req.on('close', () => { if (!done) { done = true; clearTimeout(timer); } });
+    res.on('close', () => { if (!done) { done = true; clearTimeout(timer); const l = (waiters.get(b.ticket) || []).filter(f => f !== finish); if (l.length) waiters.set(b.ticket, l); else waiters.delete(b.ticket); } });
     return;
   }
 
@@ -653,11 +672,11 @@ const server = http.createServer(async (req, res) => {
     let done = false;
     const finish = (s) => { if (done) return; done = true; clearTimeout(timer); send(res, 200, s); };
     const timer = setTimeout(() => {
-      askWaiters.set(id, (askWaiters.get(id) || []).filter(f => f !== finish));
+      dropAskWaiter(id, finish);
       finish({ pending: true });
     }, Math.min(Number(b.timeoutMs) || WAIT_MS, WAIT_MS));
     askWaiters.set(id, [...(askWaiters.get(id) || []), finish]);
-    req.on('close', () => { if (!done) { done = true; clearTimeout(timer); askWaiters.set(id, (askWaiters.get(id) || []).filter(f => f !== finish)); } });
+    res.on('close', () => { if (!done) { done = true; clearTimeout(timer); dropAskWaiter(id, finish); } });
     return;
   }
 
@@ -701,7 +720,17 @@ const server = http.createServer(async (req, res) => {
     });
   }
   send(res, 404, { error: 'route inconnue' });
+}
+
+// Une requete qui plante ne doit jamais faire tomber la tour.
+const server = http.createServer((req, res) => {
+  handle(req, res).catch((e) => {
+    console.error('[tower] requete en erreur :', e && e.message);
+    if (!res.headersSent) { try { send(res, 500, { error: 'erreur interne' }); } catch { /* deja ferme */ } }
+    else { try { res.end(); } catch { /* deja ferme */ } }
+  });
 });
+process.on('unhandledRejection', (e) => console.error('[tower] promesse rejetee :', e && e.message));
 
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') {
@@ -716,10 +745,7 @@ server.listen(PORT, HOST, () => {
 });
 
 function shutdown() {
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(STATE_FILE, JSON.stringify(state.toJSON()));
-  } catch { /* tant pis */ }
+  try { writeState(); } catch { /* tant pis */ }
   process.exit(0);
 }
 process.on('SIGINT', shutdown);
