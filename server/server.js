@@ -268,6 +268,8 @@ setInterval(() => refreshInventories(false), 60_000).unref();
 setTimeout(() => refreshInventories(false), 1500).unref();
 
 setInterval(() => { state.expire(); }, 2000).unref();
+setInterval(() => { state.pruneAgents(); }, 3600_000).unref();
+setTimeout(() => { state.pruneAgents(); }, 5000).unref();
 setInterval(probeEditor, 10_000).unref();
 setInterval(probeChantiers, 10_000).unref();
 setInterval(probeSujets, 10_000).unref();
