@@ -1,5 +1,5 @@
 'use strict';
-// La page web : chaque template annonce par web/templates/list.js existe, se declare sous son id, et la demo
+// La page web : l'application « Conversations » est la seule interface, ses scripts sont valides, et la demo
 // a bien la forme de l'etat que sert le serveur.
 
 const test = require('node:test');
@@ -15,47 +15,24 @@ const defs = [...list.matchAll(/\{ id: '([a-z0-9-]+)'(?:, engine: '([a-z0-9-]+)'
 const ids = defs.map(d => d.id);
 const engines = [...new Set(defs.map(d => d.engine).filter(Boolean))];
 
-test('six templates, chacun avec son JS et son CSS', () => {
-  // l'application (moteur appli) et les cinq de l'ancienne interface en jeu (moteur usine)
-  assert.strictEqual(ids.length, 6);
-  const def = list.match(/TOWER_DEFAULT = '([a-z0-9-]+)'/)[1];
-  assert.ok(ids.includes(def), `template par defaut inconnu : ${def}`);
-  for (const { id, engine } of defs) {
-    const js = fs.readFileSync(path.join(WEB, 'templates', `${id}.js`), 'utf8');
-    assert.ok(fs.existsSync(path.join(WEB, 'templates', `${id}.css`)), `${id}.css manquant`);
-    if (engine) {
-      assert.match(js, new RegExp(`mode\\(\\{\\s*id: '${id}'`), `${id}.js doit demarrer le moteur sous son id`);
-    } else {
-      assert.match(js, new RegExp(`register\\(\\{ id: '${id}'`), `${id}.js doit se declarer sous son id`);
-      assert.match(js, /T\.switcher\(\)/, `${id}.js doit proposer le choix du template`);
-    }
-  }
-  for (const e of engines) {
-    const js = fs.readFileSync(path.join(WEB, e, 'moteur.js'), 'utf8');
-    assert.ok(fs.existsSync(path.join(WEB, e, 'hud.css')), `${e}/hud.css manquant`);
-    assert.match(js, /T\.register\(/, `${e}/moteur.js doit declarer le template`);
-    if (e === 'appli') {
-      // l'application : ses fiches dans un fichier a part, et le retour a l'ancienne interface dans les reglages
-      assert.match(js, /appli\/fiches\.js/);
-      assert.ok(fs.existsSync(path.join(WEB, e, 'fiches.js')), `${e}/fiches.js manquant`);
-      assert.match(js, /T\.choose\(/, `${e}/moteur.js doit permettre de revenir a l'ancienne interface`);
-      continue;
-    }
-    assert.match(js, /T\.switcher\(/, `${e}/moteur.js doit proposer le choix du template`);
-    // chaque ambiance proposee a son monde (decor) en JS et en CSS
-    const worlds = [...js.match(/const WORLDS = \[(.*)\];/)[1].matchAll(/\['([a-z]+)'/g)].map(m => m[1]);
-    assert.ok(worlds.length >= 1);
-    for (const w of worlds) {
-      assert.ok(fs.existsSync(path.join(WEB, e, 'mondes', `${w}.css`)), `${e}/mondes/${w}.css manquant`);
-      const wjs = path.join(WEB, e, 'mondes', `${w}.js`);
-      assert.match(fs.readFileSync(wjs, 'utf8'), new RegExp(`world\\(\\{\\s*id: '${w}'`), `${w}.js doit se declarer sous son id`);
-      execFileSync(process.execPath, ['--check', wjs]);
-    }
-  }
+test('une seule interface : l application Conversations, son moteur et ses fiches', () => {
+  assert.deepStrictEqual(ids, ['conversations']);
+  assert.strictEqual(list.match(/TOWER_DEFAULT = '([a-z0-9-]+)'/)[1], 'conversations');
+  assert.deepStrictEqual(engines, ['appli']);
+  assert.match(fs.readFileSync(path.join(WEB, 'templates', 'conversations.js'), 'utf8'), /mode\(\{\s*id: 'conversations'/);
+  assert.ok(fs.existsSync(path.join(WEB, 'templates', 'conversations.css')));
+  for (const f of ['moteur.js', 'fiches.js', 'hud.css']) assert.ok(fs.existsSync(path.join(WEB, 'appli', f)), `appli/${f} manquant`);
+  const js = fs.readFileSync(path.join(WEB, 'appli', 'moteur.js'), 'utf8');
+  assert.match(js, /T\.register\(/);
+  assert.match(js, /appli\/fiches\.js/);
+  // l'ancienne interface en jeu est retiree : plus rien ne la charge ni n'y renvoie
+  for (const gone of ['usine', 'galerie.html', 'classique.html', 'avatar.js', 'map.js']) assert.ok(!fs.existsSync(path.join(WEB, gone)), `${gone} devrait etre retire`);
+  const page = ['index.html', 'core.js', path.join('appli', 'moteur.js'), path.join('appli', 'fiches.js')].map(f => fs.readFileSync(path.join(WEB, f), 'utf8')).join('\n');
+  assert.doesNotMatch(page, /T\.choose\(|avatar\.js|map\.js|usine\//);
 });
 
 test('les scripts de la page sont du JavaScript valide', () => {
-  const files = ['core.js', path.join('templates', 'list.js'), 'avatar.js', 'map.js', ...engines.map(e => path.join(e, 'moteur.js')), path.join('appli', 'fiches.js'), ...ids.map(id => path.join('templates', `${id}.js`))];
+  const files = ['core.js', path.join('templates', 'list.js'), ...engines.map(e => path.join(e, 'moteur.js')), path.join('appli', 'fiches.js'), ...ids.map(id => path.join('templates', `${id}.js`))];
   for (const f of files) execFileSync(process.execPath, ['--check', path.join(WEB, f)]);
 });
 
