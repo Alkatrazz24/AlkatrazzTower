@@ -312,19 +312,33 @@ chef, de son côté, propose le conseil quand une demande est un vrai choix.
 ## Le suivi des demandes
 
 Tout ce que tu envoies depuis la tour devient une **demande** suivie jusqu'à son résultat : une question
-au conseil, un message au chef ou à une salle, une tâche lancée (dans une fenêtre ou en fond). Dès
-qu'elle part, une puce apparaît dans la **barre des demandes**, en bas du jeu : à qui, son état (envoyée,
-en cours, attend ta réponse, fini), ce qui se passe en ce moment (« lit Source/… », « les membres
-réfléchissent · 3 avis sur 5 »), depuis combien de temps. Une demande qui attend ta réponse passe en
-tête ; une demande finie affiche son résultat et reste là jusqu'à ce que tu cliques **Vu**.
+au conseil, un message au chef ou à une session, une tâche lancée (dans une fenêtre ou en fond). Dès
+qu'elle part, sa **carte** apparaît dans le **tableau des demandes**, tout en haut de l'application, et le
+tableau s'ouvre pour la montrer. La carte passe seule d'une colonne à l'autre :
 
-Un clic ouvre le panneau **Tes demandes** : le parcours de chaque demande heure par heure, la réponse ou
-la décision, le rapport à lire, et le bouton pour répondre, ouvrir la discussion ou voir le conseil. Ce
-que le chef confie aux sessions pendant ta demande s'y range en dessous : la demande n'est finie que
-quand les sessions ont fini aussi (leur ligne au tableau pour « Chef » sert de réponse).
+- **À faire** : envoyée, la session finit le message d'avant ou démarre ;
+- **En cours** : un agent y travaille, avec ce qu'il fait en ce moment (« lit Source/… », « les membres
+  réfléchissent · 3 avis sur 5 ») et depuis combien de temps ;
+- **T'attend** : une question, une autorisation, ou un envoi du chef à valider ;
+- **Fini** : la réponse, la décision ou le rapport. Une carte finie que tu n'as pas ouverte porte la
+  marque « nouveau » ; **Tout vu** les retire toutes.
 
-Le chef et les sessions suivent les mêmes demandes dans `Saved/Tour/demandes.md`, que la tour réécrit ;
-le chef le lit avant chaque demande.
+Le bandeau du haut garde les quatre compteurs quand tu replies le tableau. Un clic sur une carte l'ouvre
+dans le volet :
+
+- un **résumé** écrit par la tour à partir de ce que les agents rapportent (où ça en est, ce que le chef
+  a confié et à qui, la dernière réponse), sans appel de modèle en plus ;
+- le **suivi** heure par heure : les étapes de la demande et des envois du chef, les réponses des
+  agents, tes commentaires ;
+- **Commenter** : tant qu'un agent travaille dessus et qu'on peut lui écrire depuis la tour (le chef
+  pour une demande au chef, ou pour un verdict du conseil que tu lui as confié), ton commentaire lui part
+  et sa réponse s'ajoute au suivi. Sinon (demande finie, conseil qui délibère, session dans sa fenêtre),
+  il reste une note sur la carte.
+
+Ce que le chef confie aux sessions pendant ta demande reste dans sa carte : elle n'est finie que quand
+les sessions ont fini aussi (leur ligne au tableau des sujets pour « Chef » sert de réponse). Le chef et
+les sessions suivent les mêmes demandes, avec tes commentaires, dans `Saved/Tour/demandes.md`, que la
+tour réécrit ; le chef le lit avant chaque demande.
 
 ## La bibliothèque des skills
 

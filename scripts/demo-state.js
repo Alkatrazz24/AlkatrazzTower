@@ -452,7 +452,8 @@ async function demoSauvegarde() {
 
 // Le suivi des demandes (lib/demandes.js) : ce qu'ali a envoye depuis la tour, ecrit tel que le serveur le
 // garde. Une question au conseil qui delibere, deux messages a des salles (l'une attend sa reponse), une
-// demande au chef finie dont un envoi travaille et l'autre attend sa validation, une relecture finie.
+// demande au chef finie (avec un commentaire d'ali et la reponse du chef) dont un envoi travaille et l'autre
+// attend sa validation, une relecture finie.
 function demoDemandes() {
   const D = require('../lib/demandes');
   const P = 'ConquerTheBackrooms';
@@ -467,7 +468,9 @@ function demoDemandes() {
       live: 'Odile veut supprimer BT_Stalker_old.uasset et deux Blackboards qui ne servent plus. Tu autorises ?', phases: [{ at: m(-12), text: 'envoyée' }, { at: m(-12), text: 'prise en charge' }, { at: m(-4), text: 'attend ta réponse' }] }),
     d('d-demo-chef', -14, { kind: 'chef', to: 'Chef', text: 'Le rechargement ne joue pas en jeu, et j\'ai importé des assets dans Content/Characters/New : tu peux regarder ?', ref: { tag: 'd-demo-chef', session: 's-chef' }, ...fini(-11),
       phases: [{ at: m(-14), text: 'envoyée' }, { at: m(-14), text: 'prise en charge' }, { at: m(-11), text: 'fini' }],
-      result: { text: 'Le montage A_Arms_Reload n\'a pas de slot UpperBody : j\'ai confié la correction au sujet Animation. Les assets de Content/Characters/New sont bien rangés ; deux textures sont en 8K.', session: 's-chef' } }),
+      result: { text: 'Le montage A_Arms_Reload n\'a pas de slot UpperBody : j\'ai confié la correction au sujet Animation. Les assets de Content/Characters/New sont bien rangés ; deux textures sont en 8K.', session: 's-chef' },
+      notes: [{ at: m(-9), who: 'ali', text: 'Le fusil à pompe a peut-être le même souci de slot, tu peux le faire vérifier aussi ?', to: 'Chef', session: 's-chef', tag: 'c-demo-1' },
+        { at: m(-8), who: 'agent', name: 'Chef', text: 'Oui : j\'ai ajouté le montage A_Shotgun_Reload à l\'envoi d\'Animation, il vérifie les deux.' }] }),
     d('d-demo-envoi-anim', -12, { kind: 'envoi', to: 'Animation', parent: 'd-demo-chef', text: 'Le rechargement ne joue pas : le montage A_Arms_Reload n\'a pas de slot UpperBody. Ajoute le slot ou change le slot du montage, puis dis-moi au tableau ce que tu as fait.', ref: { envoi: 'e-demo--12', tag: 'envoi:e-demo--12' }, live: 'lit Animations/ABP_Arms.uasset' }),
     d('d-demo-envoi-ui', -11, { kind: 'envoi', to: 'Interface', parent: 'd-demo-chef', text: 'Les deux textures 8K importées dans Content/Characters/New : passe-les en 2K et vérifie que le HUD n\'en souffre pas.', ref: { envoi: 'e-demo--11', tag: 'envoi:e-demo--11' }, status: 'attend', phase: 'attend ta validation', live: 'dans le bâtiment du chef : Envoyer ou Ignorer', phases: [{ at: m(-11), text: 'envoyée' }, { at: m(-11), text: 'attend ta validation' }] }),
     d('d-demo-relecture', -95, { kind: 'tache', to: 'Relecture complète et rapport', text: 'Relit tout le jeu (code, Blueprints, niveaux, config) et écrit un rapport, sans rien modifier.', ref: { task: 'relecture', session: 's-test' }, ...fini(-31),

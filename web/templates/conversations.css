@@ -1,9 +1,10 @@
-/* « Conversations » : trois colonnes. Les conversations a gauche, celle qu'on a ouverte au centre,
-   le tableau de bord a droite ; une fiche s'ouvre dans un volet par-dessus. Couleurs : web/appli/hud.css. */
+/* « Conversations » : le tableau des demandes en haut, puis trois colonnes. Les conversations a gauche,
+   celle qu'on a ouverte au centre, le tableau de bord a droite ; une fiche ou une carte s'ouvre dans un
+   volet par-dessus. Couleurs : web/appli/hud.css. */
 html, body { height: 100%; }
 body { margin: 0; color: var(--us-ink); font: 15px/1.5 var(--us-text); background: var(--us-bg); overflow: hidden; }
 #app { height: 100%; }
-.ap { position: relative; height: 100dvh; display: grid; grid-template-columns: 300px minmax(0, 1fr) 312px; overflow: hidden; }
+.ap { position: relative; height: 100dvh; display: grid; grid-template-columns: 300px minmax(0, 1fr) 312px; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
 :where(.ap) button { font: inherit; color: inherit; }
 .ap :where(h1, h2, p) { margin: 0; }
 
@@ -164,6 +165,88 @@ button.ap-att:hover { border-color: var(--us-line2); }
 .ap-gear { width: 9px; text-align: center; color: var(--us-muted); font-size: 13px; }
 .ap-us-dot-none, .us-dot.us-d-none { background: transparent; box-shadow: inset 0 0 0 1.5px var(--us-grey); }
 
+/* ---------- en haut : le tableau des demandes ---------- */
+.ap-board { grid-column: 1 / -1; min-width: 0; background: var(--us-panel); border-bottom: 1px solid var(--us-line); }
+.ap-bhead { display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; min-height: 44px; box-sizing: border-box; }
+.ap-btoggle { all: unset; box-sizing: border-box; flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+.ap-btoggle:hover:not(:disabled) { background: var(--us-hover); }
+.ap-btoggle:focus-visible { outline: 2px solid var(--us-blue); outline-offset: -2px; }
+.ap-btoggle:disabled { cursor: default; }
+.ap-btoggle > b { flex: none; display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 700; }
+.ap-btoggle:not(:disabled) > b::before { content: "›"; display: inline-block; width: 8px; color: var(--us-muted); transition: transform var(--us-ease); }
+.ap-btoggle[aria-expanded="true"] > b::before { transform: rotate(90deg); }
+.ap-bcounts { display: flex; align-items: center; gap: 6px 16px; flex-wrap: wrap; min-width: 0; font-size: 13px; color: var(--us-muted); }
+.ap-bcount { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.ap-bcount b { color: var(--us-ink); font-variant-numeric: tabular-nums; }
+.ap-bcount[data-n="0"] { opacity: .55; }
+.ap-bcount[data-n="0"] .us-dot { animation: none; }
+.ap-bcount-attend:not([data-n="0"]), .ap-bcount-attend:not([data-n="0"]) b { color: var(--us-warn); }
+.ap-bcount-attend:not([data-n="0"]) .us-dot { animation: ap-blink 1.2s ease-in-out infinite; }
+.ap-bcount .us-dot { width: 8px; height: 8px; }
+.ap-bempty { font-size: 13px; color: var(--us-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-ballseen { flex: none; padding: 4px 10px; font-size: 13px; }
+.ap-bcols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 0 12px 12px; }
+.ap-bcol { min-width: 0; display: flex; flex-direction: column; min-height: 0; max-height: min(36vh, 340px); background: var(--us-inset); border: 1px solid var(--us-line); border-radius: var(--us-radius); }
+.ap-bcol > .ap-gtitle { flex: none; padding: 8px 10px 4px; }
+.ap-bcol-attend > .ap-gtitle { color: var(--us-warn); }
+.ap-bitems { list-style: none; margin: 0; padding: 2px 6px 8px; display: grid; gap: 6px; overflow-y: auto; min-height: 0; align-content: start; }
+.ap-bnone { padding: 4px 10px 10px; font-size: 12.5px; color: var(--us-muted); }
+.ap-bcard { all: unset; box-sizing: border-box; width: 100%; display: grid; gap: 3px; padding: 8px 10px; cursor: pointer; font-size: 13px;
+  background: var(--us-panel); border: 1px solid var(--us-line); border-left: 3px solid var(--us-grey); border-radius: var(--us-r-sm); }
+.ap-bcard:hover { border-color: var(--us-line2); }
+.ap-bcard:focus-visible { outline: 2px solid var(--us-blue); outline-offset: 1px; }
+.ap-bc-en-cours, .ap-bc-envoyee { border-left-color: var(--us-blue); }
+.ap-bc-attend { border-left-color: var(--us-warn); }
+.ap-bc-fini { border-left-color: var(--us-ok); }
+.ap-bc-erreur { border-left-color: var(--us-ko); }
+.ap-bc-seen { opacity: .7; }
+.ap-bc-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.ap-bc-head b { min-width: 0; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-bc-head small { flex: none; padding: 0 6px; border-radius: 999px; font-size: 11px; background: var(--us-soft); color: var(--us-muted); }
+.ap-bc-head time { margin-left: auto; flex: none; font-size: 11.5px; color: var(--us-muted); font-variant-numeric: tabular-nums; }
+.ap-bc-en-cours .ap-bc-head .us-dot { animation: us-dem-pulse 1.6s ease-in-out infinite; }
+.ap-bc-attend .ap-bc-head .us-dot { animation: ap-blink 1.2s ease-in-out infinite; }
+.ap-bc-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; line-height: 1.4; }
+.ap-bc-now { font-size: 12.5px; color: var(--us-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-bc-attend .ap-bc-now { color: var(--us-warn); }
+.ap-bc-foot { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11.5px; color: var(--us-muted); }
+.ap-bc-badge { padding: 0 6px; border-radius: 999px; font-weight: 700; background: color-mix(in srgb, var(--us-ok) 18%, transparent); color: var(--us-ok); }
+.ap-bc-new { animation: ap-bc-spawn 2.4s ease-out 1; }
+@keyframes ap-bc-spawn { 0% { transform: translateY(-6px); opacity: 0; box-shadow: 0 0 0 3px var(--us-blue); } 20% { transform: none; opacity: 1; } 100% { box-shadow: 0 0 0 0 transparent; } }
+
+/* ---------- la carte ouverte : resume, suivi, commentaires ---------- */
+.ap-k-demande .us-ehead h2 { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
+.ap-k-demande .us-ebody { display: grid; gap: 12px; align-content: start; }
+.ap-dd-ask { display: grid; gap: 4px; }
+.ap-dd-ask small { font-size: 12px; color: var(--us-muted); }
+.ap-dd-ask p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14.5px; }
+.ap-dd-sum { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--us-r-sm); background: var(--us-inset); border: 1px solid var(--us-line); border-left: 3px solid var(--us-blue); }
+.ap-dd-sum-attend { border-left-color: var(--us-warn); }
+.ap-dd-sum-fini { border-left-color: var(--us-ok); }
+.ap-dd-sum-erreur { border-left-color: var(--us-ko); }
+.ap-dd-sum-arretee { border-left-color: var(--us-grey); }
+.ap-dd-sum b { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--us-muted); }
+.ap-dd-sum ul { margin: 0; padding-left: 18px; display: grid; gap: 3px; font-size: 14px; }
+.ap-dd-sum li { overflow-wrap: anywhere; }
+.ap-feed { list-style: none; margin: 0; padding: 0 0 0 12px; border-left: 2px solid var(--us-line2); display: grid; gap: 8px; }
+.ap-feed li { display: grid; gap: 1px; font-size: 13.5px; }
+.ap-f-meta { font-size: 12px; color: var(--us-muted); }
+.ap-f-meta time { font-variant-numeric: tabular-nums; }
+.ap-f-meta b { color: var(--us-ink); font-weight: 600; }
+.ap-f-text { overflow-wrap: anywhere; white-space: pre-wrap; }
+.ap-f-step .ap-f-text { color: var(--us-muted); }
+.ap-f-sub { margin-left: 12px; }
+.ap-f-reply .ap-f-text, .ap-f-mine .ap-f-text, .ap-f-err .ap-f-text { padding: 7px 10px; border-radius: 10px; }
+.ap-f-reply .ap-f-text { background: color-mix(in srgb, var(--us-ok) 10%, transparent); }
+.ap-f-mine .ap-f-text { background: color-mix(in srgb, var(--us-blue) 14%, transparent); }
+.ap-f-err .ap-f-text { background: color-mix(in srgb, var(--us-ko) 12%, transparent); }
+.ap-f-now .ap-f-text { color: var(--us-blue); }
+.ap-dd-comment { display: grid; gap: 6px; }
+.ap .ap-dd-input { width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px; font-size: 14px; }
+.ap-dd-cfoot { display: flex; align-items: center; gap: 10px; }
+.ap-dd-cfoot small { flex: 1; font-size: 12.5px; }
+.ap-dd-cfoot .us-btn { flex: none; }
+
 /* ---------- le volet ---------- */
 .ap-sheet { position: absolute; top: 0; right: 0; bottom: 0; z-index: 10; width: min(520px, 100%); display: flex; flex-direction: column; min-height: 0;
   background: var(--us-panel); border-left: 1px solid var(--us-line2); box-shadow: -24px 0 60px -30px rgba(0, 0, 0, .6);
@@ -185,7 +268,9 @@ button.ap-att:hover { border-color: var(--us-line2); }
 
 @media (prefers-reduced-motion: reduce) {
   .ap-sheet, .ap-shade { transition: none; }
-  .ap-wait .ap-dot, .ap-c-warn .ap-dot, .ap-dem .us-dot { animation: none; }
+  .ap-wait .ap-dot, .ap-c-warn .ap-dot, .ap-dem .us-dot, .ap-bcard .us-dot, .ap-bcount .us-dot { animation: none; }
+  .ap-bc-new { animation: none; }
+  .ap-btoggle > b::before { transition: none; }
 }
 
 /* ---------- plus etroit : le tableau de bord passe dans le volet ---------- */
@@ -193,6 +278,8 @@ button.ap-att:hover { border-color: var(--us-line2); }
   .ap { grid-template-columns: 280px minmax(0, 1fr); }
   .ap-rail { display: none; }
   .ap-sideacts .ap-railbtn { display: inline-flex; }
+  /* « en direct » ne garde que son point (le texte reste dans l'infobulle) : il passait sous « Tableau » */
+  .ap-live { font-size: 0; gap: 0; }
 }
 /* ---------- telephone ou onglet de l'editeur etroit : la liste, ou la conversation ---------- */
 @media (max-width: 760px) {
@@ -206,4 +293,11 @@ button.ap-att:hover { border-color: var(--us-line2); }
   .ap-keys { display: none; }
   .ap-hacts .us-btn { padding: 6px 9px; }
   .ap-sheet { width: 100%; }
+  /* le tableau defile de colonne en colonne */
+  .ap-bhead { padding: 4px 8px 4px 4px; }
+  .ap-bcounts { gap: 4px 10px; font-size: 12.5px; }
+  .ap-bcols { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 8px 10px; gap: 8px; }
+  .ap-bcol { flex: 1 0 82%; scroll-snap-align: start; max-height: 40vh; }
+  /* les colonnes vides ne prennent pas l'ecran : les compteurs du haut disent deja 0 */
+  .ap-bcol:has(> .ap-bnone) { display: none; }
 }

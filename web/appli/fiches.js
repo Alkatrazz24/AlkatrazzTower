@@ -1632,14 +1632,18 @@
   }
 
   // ---------- les demandes (lib/demandes.js) ----------
-  // Tout ce qu'ali envoie depuis la tour (au conseil, au chef, a une salle, une tache) : une barre en bas
-  // du jeu des que ca part, son etat en direct, et son resultat. Elle quitte la barre quand ali l'a vue finie.
-  const demUi = { open: null, states: null };
+  // Tout ce qu'ali envoie depuis la tour (au conseil, au chef, a une session, une tache) : une carte au
+  // tableau en haut de l'application des que ca part. Elle passe seule de colonne en colonne (a faire,
+  // en cours, t'attend, fini). Ouverte : un resume, le suivi des agents et les commentaires.
+  const demUi = { open: null, states: null, known: null, fresh: new Map() };
   const DEM_DOT = { envoyee: 'grey', 'en-cours': 'blue', attend: 'warn', fini: 'ok', erreur: 'ko', arretee: 'grey' };
   const DEM_RANK = { attend: 0, 'en-cours': 1, envoyee: 1, fini: 2, erreur: 2, arretee: 3 };
+  const DEM_KIND = { conseil: 'Conseil', chef: 'Chef', discussion: 'Session', tache: 'Tâche', envoi: 'Envoi du Chef' };
   const demsOf = (M) => (M && M.S && M.S.demandes) || [];
   const demFinal = (x) => x.state === 'fini' || x.state === 'erreur' || x.state === 'arretee';
   const demSort = (a, b) => (DEM_RANK[a.state] - DEM_RANK[b.state]) || (b.at - a.at);
+  const demFind = (M, id) => { const walk = (l) => { for (const x of l) { if (x.id === id) return x; const k = walk(x.children || []); if (k) return k; } return null; }; return walk(demsOf(M)); };
+  const dclip = (s, n) => { s = String(s || '').replace(/\*\*|__|`/g, '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
   // Ou en est une demande, en une ligne : l'etape, ce qui se passe, ou le resultat.
   function demNow(x) {
     if (x.state === 'fini') return x.result && x.result.text ? x.result.text : 'fini';
@@ -1647,56 +1651,162 @@
     if (demFinal(x)) return x.phase;
     return x.live ? `${x.phase} · ${x.live}` : x.phase;
   }
-  function openDem(id) { demUi.open = id; NAV().sheet('demandes'); }
   const demSeen = (id) => T.call('/api/demandes/vu', id ? { id } : {});
+  // ouvrir une carte finie, c'est l'avoir vue
+  function openDem(id) {
+    const M = M_(), x = demFind(M, id);
+    demUi.open = id;
+    if (x && demFinal(x) && !x.seenAt && !x.parent && M && !M.demo) demSeen(id);
+    NAV().sheet('demande');
+  }
 
+  // Le tableau : quatre colonnes, une carte par demande d'ali (les envois du chef restent dans leur carte).
+  const COLS = [
+    ['afaire', 'À faire', (x) => x.state === 'envoyee'],
+    ['encours', 'En cours', (x) => x.state === 'en-cours'],
+    ['attend', 'T\'attend', (x) => x.state === 'attend'],
+    ['fini', 'Fini', demFinal],
+  ];
+  const FINI_MAX = 8;
+  function boardCols(M) {
+    const all = demsOf(M);
+    return COLS.map(([id, title, pred]) => {
+      let items = all.filter(pred).sort((a, b) => b.at - a.at);
+      if (id === 'fini') {
+        const unseen = items.filter(x => !x.seenAt).sort((a, b) => b.doneAt - a.doneAt);
+        const seen = items.filter(x => x.seenAt).sort((a, b) => b.doneAt - a.doneAt);
+        items = [...unseen, ...seen.slice(0, Math.max(0, FINI_MAX - unseen.length))];
+      }
+      return { id, title, items };
+    });
+  }
+  // Une carte qui vient d'arriver : le tableau s'ouvre et elle s'allume quelques secondes.
+  function boardFresh(M) {
+    const ids = demsOf(M).map(x => x.id);
+    const now = Date.now();
+    let spawned = false;
+    if (demUi.known) for (const id of ids) if (!demUi.known.has(id)) { demUi.fresh.set(id, now); spawned = true; }
+    demUi.known = new Set(ids);
+    for (const [id, t] of demUi.fresh) if (now - t > 6000) demUi.fresh.delete(id);
+    return spawned;
+  }
+  function boardCard(M, x) {
+    const kind = DEM_KIND[x.kind] && DEM_KIND[x.kind] !== x.to ? DEM_KIND[x.kind] : '';
+    const kids = x.children || [], notes = x.notes || [];
+    const unseen = demFinal(x) && !x.seenAt;
+    return h('li', null, h('button', {
+      type: 'button', class: `ap-bcard ap-bc-${x.state}${demUi.fresh.has(x.id) ? ' ap-bc-new' : ''}${unseen ? ' ap-bc-unseen' : ''}${x.seenAt ? ' ap-bc-seen' : ''}`,
+      onclick: () => openDem(x.id), 'aria-label': `${x.to}, ${x.stateText} : ${dclip(x.text, 80)}`,
+    },
+    h('span', { class: 'ap-bc-head' }, h('span', { class: `us-dot us-d-${DEM_DOT[x.state]}` }), h('b', null, x.to), kind ? h('small', null, kind) : null,
+      demFinal(x) ? h('time', null, T.clock(x.doneAt)) : T.forEl(x.at, 'time')),
+    h('span', { class: 'ap-bc-text' }, dclip(x.text, 150)),
+    h('span', { class: 'ap-bc-now' }, dclip(demNow(x), 120)),
+    kids.length || notes.length || unseen ? h('span', { class: 'ap-bc-foot' },
+      kids.length ? h('span', null, `${T.plural(kids.length, 'envoi', 'envois')}${kids.some(k => k.state === 'attend') ? ', un t\'attend' : kids.some(k => !demFinal(k)) ? ', en cours' : ''}`) : null,
+      notes.length ? h('span', null, T.plural(notes.length, 'commentaire', 'commentaires')) : null,
+      unseen ? h('span', { class: 'ap-bc-badge' }, 'nouveau') : null) : null));
+  }
+  // open : le tableau deplie ; toggle() le replie ou le deplie.
+  function boardNodes(M, open, toggle) {
+    const cols = boardCols(M);
+    const total = demsOf(M).length;
+    const count = (c) => h('span', { class: `ap-bcount ap-bcount-${c.id}`, 'data-n': c.items.length },
+      h('i', { class: `us-dot us-d-${{ afaire: 'grey', encours: 'blue', attend: 'warn', fini: 'ok' }[c.id]}` }), c.title, ' ', h('b', null, c.items.length));
+    const unseen = cols[3].items.filter(x => !x.seenAt).length;
+    const head = h('div', { class: 'ap-bhead' },
+      h('button', { type: 'button', class: 'ap-btoggle', 'aria-expanded': total ? String(open) : null, 'aria-controls': total ? 'ap-bcols' : null, onclick: toggle, disabled: !total || null },
+        h('b', null, 'Demandes'), total ? h('span', { class: 'ap-bcounts' }, cols.map(count)) : h('span', { class: 'ap-bempty' }, 'Ce que tu demandes au Chef, au Conseil ou à une session arrive ici, en carte.')),
+      open && unseen ? btn('Tout vu', () => demSeen(''), 'ap-ballseen', M.demo ? { disabled: true } : { title: 'Les cartes finies perdent leur marque « nouveau »' }) : null);
+    if (!open || !total) return [head];
+    return [head, h('div', { class: 'ap-bcols', id: 'ap-bcols' }, cols.map(c => h('section', { class: `ap-bcol ap-bcol-${c.id}`, 'aria-label': c.title },
+      h('h2', { class: 'ap-gtitle' }, h('span', null, c.title), h('small', null, c.items.length)),
+      c.items.length ? h('ul', { class: 'ap-bitems' }, c.items.map(x => boardCard(M, x)))
+        : h('p', { class: 'ap-bnone' }, { afaire: 'Rien en attente de départ.', encours: 'Personne ne travaille pour toi en ce moment.', attend: 'Rien ne t\'attend.', fini: 'Rien de fini pour l\'instant.' }[c.id]))))];
+  }
 
-  // Une demande dans la liste : son etat, puis ouverte, son parcours, son resultat, ce qu'elle a confie.
-  function demCard(M, x, depth = 0) {
-    const open = demUi.open === x.id;
+  const mdPlain = (t) => String(t || '').replace(/\*\*|__|`/g, '').replace(/^[ \t]*#{1,6}[ \t]+/gm, '').trim();
+  // Le suivi d'une carte, du plus ancien au plus recent : les etapes de la demande et de ses envois,
+  // les reponses des agents, tes commentaires.
+  function feedOf(x) {
+    const items = [];
+    const walk = (n, depth, parent) => {
+      for (const [i, p] of (n.phases || []).entries()) {
+        const text = depth && i === 0 ? `${parent.to} lui confie : « ${dclip(n.text, 200)} »` : p.text;
+        items.push({ at: p.at, who: n.to, kind: 'step', text, sub: depth > 0 });
+      }
+      if (n.result && n.result.text && n.status === 'fini') items.push({ at: n.ownDoneAt || n.doneAt, who: n.to, kind: 'reply', label: n.ref && n.ref.conseil ? 'Décision' : 'Réponse', text: mdPlain(n.result.text), sub: depth > 0 });
+      for (const c of n.notes || []) items.push(c.who === 'ali'
+        ? { at: c.at, who: 'Toi', kind: 'mine', text: c.text, meta: c.to ? (c.pending ? `envoyé à ${c.to}, il répond dès qu'il a fini ce qu'il fait` : c.lost ? `envoyé à ${c.to}, la tour a redémarré avant sa réponse` : `envoyé à ${c.to}`) : 'note' }
+        : { at: c.at, who: c.name, kind: c.error ? 'err' : 'reply', label: 'Réponse à ton commentaire', text: mdPlain(c.text) });
+      for (const k of n.children || []) walk(k, depth + 1, n);
+    };
+    walk(x, 0, null);
+    return items.map((it, i) => [it, i]).sort((a, b) => (a[0].at - b[0].at) || (a[1] - b[1])).map(([it]) => it);
+  }
+
+  // Les boutons d'une carte : repondre, valider, lire le rapport ou le verdict, arreter.
+  function demActs(M, x) {
     const ag = x.ref && x.ref.session ? M.agents.find(a => a.id === x.ref.session) : null;
     const goAgent = () => { NAV().close(); NAV().conv(ag.id); };
     const acts = [];
-    if (x.state === 'attend' && x.kind === 'envoi' && x.phase === 'attend ta validation') acts.push(btn('Valider chez le Chef', () => NAV().conv('chef'), 'us-go'));
+    const wait = x.state === 'attend' ? [x, ...(x.children || [])].find(k => k.status === 'attend') : null;
+    if (wait && wait.kind === 'envoi' && wait.phase === 'attend ta validation') acts.push(btn('Valider chez le Chef', () => { NAV().close(); NAV().conv('chef'); }, 'us-go'));
     else if (x.status === 'attend' && ag) acts.push(btn('Répondre', goAgent, 'us-go'));
     if (x.ref && x.ref.conseil) acts.push(btn(x.status === 'fini' ? 'Lire le verdict' : 'Voir le conseil', () => { NAV().close(); NAV().conv('conseil'); }));
-    if (x.result && x.result.file && ag && ag.raw.task && !M.demo) acts.push(btn('Lire le rapport', () => fileView(x.to, x.result.file, `/api/tasks/file?session=${encodeURIComponent(ag.id)}&path=${encodeURIComponent(x.result.file)}`)));
+    const res = x.result || {};
+    if (res.file && ag && ag.raw.task && !M.demo) acts.push(btn('Lire le rapport', () => fileView(x.to, res.file, `/api/tasks/file?session=${encodeURIComponent(ag.id)}&path=${encodeURIComponent(res.file)}`)));
     if (ag && x.status !== 'attend') acts.push(btn('Ouvrir la conversation', goAgent));
     if (!demFinal(x) && x.ref && x.ref.conseil && x.status !== 'fini') acts.push(btn('Arrêter', () => T.call('/api/conseil/stop'), 'us-danger', M.demo ? { disabled: true } : {}));
-    else if (!demFinal(x) && x.status !== 'fini' && ag && ag.raw.chat && ag.raw.chat.busy && x.status === 'en-cours') acts.push(btn('Arrêter', () => T.call('/api/chat/stop', { sessionId: ag.id }), 'us-danger', M.demo ? { disabled: true } : { title: 'Arrête ce que fait la session : elle garde son historique' }));
-    if (!depth && demFinal(x) && !x.seenAt) acts.push(btn('Vu', () => demSeen(x.id)));
-    const res = x.result || {};
-    return h('li', { class: `us-dem-item us-dem-${x.state}${open ? ' on' : ''}` },
-      h('button', { type: 'button', class: 'us-runbtn', 'aria-expanded': String(open), onclick: () => { demUi.open = open ? null : x.id; renderHud(); } },
-        h('span', { class: `us-dot us-d-${DEM_DOT[x.state]}` }), h('b', null, x.to), h('span', { class: `us-dem-st` }, x.stateText),
-        h('span', { class: 'us-dim us-dem-when' }, demFinal(x) ? T.clock(x.doneAt) : T.forEl(x.at))),
-      h('p', { class: open ? 'us-dem-text' : 'us-dem-text us-clamp' }, x.text),
-      !demFinal(x) ? h('p', { class: x.state === 'attend' ? 'us-t-warn' : 'us-dim' }, demNow(x)) : null,
-      open ? [
-        h('ol', { class: 'us-dem-phases', 'aria-label': 'Son parcours' }, (x.phases || []).map(p => h('li', null, h('span', { class: 'us-time' }, T.clock(p.at)), ' ', p.text))),
-        x.status === 'fini' && res.text ? h('div', { class: 'us-dem-res' }, h('b', null, x.ref && x.ref.conseil ? 'Décision' : 'Réponse'), h('p', null, res.text)) : null,
-        x.status === 'erreur' || x.status === 'arretee' ? h('p', { class: 'us-t-ko' }, x.phase) : null,
-        res.file ? h('p', { class: 'us-dim us-path' }, res.file) : null,
-        res.questions && res.questions.length ? [h('b', null, 'Ses questions pour toi'), h('ul', { class: 'us-suivi-list' }, res.questions.map(q => h('li', null, q)))] : null,
-        acts.length ? h('div', { class: 'us-actions' }, acts) : null,
-      ] : null,
-      x.children && x.children.length ? [h('small', { class: 'us-dim' }, `Confié pendant la demande : ${T.plural(x.children.length, 'envoi', 'envois')}`),
-        h('ul', { class: 'us-dem-list us-dem-kids' }, x.children.map(k => demCard(M, k, depth + 1)))] : null);
+    else if (x.status === 'en-cours' && ag && ag.raw.chat && ag.raw.chat.busy) acts.push(btn('Arrêter', () => T.call('/api/chat/stop', { sessionId: ag.id }), 'us-danger', M.demo ? { disabled: true } : { title: 'Arrête ce que fait la session : elle garde son historique' }));
+    return acts;
   }
 
-  function demandesPanel(M) {
-    const all = demsOf(M).slice().sort(demSort);
-    const live = all.filter(x => !demFinal(x)), done = all.filter(demFinal).sort((a, b) => b.doneAt - a.doneAt).slice(0, 20);
-    if (demUi.open === null && live[0]) demUi.open = live[0].id;
-    const unseen = done.some(x => !x.seenAt);
-    return h('section', { class: 'us-panel us-entity us-dems', 'aria-label': 'Demandes' },
-      h('div', { class: 'us-ehead' }, h('h2', null, 'Tes demandes'), unseen ? btn('Tout vu', () => demSeen(''), 'us-dem-seen', M.demo ? { disabled: true } : { title: 'Retire de la barre toutes les demandes finies' }) : null,
-        btn('Fermer', () => NAV().close(), 'us-x', { 'aria-label': 'Fermer les demandes', title: 'Échap' })),
+  let commenting = false;
+  async function demComment(M, x) {
+    const box = document.querySelector('[data-keep="dem-comment"]');
+    const text = box ? box.value.trim() : '';
+    if (!text || commenting) return;
+    if (M.demo) { T.toast('Mode démo : le commentaire part sur la vraie tour.'); return; }
+    commenting = true;
+    const r = await T.api('/api/demandes/commenter', { id: x.id, text });
+    commenting = false;
+    if (r && r.ok) { if (box) box.value = ''; T.toast(r.to ? `Envoyé à ${r.to}.` : 'Noté sur la carte.'); }
+    else T.toast((r && r.error) || 'La tour ne répond pas.');
+    renderHud();
+  }
+
+  // La carte ouverte, dans le volet.
+  function demandePanel(M) {
+    const x = demUi.open && demFind(M, demUi.open);
+    if (!x) return null;
+    const acts = demActs(M, x);
+    const res = x.result || {};
+    const feed = feedOf(x);
+    const box = h('textarea', { class: 'ap-dd-input', name: 'commentaire', rows: 3, maxlength: 2000, 'data-keep': 'dem-comment', 'aria-label': 'Ton commentaire',
+      placeholder: x.commentTo ? `Un commentaire pour ${x.commentTo}…` : 'Une note sur cette demande…', disabled: M.demo || null,
+      onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); demComment(M, x); } } });
+    return h('section', { class: 'us-panel us-entity ap-k-demande', 'aria-label': `Demande : ${x.to}`, 'data-key': `demande:${x.id}` },
+      h('div', { class: 'us-ehead' },
+        h('h2', null, x.to, h('span', { class: `ap-chip ap-c-${{ attend: 'warn', 'en-cours': 'blue', envoyee: 'blue', fini: 'ok', erreur: 'ko' }[x.state] || 'grey'}` }, h('i', { class: `ap-dot ap-d-${DEM_DOT[x.state]}` }), x.stateText)),
+        btn('Fermer', () => NAV().close(), 'us-x', { 'aria-label': 'Fermer la demande', title: 'Échap' })),
       h('div', { class: 'us-ebody' },
-        h('p', { class: 'us-dim' }, 'Ce que tu envoies depuis la tour (au conseil, au chef, à une session, une tâche) : où ça en est, en direct, et le résultat. Le chef et les sessions le lisent dans Saved/Tour/demandes.md.'),
-        h('div', { class: 'us-sub' }, `En cours${live.length ? ` · ${live.length}` : ''}`),
-        live.length ? h('ul', { class: 'us-dem-list' }, live.map(x => demCard(M, x))) : h('p', { class: 'us-dim' }, 'Rien ne tourne. Pose une question au conseil, écris au chef ou à une session : la demande apparaît ici dès qu\'elle part.'),
-        done.length ? [h('div', { class: 'us-sub' }, 'Finies'), h('ul', { class: 'us-dem-list' }, done.map(x => demCard(M, x)))] : null));
+        h('div', { class: 'ap-dd-ask' }, h('small', null, `${DEM_KIND[x.kind] || 'Demande'} · envoyée `, T.agoEl(x.at)), h('p', null, x.text)),
+        h('div', { class: `ap-dd-sum ap-dd-sum-${x.state}` }, h('b', null, 'Résumé'), h('ul', null, (x.summary || [demNow(x)]).map(l => h('li', null, l)))),
+        res.questions && res.questions.length ? [h('b', null, 'Ses questions pour toi'), h('ul', { class: 'us-suivi-list' }, res.questions.map(q => h('li', null, q)))] : null,
+        res.file ? h('p', { class: 'us-dim us-path' }, res.file) : null,
+        acts.length ? h('div', { class: 'us-actions' }, acts) : null,
+        h('div', { class: 'us-sub' }, 'Suivi'),
+        h('ol', { class: 'ap-feed' },
+          feed.map(it => h('li', { class: `ap-f-${it.kind}${it.sub ? ' ap-f-sub' : ''}` },
+            h('span', { class: 'ap-f-meta' }, h('time', null, T.clock(it.at)), ' ', h('b', null, it.who), it.label ? ` · ${it.label}` : '', it.meta ? h('small', null, ` · ${it.meta}`) : null),
+            h('span', { class: 'ap-f-text' }, it.text))),
+          !demFinal(x) ? h('li', { class: 'ap-f-now' }, h('span', { class: 'ap-f-meta' }, h('b', null, 'Maintenant')), h('span', { class: 'ap-f-text' }, demNow(x))) : null),
+        h('div', { class: 'us-sub' }, 'Commenter'),
+        h('div', { class: 'ap-dd-comment' }, box,
+          h('div', { class: 'ap-dd-cfoot' },
+            h('small', { class: 'us-dim' }, M.demo ? 'Démo : rien n\'est envoyé.' : x.commentTo ? `Part à ${x.commentTo}, qui travaille dessus : sa réponse s'affiche dans le suivi.` : `${demFinal(x) ? 'Plus aucun agent dessus' : 'Personne ne lit de message en cours de route ici'} : ton commentaire reste une note sur la carte. Le Chef la lit avec les demandes.`),
+            btn(x.commentTo ? 'Envoyer' : 'Noter', () => demComment(M, x), 'us-go', M.demo ? { disabled: true } : { title: 'Ctrl+Entrée' })))));
   }
 
   // Une demande qui finit pendant qu'ali regarde ailleurs : un mot en bas de l'ecran.
@@ -1777,7 +1887,7 @@
     btn, dotFor, rowsOf, tok, ctxBar, askBox, suiviState, chatItems, chatMode, canChat, UUID,
     agentDetails, sujetBody, chefBody, conseilBody, conseilOf, isLive, sujetOfId, defOf, sujetLaunch,
     forgeBody, versionBody, skillsBody, rosterBody, docsBody, unrealBody, gitBody, svBody,
-    equipePanel, sujetsPanel, featuresPanel, tachesPanel, demandesPanel, tutoPanel,
+    equipePanel, sujetsPanel, featuresPanel, tachesPanel, demandePanel, boardNodes, boardFresh, tutoPanel,
     featureDialog, taskDialog, launchTask, boardDialog,
     demsOf, demFinal, demNow, demSort, demSeen, demNotice, openDem, DEM_DOT,
     docDebts, gitOf, repoTone, svOf, svTone, svCurrent, svAlert, gitAlert, prsOf,
