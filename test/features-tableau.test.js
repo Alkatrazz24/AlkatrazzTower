@@ -240,3 +240,19 @@ test('les taches perso d\'ali deviennent des features, une fois chacune', () => 
   assert.strictEqual(t2.seedFeatures('CTB', [{ key: 'perso-lampe', title: 'Lampe torche', idea: 'x' }]), 0);
   done();
 });
+
+test('l\'historique d\'avant tolere les fins de ligne Windows (CRLF)', () => {
+  const env = setup();
+  const { s, root, done } = env;
+  const crlf = (l) => l.join('\r\n') + '\r\n';
+  put(root, 'Saved/Tour/tableau.md', crlf(['# Tableau', '', '- 2026-10-11 00:17 · Animation → Gameplay : le montage AM_CoupDePied reste à créer']));
+  put(root, 'Saved/Tour/chef/envoyes/2026-10-11-00-03-coup-de-pied.md', crlf(['pour: sujet-gameplay', 'feature: Coup de pied dans les portes', '---', 'Branche le montage.']));
+  put(root, 'Saved/Tour/sujets/gameplay.md', crlf(['## Journal', '- 11/10, 00:15 — chantier coup de pied dans les portes : composant posé']), new Date(2026, 9, 11, 12, 0));
+  s.addFeature({ title: 'Coup de pied dans les portes', idea: 'idée', project: 'CTB' });
+  const past = features.past(root, s.features[0]);
+  assert.deepStrictEqual(past.map(x => x.src), ['envoi', 'carnet', 'tableau']);
+  assert.strictEqual(past[0].to, 'Gameplay');
+  assert.strictEqual(past[0].text, 'Branche le montage.');
+  assert.ok(past.every(x => !/\r/.test(x.text + x.to + x.who)));
+  done();
+});
