@@ -32,6 +32,8 @@ function setup() {
     conseilRun: (id) => ((s.conseil && s.conseil.runs) || []).find(r => r.id === id),
     envoiOf: (id) => s.chef.envois.find(e => e.id === id),
     busy: (sid) => d.busy(sid),
+    canChat: (sid) => d.canChat(s.agents[sid]),
+    send: (sid, text, o) => d.send(sid, text, o),
   });
   s.demandesView = dm.tree;
   s.onChange(() => dm.refresh());
@@ -251,4 +253,72 @@ test('activite : ce que fait la session, en mots', () => {
   assert.strictEqual(D.activity({ tool: { name: 'Grep', summary: 'Stamina', at: now } }, now), 'cherche Stamina');
   assert.strictEqual(D.activity({ tool: { name: 'Bash', summary: 'tests.ps1', at: now }, subagents: { a: {}, b: {} } }, now), 'lance tests.ps1 · 2 agents au travail');
   assert.strictEqual(D.activity({ tool: { name: 'Read', summary: 'x', at: 0 } }, 10 * 60_000), 'travaille');
+});
+
+test('commentaires : un commentaire part a la session qui travaille, sa reponse s\'ajoute a la carte ; sans agent dessus, il reste une note', () => {
+  const env = setup();
+  const { s, d, dm, kids, runs, finish, one, done } = env;
+  const st = d.start({ cwd: env.root, text: 'Tache de la tour [sujet-animation] : lis la consigne', def: 'sujet-animation' });
+  kids[0].emit('close', 0);
+  const x = say(env, st.sessionId, 'Le rechargement ne joue pas en jeu.');
+  let v = one(x.id);
+  assert.strictEqual(v.commentTo, x.to);
+  assert.match(v.summary[0], /y travaille/);
+  // le commentaire part a la session, en file derriere le message en cours
+  const r = dm.comment(x.id, 'Regarde aussi le montage du fusil.');
+  assert.ok(r.ok);
+  assert.strictEqual(r.to, x.to);
+  v = one(x.id);
+  assert.strictEqual(v.notes.length, 1);
+  assert.ok(v.notes[0].pending);
+  assert.match(v.summary.join(' '), /Un commentaire de toi, un attend sa réponse/);
+  // la demande finit, puis le commentaire part et la session repond
+  finish(1, 'Le slot UpperBody manquait : ajoute.');
+  assert.strictEqual(one(x.id).state, 'fini');
+  assert.match(runs[2].input || runs[2].args.join(' '), /Commentaire d'ali sur sa demande/);
+  finish(2, 'Le montage du fusil avait le meme souci : corrige aussi.\n\n## Suivi\n- fait');
+  v = one(x.id);
+  assert.strictEqual(v.notes.length, 2);
+  assert.ok(!v.notes[0].pending);
+  assert.deepStrictEqual([v.notes[1].who, v.notes[1].name, v.notes[1].text], ['agent', x.to, 'Le montage du fusil avait le meme souci : corrige aussi.']);
+  assert.match(v.summary.join(' '), /Dernière réponse à tes commentaires/);
+  // finie : plus personne dessus, le commentaire reste une note
+  assert.strictEqual(v.commentTo, '');
+  const n = runs.length;
+  assert.ok(dm.comment(x.id, 'Merci, je teste ce soir.').ok);
+  v = one(x.id);
+  assert.strictEqual(v.notes[2].to, '');
+  assert.strictEqual(runs.length, n);
+  // le chef et les sessions lisent les commentaires dans demandes.md
+  const md = dm.fileText('CTB');
+  assert.match(md, /> .* · ali à .* : « Regarde aussi le montage du fusil\. »/);
+  assert.match(md, /> .* · ali \(note\) : « Merci, je teste ce soir\. »/);
+  assert.ok(!dm.comment(x.id, '   ').ok);
+  assert.ok(!dm.comment('nope', 'x').ok);
+  void s;
+  done();
+});
+
+test('commentaires : sur un verdict confie au chef, le commentaire va au chef ; au redemarrage, une reponse attendue est perdue', () => {
+  const env = setup();
+  const { s, d, dm, kids, one, done } = env;
+  s.conseil = { runs: [{ id: 'c1', step: 'fini', question: 'SAS ?', decision: 'Non.', members: {} }] };
+  const k = dm.add({ kind: 'conseil', to: 'Conseil', text: 'SAS ?', project: 'CTB', ref: { conseil: 'c1' } });
+  assert.strictEqual(one(k.id).state, 'fini');
+  assert.strictEqual(one(k.id).commentTo, '');
+  const st = d.start({ cwd: env.root, text: 'Tache de la tour [chef] : verdict', def: 'chef' });
+  const tag = st.sessionId && dm.newTag();
+  dm.add({ id: tag, kind: 'chef', to: 'Chef', text: 'Mettre en œuvre le verdict', project: 'CTB', parent: k.id, ref: { tag, session: st.sessionId } });
+  dm.turn({ tag, phase: 'start' });
+  kids[0].emit('close', 0);
+  const v = one(k.id);
+  assert.strictEqual(v.state, 'en-cours');
+  assert.strictEqual(v.commentTo, 'Chef');
+  assert.match(v.summary.join(' '), /Le conseil a tranché|a répondu|Conseil a confié/);
+  assert.ok(dm.comment(k.id, 'Garde le badge vert.').ok);
+  assert.strictEqual(one(k.id).notes[0].to, 'Chef');
+  const back = D.restore(JSON.parse(JSON.stringify(s.demandes)));
+  const n = back.find(x => x.id === k.id).notes[0];
+  assert.ok(!n.pending && n.lost);
+  done();
 });

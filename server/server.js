@@ -337,8 +337,11 @@ const demandes = require('../lib/demandes').create(state, {
   conseilRun: (id) => ((state.conseil && state.conseil.runs) || []).find(r => r.id === id),
   envoiOf: (id) => ((state.chef && state.chef.envois) || []).find(e => e.id === id),
   busy: (sid) => discussion.busy(sid),
+  canChat: (sid) => discussion.canChat(state.agents[sid]),
+  send: (sid, text, o) => discussion.send(sid, text, o),
 });
 state.demandesView = demandes.tree;
+const startTitles = new Map(); // session lancee depuis la tour -> le titre de sa tache
 // relue a chaque changement (sans en provoquer un), et toutes les 5 s pour ce qui depend de l'heure
 state.onChange(() => { demandes.refresh(); });
 setInterval(() => { if (demandes.refresh()) state.changed(); }, 5000).unref();
@@ -486,19 +489,23 @@ const routes = {
     const sid = String(b.sessionId || ''), tag = demandes.newTag();
     const r = discussion.send(sid, b.text, { tag });
     if (r.ok) {
-      const a = state.agents[sid] || {}, isChef = !!(a.task && a.task.id === 'chef');
-      demandes.add({ id: tag, kind: isChef ? 'chef' : 'discussion', to: isChef ? 'Chef' : demandes.roomOf(sid), text: b.text, project: a.project ? a.project.name : '', ref: { tag, session: sid } });
+      // une session que la tour vient de lancer n'a pas encore sa tache (le hook arrive apres) : sa consigne la nomme
+      const a = state.agents[sid] || {}, def = (a.chat && a.chat.def) || '', isChef = !!(a.task && a.task.id === 'chef') || def === 'chef';
+      demandes.add({ id: tag, kind: isChef ? 'chef' : 'discussion', to: isChef ? 'Chef' : startTitles.get(sid) || demandes.roomOf(sid), text: b.text, project: a.project ? a.project.name : '', ref: { tag, session: sid } });
     }
     return r;
   },
   'POST /api/chat/stop': (b) => discussion.stop(String(b.sessionId || '')),
   // Une tache ou un sujet dans une discussion de la tour plutot que dans une fenetre.
+  // (startTitles : le nom de ce qu'on a lance, pour la carte du premier message)
   'POST /api/chat/start': (b) => {
     const r = taches.prepare({ id: b.id, project: projectFor(b.project) });
     if (!r.ok) return r;
     const tag = demandes.newTag();
     const s = discussion.start({ cwd: r.project.root, text: r.ask, def: r.task.id, tag });
-    if (s.ok) demandes.add({ id: tag, kind: r.task.id === 'chef' ? 'chef' : 'discussion', to: r.task.title, text: r.task.text || r.task.title, project: r.project.name, ref: { tag, session: s.sessionId } });
+    if (s.ok) startTitles.set(s.sessionId, r.task.title);
+    // reveillee pour un message d'ali (quiet) : c'est ce message qui fait la carte, pas le reveil
+    if (s.ok && !b.quiet) demandes.add({ id: tag, kind: r.task.id === 'chef' ? 'chef' : 'discussion', to: r.task.title, text: r.task.text || r.task.title, project: r.project.name, ref: { tag, session: s.sessionId } });
     return s;
   },
   'POST /api/miseenplace': (b) => misePlace.start({ ids: b.ids, budget: b.budget }),
@@ -526,8 +533,10 @@ const routes = {
     }
     return r;
   },
-  // Le suivi des demandes : ali a vu une demande finie (ou toutes) ; elle quitte la barre.
+  // Le suivi des demandes : ali a vu une demande finie (ou toutes).
   'POST /api/demandes/vu': (b) => demandes.seen(b.id ? String(b.id) : ''),
+  // Un commentaire d'ali sur une carte : il part a l'agent qui y travaille encore, sinon il reste une note.
+  'POST /api/demandes/commenter': (b) => demandes.comment(String(b.id || ''), b.text),
   // Sessions feature : une nouvelle idee, creee depuis la tour, puis lancee en discussion (ou dans une fenetre).
   'POST /api/features': (b) => {
     const p = projectFor(b.project);

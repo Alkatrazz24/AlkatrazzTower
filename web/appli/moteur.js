@@ -3,6 +3,7 @@
 // chaque session, les sujets en sommeil) ; au centre, celle qu'on a ouverte, ou chaque demande avance
 // etape par etape ; a droite, ce qui t'attend, la forge, la version et la sante du projet.
 // Les fiches (sauvegarde, git, doc, skills...) viennent de web/appli/fiches.js et s'ouvrent dans un volet.
+// En haut, le tableau des demandes : une carte par demande d'ali, qui avance seule de colonne en colonne.
 // Un template appelle Appli.mode({ id }) ; la page se dessine a chaque nouvel etat de la tour (web/core.js).
 
 (function () {
@@ -15,7 +16,8 @@
   // Etat de l'ecran, garde d'un rendu a l'autre.
   // la demo garde sa propre conversation ouverte, pour ne pas laisser une session fictive sur la vraie tour
   const CONV_KEY = T.demo ? 'appli.conv.demo' : 'appli.conv';
-  const ui = { conv: store.get(CONV_KEY) || 'chef', at: 0, sheet: null, q: '', old: false, sleep: false, menu: false, view: 'list', drafts: new Map() };
+  const ui = { conv: store.get(CONV_KEY) || 'chef', at: 0, sheet: null, q: '', old: false, sleep: false, menu: false, view: 'list', drafts: new Map(),
+    board: store.get('appli.board') !== 'replie' };
   const A = window.Appli = { M: null, nav: { paint, conv, sheet, close }, mode };
   setTheme(store.get('appli.theme') || 'sombre');
 
@@ -348,7 +350,7 @@
       if (st.wake) {
         // reveiller la session (elle lit son carnet), puis lui passer le message
         const key = ui.conv;
-        r = await T.api('/api/chat/start', { id: st.wake.id, project: M.sujetsProject });
+        r = await T.api('/api/chat/start', { id: st.wake.id, project: M.sujetsProject, quiet: true });
         if (r && r.ok) {
           sid = r.sessionId;
           woken.set(key, { sid, at: Date.now() });
@@ -458,16 +460,12 @@
   function railNodes(M) {
     const att = M.attention;
     const L = M.lock, c = M.campaign;
-    const dems = F.demsOf(M), liveD = dems.filter(x => !F.demFinal(x)), unseen = dems.filter(x => F.demFinal(x) && !x.seenAt);
     const lastKo = M.builds.find(b => !b.ok);
     return [
       h('section', { class: 'ap-rsec' },
         h('h2', { class: 'ap-gtitle' }, h('span', null, 'À toi'), att.length ? h('small', null, att.length) : null),
         att.length ? h('ul', { class: 'ap-atts' }, att.slice(0, 8).map(attentionItem)) : h('p', { class: 'ap-calm' }, 'Rien ne t\'attend. La tour tourne seule.')),
       h('section', { class: 'ap-rsec' },
-        card('demandes', 'Tes demandes', liveD.some(x => x.state === 'attend') ? 'warn' : liveD.length ? 'blue' : unseen.length ? 'ok' : 'grey',
-          [liveD.length ? `${liveD.length} en cours${liveD.some(x => x.state === 'attend') ? `, ${liveD.filter(x => x.state === 'attend').length} t'attend` : ''}` : 'Rien ne tourne.', unseen.length ? `${T.plural(unseen.length, 'finie', 'finies')} à voir` : null],
-          liveD.length ? h('span', { class: 'ap-mini' }, liveD.slice(0, 3).map(x => h('span', null, h('i', { class: `us-dot us-d-${F.DEM_DOT[x.state]}` }), h('span', null, `${x.to} : ${clip(F.demNow(x), 80)}`)))) : null),
         card('forge', 'Forge', L ? 'blue' : lastKo && M.now - lastKo.endedAt < 3600000 ? 'ko' : 'ok', [
           L ? h('span', null, `${L.kindText} de ${L.agent ? nameOf(L.agent) : L.label}, depuis `, T.forEl(L.since)) : 'Libre : le prochain build passe tout de suite.',
           M.queue.length ? `${M.queue.length} dans la file` : null,
@@ -484,11 +482,21 @@
     ];
   }
 
+  // ---------- en haut : le tableau des demandes ----------
+  function setBoard(open) { ui.board = open; store.set('appli.board', open ? 'ouvert' : 'replie'); }
+  function paintBoard() {
+    const M = A.M;
+    // une demande qui part : sa carte apparait, le tableau s'ouvre pour la montrer
+    if (F.boardFresh(M)) setBoard(true);
+    G.board.classList.toggle('ap-board-open', ui.board);
+    swap(G.board, F.boardNodes(M, ui.board, () => { setBoard(!ui.board); paint(); }));
+  }
+
   // ---------- le volet (une fiche ouverte par-dessus) ----------
   const TITLES = { forge: 'Forge', version: 'Version', skills: 'Skills', roster: 'Agents installés', docs: 'Documentation', unreal: 'Unreal Engine', git: 'Git et GitHub', sauvegarde: 'Sauvegarde', reglages: 'Réglages', rail: 'Tableau de bord' };
   function sheetPanel(M) {
     const k = ui.sheet;
-    if (k === 'demandes') return F.demandesPanel(M);
+    if (k === 'demande') return F.demandePanel(M);
     if (k === 'equipe') return F.equipePanel(M);
     if (k === 'sujets') return F.sujetsPanel(M);
     if (k === 'features') return F.featuresPanel(M);
@@ -558,7 +566,8 @@
     G.rail = h('aside', { class: 'ap-rail', 'aria-label': 'Tableau de bord' });
     G.sheet = h('div', { class: 'ap-sheet', role: 'dialog', 'aria-modal': 'false' });
     G.shade = h('div', { class: 'ap-shade', onclick: close });
-    G.app = h('div', { class: 'ap' }, G.side, G.main, G.rail, G.shade, G.sheet);
+    G.board = h('section', { class: 'ap-board', 'aria-label': 'Tableau des demandes' });
+    G.app = h('div', { class: 'ap' }, G.board, G.side, G.main, G.rail, G.shade, G.sheet);
     root.replaceChildren(G.app);
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); ui.view = 'list'; paint(); G.search.focus(); G.search.select(); return; }
@@ -581,11 +590,13 @@
     G.app.dataset.view = ui.view;
     paintSide();
     paintMain();
+    paintBoard();
     swap(G.rail, railNodes(M));
     const panel = ui.sheet ? sheetPanel(M) : null;
     if (ui.sheet && !panel) ui.sheet = null;
     const was = G.sheet.firstChild;
-    if (panel && was && was.getAttribute('aria-label') === panel.getAttribute('aria-label')) swap(G.sheet, [panel]);
+    const same = (x, y) => (x.dataset.key || x.getAttribute('aria-label')) === (y.dataset.key || y.getAttribute('aria-label'));
+    if (panel && was && same(was, panel)) swap(G.sheet, [panel]);
     else G.sheet.replaceChildren(...(panel ? [panel] : []));
     G.app.classList.toggle('ap-has-sheet', !!panel);
     if (panel) G.sheet.setAttribute('aria-label', panel.getAttribute('aria-label')); else G.sheet.removeAttribute('aria-label');
