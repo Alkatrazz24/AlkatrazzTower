@@ -162,11 +162,14 @@ function probeSujets() {
   for (const p of state.projects) {
     if (!p || !p.root || !p.name) continue;
     try { state.setSujets(p.name, sujetsLib.scan(p, require('../lib/equipe').teamOf(p.root))); } catch { /* projet illisible */ }
+    // les taches perso d'ali deviennent des features du tableau, une fois chacune
+    try { state.seedFeatures(p.name, featuresLib.seedsOf(p.root, state.tasks)); } catch { /* taches illisibles */ }
   }
   // le carnet de chaque feature, dans le projet ou elle a ete creee
+  const cache = new Map();
   for (const f of state.features) {
     const p = projectFor(f.project);
-    if (p) try { state.setFeatureNotes(f.id, featuresLib.scan(p.root, f).notes); } catch { /* carnet illisible */ }
+    if (p) try { const v = featuresLib.scan(p.root, f, cache); state.setFeatureNotes(f.id, v.notes); state.setFeaturePast(f.id, v.past); } catch { /* carnet illisible */ }
   }
 }
 const featuresLib = require('../lib/features');
@@ -339,8 +342,11 @@ const demandes = require('../lib/demandes').create(state, {
   busy: (sid) => discussion.busy(sid),
   canChat: (sid) => discussion.canChat(state.agents[sid]),
   send: (sid, text, o) => discussion.send(sid, text, o),
+  // le chef range une demande dans une feature (et la cree au besoin) : lib/chef.js, featureFor
+  featureFor: (project, name, o) => require('../lib/chef').featureFor(state, project, name, o),
 });
 state.demandesView = demandes.tree;
+state.featureCardsView = demandes.featureCards;
 const startTitles = new Map(); // session lancee depuis la tour -> le titre de sa tache
 // relue a chaque changement (sans en provoquer un), et toutes les 5 s pour ce qui depend de l'heure
 state.onChange(() => { demandes.refresh(); });
@@ -543,6 +549,9 @@ const routes = {
     if (!p) return { ok: false, error: 'Aucun projet connecté : connecte d\'abord ton projet.' };
     return state.addFeature({ title: b.title, idea: b.idea, sujets: b.sujets, project: p.name });
   },
+  // Une carte feature du tableau : un commentaire d'ali (a la session qui y travaille, sinon une note), et « vu ».
+  'POST /api/features/commenter': (b) => demandes.commentFeature(String(b.id || ''), b.text),
+  'POST /api/features/vu': (b) => demandes.seenFeature(String(b.id || '')),
   'POST /api/features/done': (b) => ({ ok: state.endFeature(String(b.id || ''), b.done !== false) }),
   // Regles d'une session core ou feature (lib/regles.js) : appliquees a son prochain lancement ou message.
   'POST /api/regles': (b) => {

@@ -200,6 +200,10 @@ button.ap-att:hover { border-color: var(--us-line2); }
 .ap-bc-fini { border-left-color: var(--us-ok); }
 .ap-bc-erreur { border-left-color: var(--us-ko); }
 .ap-bc-seen { opacity: .7; }
+.ap-bc-feature { background: color-mix(in srgb, var(--us-ink) 4%, var(--us-panel)); box-shadow: inset 0 2px 0 var(--us-line2); }
+.ap-bc-feature .ap-bc-head b { font-size: 14px; }
+.ap-bc-head .ap-bc-fbadge { background: var(--us-ink); color: var(--us-panel); font-weight: 600; letter-spacing: .02em; }
+.ap-bc-repos { border-left-color: var(--us-grey); }
 .ap-bc-head { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .ap-bc-head b { min-width: 0; font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ap-bc-head small { flex: none; padding: 0 6px; border-radius: 999px; font-size: 11px; background: var(--us-soft); color: var(--us-muted); }
@@ -241,6 +245,13 @@ button.ap-att:hover { border-color: var(--us-line2); }
 .ap-f-mine .ap-f-text { background: color-mix(in srgb, var(--us-blue) 14%, transparent); }
 .ap-f-err .ap-f-text { background: color-mix(in srgb, var(--us-ko) 12%, transparent); }
 .ap-f-now .ap-f-text { color: var(--us-blue); }
+.ap-f-past .ap-f-text { font-size: 13px; }
+.ap-dd-mots { font-size: 12.5px; }
+.ap-dd-dems { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.ap-dd-dems li { min-width: 0; }
+.ap-dd-dems .us-runbtn { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; text-align: left; }
+.ap-dd-dems .us-runbtn b { flex: none; }
+.ap-dd-dems .us-dim { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ap-dd-comment { display: grid; gap: 6px; }
 .ap .ap-dd-input { width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px; font-size: 14px; }
 .ap-dd-cfoot { display: flex; align-items: center; gap: 10px; }

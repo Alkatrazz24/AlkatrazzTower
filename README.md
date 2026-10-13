@@ -340,6 +340,30 @@ les sessions ont fini aussi (leur ligne au tableau des sujets pour « Chef » se
 les sessions suivent les mêmes demandes, avec tes commentaires, dans `Saved/Tour/demandes.md`, que la
 tour réécrit ; le chef le lit avant chaque demande.
 
+### Les features au tableau
+
+Une **feature**, c'est une fonctionnalité du jeu sur laquelle on travaille (« Coup de pied dans les
+portes », « Lampe torche »). Chacune a sa carte au tableau, marquée **Feature**, qui regroupe tout ce qui
+la touche :
+
+- **ses demandes** : à la fin de chaque réponse, le chef écrit « Feature : <titre> ». Un titre déjà connu
+  range la demande dans cette feature ; un nouveau titre crée la feature (sans lancer de session) avec
+  les mots qui la retrouvent (« Mots : CoupDePied, ADR 0081 »). Une question qui ne touche aucune
+  fonctionnalité reste une carte à part. Un envoi du chef peut aussi porter une ligne `feature:`. Une
+  demande qui nomme une feature est rangée tout de suite, avant même la réponse du chef ; ce que dit le
+  chef passe ensuite avant ;
+- **son historique d'avant**, retrouvé sur le disque par son titre et ses mots : les lignes du tableau
+  des sujets, les envois du chef déjà lus, les verdicts du conseil, les rapports des tâches et les lignes
+  datées des carnets. Rien n'est écrit pour ça : la tour relit `Saved/Tour/` toutes les 10 s ;
+- où elle en est : **À faire** quand personne n'y travaille, **En cours** quand une de ses demandes (ou
+  sa propre session) tourne, **T'attend**, puis **Fini** quand tu la termines (bouton **Terminer**).
+
+Ouverte, la carte montre son résumé (la situation, son carnet si elle en a un, la dernière réponse), ses
+demandes (un clic ouvre chacune), tout l'historique daté, et une case pour commenter : le commentaire part
+à l'agent qui travaille sur une de ses demandes, sinon à sa session si elle tourne dans la tour, sinon il
+reste une note que le chef lit dans `demandes.md`. Tes **tâches perso** deviennent des features une fois
+chacune, au premier passage de la tour : la carte du coup de pied apparaît ainsi avec son passé.
+
 ## La bibliothèque des skills
 
 Au bout du couloir, à côté de la salle de lancement, la **bibliothèque** : un livre par skill installé

@@ -74,6 +74,8 @@ class TowerState {
     this.sujets = {};      // projet -> { topics, board } : les sujets du jeu, leur carnet, le tableau (lib/sujets.js)
     this.features = [];    // sessions feature creees depuis la tour (lib/features.js)
     this.featureNotes = {}; // id de feature -> son carnet, relu par le serveur
+    this.featurePast = {};  // id de feature -> son historique retrouve sur le disque
+    this.featureSeeds = []; // projet:tache perso deja devenue une feature (une seule fois, meme si on la termine)
     this.misePlace = {};   // id de sujet -> sa derniere mise en place (lib/miseenplace.js)
     this.miseView = null;  // () => la file des mises en place, branche par le serveur
     this.chef = { ask: false, envois: [] }; // le chef et ses envois (lib/chef.js)
@@ -81,6 +83,7 @@ class TowerState {
     this.conseilView = null;     // () => ce que la page affiche du conseil, branche par le serveur
     this.demandes = [];    // ce qu'ali envoie depuis la tour, suivi jusqu'a son resultat (lib/demandes.js)
     this.demandesView = null; // () => les demandes en arbre, branche par le serveur
+    this.featureCardsView = null; // () => les features en cartes du tableau, branche par le serveur
     this.regles = {};      // id de sujet ou de feature -> { action: 'oui' | 'demander' | 'non' } (lib/regles.js)
     this.docs = {};        // projet -> sa documentation : etageres, rayon Unreal (lib/docs.js), relue par le serveur
     this.docRules = { unreal: 'question' }; // quand les sessions lisent la doc Unreal : 'question' ou 'modif'
@@ -320,11 +323,34 @@ class TowerState {
     this.changed();
     return r;
   }
+  // Les taches perso d'un projet deviennent des features, une fois chacune (lib/features.js, seedsOf) :
+  // une feature du meme nom deja la est simplement retenue.
+  seedFeatures(project, seeds) {
+    let n = 0, seen = 0;
+    for (const s of seeds || []) {
+      const key = `${project}:${s.key}`;
+      if (this.featureSeeds.includes(key)) continue;
+      this.featureSeeds.push(key); seen++;
+      if (!features.find(this.features, s.title, project)) {
+        const r = features.make({ title: s.title, idea: s.idea, project, by: 'Tâche' }, this.features, this.topicsOf(project), this.now());
+        if (r.ok) { this.features.push(r.feature); n++; }
+      }
+    }
+    if (seen) this.changed();
+    return n;
+  }
   // Terminer une feature : sa salle quitte le batiment (on la retrouve dans les anciennes), rien n'est efface.
   endFeature(id, done = true) {
     const f = this.features.find(x => x.id === id);
     if (!f) return false;
     if (done) f.doneAt = this.now(); else delete f.doneAt;
+    this.changed();
+    return true;
+  }
+  // L'historique d'une feature retrouve sur le disque (lib/features.js, past) : pour sa carte, pas sauve.
+  setFeaturePast(id, list) {
+    if (JSON.stringify(this.featurePast[id] || []) === JSON.stringify(list || [])) return false;
+    this.featurePast[id] = list || [];
     this.changed();
     return true;
   }
@@ -978,11 +1004,12 @@ class TowerState {
       git: this.git,
       modifs: modifs.view(this.modifs),
       sauvegarde: this.sauvegardeView ? this.sauvegardeView() : null,
-      features: this.features.map(f => ({ ...f, notes: this.featureNotes[f.id] || null })),
+      features: this.features.map(f => ({ ...f, notes: this.featureNotes[f.id] || null, past: this.featurePast[f.id] || [] })),
       regles: Object.fromEntries([...Object.values(this.sujets).flatMap(v => (v && v.topics) || []), ...this.features, { id: chefLib.ID }].map(x => [x.id, regles.rulesOf(this.regles[x.id], this.rulesBase(x.id))])),
       chef: { ask: !!this.chef.ask, envois: this.chef.envois || [] },
       conseil: this.conseilView ? this.conseilView() : null,
       demandes: this.demandesView ? this.demandesView() : [],
+      featureCards: this.featureCardsView ? this.featureCardsView() : [],
       actions: regles.ACTIONS,
       miseEnPlace: this.miseView ? this.miseView() : { budgets: [], budget: 0, current: null, queue: [], runs: this.misePlace },
     };
@@ -993,7 +1020,7 @@ class TowerState {
     return {
       agents: keep(this.agents, a => !isTuto(a.sessionId)), builds: this.builds.filter(b => !isTuto(b.sessionId)), seq: this.seq,
       campaigns: this.campaigns, testGroups: this.testGroups, characters: keep(this.characters, c => !c.tuto), projects: this.projects,
-      tasks: this.tasks, redTests: this.redTests, features: this.features, regles: this.regles, misePlace: this.misePlace, chef: this.chef, conseil: this.conseil, demandes: this.demandes, docRules: this.docRules, gitFollow: this.gitFollow, sauvegarde: this.sauvegarde, modifs: this.modifs,
+      tasks: this.tasks, redTests: this.redTests, features: this.features, featureSeeds: this.featureSeeds, regles: this.regles, misePlace: this.misePlace, chef: this.chef, conseil: this.conseil, demandes: this.demandes, docRules: this.docRules, gitFollow: this.gitFollow, sauvegarde: this.sauvegarde, modifs: this.modifs,
     };
   }
 
@@ -1011,6 +1038,7 @@ class TowerState {
     if (Array.isArray(saved.tasks)) this.tasks = saved.tasks;
     if (saved.redTests && typeof saved.redTests === 'object') this.redTests = saved.redTests;
     if (Array.isArray(saved.features)) this.features = saved.features;
+    if (Array.isArray(saved.featureSeeds)) this.featureSeeds = saved.featureSeeds.filter(x => typeof x === 'string');
     if (saved.regles && typeof saved.regles === 'object') this.regles = saved.regles;
     if (saved.chef && typeof saved.chef === 'object') this.chef = { ask: !!saved.chef.ask, envois: Array.isArray(saved.chef.envois) ? saved.chef.envois : [] };
     if (saved.conseil && typeof saved.conseil === 'object') this.conseil = require('../lib/conseil').restore(saved.conseil);
