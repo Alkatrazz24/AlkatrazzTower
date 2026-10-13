@@ -1640,9 +1640,15 @@
   const DEM_RANK = { attend: 0, 'en-cours': 1, envoyee: 1, fini: 2, erreur: 2, arretee: 3 };
   const DEM_KIND = { conseil: 'Conseil', chef: 'Chef', discussion: 'Session', tache: 'Tâche', envoi: 'Envoi du Chef' };
   const demsOf = (M) => (M && M.S && M.S.demandes) || [];
+  // Les features (lib/features.js) sont aussi des cartes : chacune regroupe les demandes qui en parlent
+  // (le chef dit laquelle) et son historique retrouve sur le disque. Une demande rangee dans une feature
+  // n'a plus sa propre carte : on la retrouve dans celle de la feature.
+  const featsOf = (M) => (M && M.S && M.S.featureCards) || [];
+  const isFeat = (id) => String(id || '').startsWith('f:');
+  const boardItems = (M) => [...featsOf(M), ...demsOf(M).filter(x => !x.feature)];
   const demFinal = (x) => x.state === 'fini' || x.state === 'erreur' || x.state === 'arretee';
   const demSort = (a, b) => (DEM_RANK[a.state] - DEM_RANK[b.state]) || (b.at - a.at);
-  const demFind = (M, id) => { const walk = (l) => { for (const x of l) { if (x.id === id) return x; const k = walk(x.children || []); if (k) return k; } return null; }; return walk(demsOf(M)); };
+  const demFind = (M, id) => { if (isFeat(id)) return featsOf(M).find(x => x.id === id) || null; const walk = (l) => { for (const x of l) { if (x.id === id) return x; const k = walk(x.children || []); if (k) return k; } return null; }; return walk(demsOf(M)); };
   const dclip = (s, n) => { s = String(s || '').replace(/\*\*|__|`/g, '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
   // Ou en est une demande, en une ligne : l'etape, ce qui se passe, ou le resultat.
   function demNow(x) {
@@ -1651,30 +1657,30 @@
     if (demFinal(x)) return x.phase;
     return x.live ? `${x.phase} · ${x.live}` : x.phase;
   }
-  const demSeen = (id) => T.call('/api/demandes/vu', id ? { id } : {});
+  const demSeen = (id) => isFeat(id) ? T.call('/api/features/vu', { id: id.slice(2) }) : T.call('/api/demandes/vu', id ? { id } : {});
   // ouvrir une carte finie, c'est l'avoir vue
   function openDem(id) {
     const M = M_(), x = demFind(M, id);
     demUi.open = id;
-    if (x && demFinal(x) && !x.seenAt && !x.parent && M && !M.demo) demSeen(id);
+    if (x && (isFeat(id) || (demFinal(x) && !x.seenAt && !x.parent)) && M && !M.demo) demSeen(id);
     NAV().sheet('demande');
   }
 
   // Le tableau : quatre colonnes, une carte par demande d'ali (les envois du chef restent dans leur carte).
   const COLS = [
-    ['afaire', 'À faire', (x) => x.state === 'envoyee'],
+    ['afaire', 'À faire', (x) => x.state === 'envoyee' || x.state === 'repos'],
     ['encours', 'En cours', (x) => x.state === 'en-cours'],
     ['attend', 'T\'attend', (x) => x.state === 'attend'],
     ['fini', 'Fini', demFinal],
   ];
   const FINI_MAX = 8;
   function boardCols(M) {
-    const all = demsOf(M);
+    const all = boardItems(M);
     return COLS.map(([id, title, pred]) => {
       let items = all.filter(pred).sort((a, b) => b.at - a.at);
       if (id === 'fini') {
-        const unseen = items.filter(x => !x.seenAt).sort((a, b) => b.doneAt - a.doneAt);
-        const seen = items.filter(x => x.seenAt).sort((a, b) => b.doneAt - a.doneAt);
+        const unseen = items.filter(x => !x.seenAt && x.kind !== 'feature').sort((a, b) => b.doneAt - a.doneAt);
+        const seen = items.filter(x => x.seenAt || x.kind === 'feature').sort((a, b) => b.doneAt - a.doneAt);
         items = [...unseen, ...seen.slice(0, Math.max(0, FINI_MAX - unseen.length))];
       }
       return { id, title, items };
@@ -1682,7 +1688,7 @@
   }
   // Une carte qui vient d'arriver : le tableau s'ouvre et elle s'allume quelques secondes.
   function boardFresh(M) {
-    const ids = demsOf(M).map(x => x.id);
+    const ids = boardItems(M).map(x => x.id);
     const now = Date.now();
     let spawned = false;
     if (demUi.known) for (const id of ids) if (!demUi.known.has(id)) { demUi.fresh.set(id, now); spawned = true; }
@@ -1690,7 +1696,25 @@
     for (const [id, t] of demUi.fresh) if (now - t > 6000) demUi.fresh.delete(id);
     return spawned;
   }
+  // Une feature au tableau : son nom, ce qui s'y passe, et ce qu'elle regroupe.
+  function featCard(M, x) {
+    const n = (x.demandes || []).length, p = (x.past || []).length, c = (x.comments || []).length;
+    const fresh = x.at > (x.seenAt || 0) && x.state !== 'repos' && x.seenAt;
+    return h('li', null, h('button', {
+      type: 'button', class: `ap-bcard ap-bc-feature ap-bc-${x.state}${demUi.fresh.has(x.id) ? ' ap-bc-new' : ''}`,
+      onclick: () => openDem(x.id), 'aria-label': `Feature ${x.title}, ${x.stateText}`,
+    },
+    h('span', { class: 'ap-bc-head' }, h('span', { class: `us-dot us-d-${DEM_DOT[x.state] || 'grey'}` }), h('b', null, x.title), h('small', { class: 'ap-bc-fbadge' }, 'Feature'),
+      x.state === 'fini' ? h('time', null, T.clock(x.doneAt)) : T.forEl(x.at, 'time')),
+    h('span', { class: 'ap-bc-now' }, dclip(x.live || (x.summary || [])[1] || x.text, 140)),
+    h('span', { class: 'ap-bc-foot' },
+      h('span', null, n ? T.plural(n, 'demande', 'demandes') : 'aucune demande'),
+      p ? h('span', null, T.plural(p, 'trace d\'avant', 'traces d\'avant')) : null,
+      c ? h('span', null, T.plural(c, 'commentaire', 'commentaires')) : null,
+      fresh ? h('span', { class: 'ap-bc-badge' }, 'du nouveau') : null)));
+  }
   function boardCard(M, x) {
+    if (x.kind === 'feature') return featCard(M, x);
     const kind = DEM_KIND[x.kind] && DEM_KIND[x.kind] !== x.to ? DEM_KIND[x.kind] : '';
     const kids = x.children || [], notes = x.notes || [];
     const unseen = demFinal(x) && !x.seenAt;
@@ -1710,10 +1734,10 @@
   // open : le tableau deplie ; toggle() le replie ou le deplie.
   function boardNodes(M, open, toggle) {
     const cols = boardCols(M);
-    const total = demsOf(M).length;
+    const total = boardItems(M).length;
     const count = (c) => h('span', { class: `ap-bcount ap-bcount-${c.id}`, 'data-n': c.items.length },
       h('i', { class: `us-dot us-d-${{ afaire: 'grey', encours: 'blue', attend: 'warn', fini: 'ok' }[c.id]}` }), c.title, ' ', h('b', null, c.items.length));
-    const unseen = cols[3].items.filter(x => !x.seenAt).length;
+    const unseen = cols[3].items.filter(x => !x.seenAt && x.kind !== 'feature').length;
     const head = h('div', { class: 'ap-bhead' },
       h('button', { type: 'button', class: 'ap-btoggle', 'aria-expanded': total ? String(open) : null, 'aria-controls': total ? 'ap-bcols' : null, onclick: toggle, disabled: !total || null },
         h('b', null, 'Demandes'), total ? h('span', { class: 'ap-bcounts' }, cols.map(count)) : h('span', { class: 'ap-bempty' }, 'Ce que tu demandes au Chef, au Conseil ou à une session arrive ici, en carte.')),
@@ -1750,6 +1774,8 @@
     const ag = x.ref && x.ref.session ? M.agents.find(a => a.id === x.ref.session) : null;
     const goAgent = () => { NAV().close(); NAV().conv(ag.id); };
     const acts = [];
+    const feat = x.feature && featsOf(M).find(f => f.feature === x.feature);
+    if (feat) acts.push(btn(`Feature : ${dclip(feat.title, 40)}`, () => openDem(feat.id), '', { title: 'Cette demande est rangée dans cette feature' }));
     const wait = x.state === 'attend' ? [x, ...(x.children || [])].find(k => k.status === 'attend') : null;
     if (wait && wait.kind === 'envoi' && wait.phase === 'attend ta validation') acts.push(btn('Valider chez le Chef', () => { NAV().close(); NAV().conv('chef'); }, 'us-go'));
     else if (x.status === 'attend' && ag) acts.push(btn('Répondre', goAgent, 'us-go'));
@@ -1776,10 +1802,77 @@
     renderHud();
   }
 
+  // Une feature ouverte : son resume, ses demandes, et tout son historique (avant et depuis son suivi).
+  // l'historique d'une feature tient sur plusieurs jours : la date avant l'heure, sauf aujourd'hui
+  const dayClock = (t) => { if (!t) return ''; const d = new Date(t); return d.toDateString() === new Date().toDateString() ? T.clock(t) : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${T.clock(t)}`; };
+  const PAST_SRC = { tableau: 'tableau partagé', envoi: 'envoi du Chef', conseil: 'verdict du conseil', rapport: 'rapport', carnet: 'carnet' };
+  function featFeed(M, x) {
+    const items = (x.past || []).map(p => ({ at: p.at, who: p.who || '?', kind: 'past', label: `${PAST_SRC[p.src] || p.src}${p.to ? ` → ${p.to}` : ''}`, text: p.text }));
+    for (const id of x.demandes || []) {
+      const d = demFind(M, id);
+      if (!d) continue;
+      items.push({ at: d.at, who: 'Toi', kind: 'ask', label: `demande à ${d.to}`, text: d.text, id });
+      // les etapes de la demande elle-meme (envoyée, prise en charge, fini) chargent l'historique : sa carte les garde
+      items.push(...feedOf(d).filter(it => !(it.kind === 'step' && !it.sub)));
+    }
+    for (const c of x.comments || []) items.push({ at: c.at, who: 'Toi', kind: 'mine', text: c.text, meta: c.to ? `envoyé à ${c.to}` : 'note' });
+    return items.map((it, i) => [it, i]).sort((a, b) => (a[0].at - b[0].at) || (a[1] - b[1])).map(([it]) => it);
+  }
+  async function featComment(M, x) {
+    const box = document.querySelector('[data-keep="dem-comment"]');
+    const text = box ? box.value.trim() : '';
+    if (!text || commenting) return;
+    if (M.demo) { T.toast('Mode démo : le commentaire part sur la vraie tour.'); return; }
+    commenting = true;
+    const r = await T.api('/api/features/commenter', { id: x.feature, text });
+    commenting = false;
+    if (r && r.ok) { if (box) box.value = ''; T.toast(r.to ? `Envoyé à ${r.to}.` : 'Noté sur la feature.'); }
+    else T.toast((r && r.error) || 'La tour ne répond pas.');
+    renderHud();
+  }
+  function featurePanel(M, x) {
+    const z = (M.features || []).find(f => f.id === x.feature);
+    const feed = featFeed(M, x);
+    const acts = [];
+    if (z && !z.done) acts.push(z.session ? btn('Discuter', () => { NAV().close(); NAV().conv(z.session.id); }, 'us-go')
+      : btn('Discuter', () => { NAV().close(); NAV().conv('sujet:' + z.id); }, 'us-go', { title: 'Ouvre la conversation de la feature : elle se réveille quand tu écris' }));
+    acts.push(btn(x.state === 'fini' ? 'Reprendre' : 'Terminer', () => T.call('/api/features/done', { id: x.feature, done: x.state !== 'fini' }), x.state === 'fini' ? '' : 'us-ghost', M.demo ? { disabled: true } : { title: x.state === 'fini' ? 'La feature revient au tableau' : 'Elle passe dans Fini : rien n\'est effacé' }));
+    const box = h('textarea', { class: 'ap-dd-input', name: 'commentaire', rows: 3, maxlength: 2000, 'data-keep': 'dem-comment', 'aria-label': 'Ton commentaire',
+      placeholder: x.commentTo ? `Un commentaire pour ${x.commentTo}…` : 'Une note sur cette feature…', disabled: M.demo || null,
+      onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); featComment(M, x); } } });
+    const by = { Chef: 'le Chef', 'Tâche': 'ta tâche perso' }[x.by] || (x.by ? x.by : 'toi');
+    return h('section', { class: 'us-panel us-entity ap-k-demande ap-k-feature', 'aria-label': `Feature : ${x.title}`, 'data-key': `demande:${x.id}` },
+      h('div', { class: 'us-ehead' },
+        h('h2', null, x.title, h('span', { class: `ap-chip ap-c-${{ attend: 'warn', 'en-cours': 'blue', fini: 'ok' }[x.state] || 'grey'}` }, h('i', { class: `ap-dot ap-d-${DEM_DOT[x.state] || 'grey'}` }), x.stateText)),
+        btn('Fermer', () => NAV().close(), 'us-x', { 'aria-label': 'Fermer la feature', title: 'Échap' })),
+      h('div', { class: 'us-ebody' },
+        h('div', { class: 'ap-dd-ask' }, h('small', null, `Feature · suivie depuis `, T.agoEl(x.createdAt), `, créée par ${by}`), h('p', null, x.text)),
+        h('div', { class: `ap-dd-sum ap-dd-sum-${x.state}` }, h('b', null, 'Résumé'), h('ul', null, (x.summary || []).map(l => h('li', null, l)))),
+        x.mots && x.mots.length ? h('p', { class: 'us-dim ap-dd-mots' }, `Mots qui la retrouvent : ${x.mots.join(', ')}`) : null,
+        h('div', { class: 'us-actions' }, acts),
+        (x.demandes || []).length ? [h('div', { class: 'us-sub' }, 'Ses demandes'),
+          h('ul', { class: 'ap-dd-dems' }, x.demandes.map(id => demFind(M, id)).filter(Boolean).map(d => h('li', null,
+            h('button', { type: 'button', class: 'us-runbtn', onclick: () => openDem(d.id) },
+              h('span', { class: `us-dot us-d-${DEM_DOT[d.state]}` }), h('b', null, d.to), h('span', { class: 'us-dim' }, ` ${d.stateText} · ${dclip(d.text, 90)}`)))))] : null,
+        h('div', { class: 'us-sub' }, 'Historique'),
+        feed.length ? h('ol', { class: 'ap-feed' },
+          feed.map(it => h('li', { class: `ap-f-${it.kind === 'past' ? 'step' : it.kind === 'ask' ? 'mine' : it.kind}${it.sub ? ' ap-f-sub' : ''}${it.kind === 'past' ? ' ap-f-past' : ''}` },
+            h('span', { class: 'ap-f-meta' }, h('time', null, dayClock(it.at)), ' ', h('b', null, it.who), it.label ? ` · ${it.label}` : '', it.meta ? h('small', null, ` · ${it.meta}`) : null),
+            h('span', { class: 'ap-f-text' }, it.text))),
+          x.live ? h('li', { class: 'ap-f-now' }, h('span', { class: 'ap-f-meta' }, h('b', null, 'Maintenant')), h('span', { class: 'ap-f-text' }, x.live)) : null)
+          : h('p', { class: 'us-dim' }, 'Rien encore : ce que tu demandes au Chef sur cette feature arrivera ici.'),
+        h('div', { class: 'us-sub' }, 'Commenter'),
+        h('div', { class: 'ap-dd-comment' }, box,
+          h('div', { class: 'ap-dd-cfoot' },
+            h('small', { class: 'us-dim' }, M.demo ? 'Démo : rien n\'est envoyé.' : x.commentTo ? `Part à ${x.commentTo}, qui travaille dessus : sa réponse s'affiche dans l'historique.` : 'Personne n\'y travaille en ce moment : ton commentaire reste une note sur la feature. Le Chef la lit avec les demandes.'),
+            btn(x.commentTo ? 'Envoyer' : 'Noter', () => featComment(M, x), 'us-go', M.demo ? { disabled: true } : { title: 'Ctrl+Entrée' })))));
+  }
+
   // La carte ouverte, dans le volet.
   function demandePanel(M) {
     const x = demUi.open && demFind(M, demUi.open);
     if (!x) return null;
+    if (x.kind === 'feature') return featurePanel(M, x);
     const acts = demActs(M, x);
     const res = x.result || {};
     const feed = feedOf(x);

@@ -480,7 +480,24 @@ function demoDemandes() {
       phases: [{ at: m(-50), text: 'envoyée' }, { at: m(-50), text: 'cadre la question' }, { at: m(-49), text: 'les membres réfléchissent' }, { at: m(-47), text: 'relecture croisée' }, { at: m(-46.5), text: 'le président tranche' }, { at: m(-46), text: 'verdict rendu' }],
       result: { text: 'Non : la porte du SAS reste fermée au coup de pied, elle s\'ouvre au badge.', file: 'Saved/Tour/conseil/2026-10-09-11-10-la-porte-du-sas.md' } }),
   ];
-  state.demandesView = D.create(state).tree;
+  // Une feature suivie au tableau : le coup de pied dans les portes, tiree d'une tache perso d'ali. Ses
+  // demandes (le conseil sur le SAS, une demande au chef en cours) et ses traces d'avant sur le disque.
+  const pied = state.addFeature({ title: 'Coup de pied dans les portes', idea: 'Le joueur ouvre les portes des parcelles d\'un coup de pied : animation, son, et la porte qui part en arrière.', project: P, by: 'Tâche', mots: ['CoupDePied', 'ADR 0081'] }).feature;
+  pied.createdAt = m(-60);
+  for (const x of state.demandes) if (x.id === 'd-demo-sas') x.feature = pied.id;
+  state.demandes.splice(1, 0,
+    d('d-demo-pied', -7, { kind: 'chef', to: 'Chef', feature: pied.id, text: 'Le coup de pied dans les portes : il manque l\'animation, tu peux la faire créer ?', ref: { tag: 'd-demo-pied', session: 's-chef' }, live: 'Animation crée le montage AM_CoupDePied' }));
+  const day = (dd, hh, mm) => Date.UTC(2026, 9, dd, hh - 2, mm);
+  state.setFeaturePast(pied.id, [
+    { at: day(7, 22, 3), who: 'Chef', to: 'Gameplay', text: 'Chantier coup de pied dans les portes (ADR 0081) : le joueur ouvre une porte de parcelle d\'un coup de pied, la porte part en arrière.', src: 'envoi' },
+    { at: day(7, 22, 3), who: 'Chef', to: 'Animation', text: 'Pour le coup de pied dans les portes : un montage AM_CoupDePied, jambe droite, 0,6 s.', src: 'envoi' },
+    { at: day(8, 0, 15), who: 'Gameplay', to: '', text: '08/10, 00:15 — chantier coup de pied dans les portes (ADR 0081) : CTBDoorKickComponent posé, tests CTB.Geste.CoupDePied verts.', src: 'carnet' },
+    { at: day(8, 0, 47), who: 'Animation', to: 'Gameplay', text: 'Coup de pied : le montage AM_CoupDePied reste à créer (creer_coup_de_pied.py --auto, éditeur fermé).', src: 'tableau' },
+    { at: day(8, 17, 30), who: 'Rapport', to: '', text: 'Saved/Tour/rapports/coup-de-pied-gameplay-2026-10-08.md', src: 'rapport', file: 'Saved/Tour/rapports/coup-de-pied-gameplay-2026-10-08.md' },
+  ]);
+  const view = D.create(state);
+  state.demandesView = view.tree;
+  state.featureCardsView = view.featureCards;
 }
 
 (async () => {
