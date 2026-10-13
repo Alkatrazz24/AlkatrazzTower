@@ -256,3 +256,21 @@ test('l\'historique d\'avant tolere les fins de ligne Windows (CRLF)', () => {
   assert.ok(past.every(x => !/\r/.test(x.text + x.to + x.who)));
   done();
 });
+
+test('l\'historique d\'avant, comme sur le PC : carnets en gras ou en liste, ADR partagee, envois qui la citent en passant', () => {
+  const env = setup();
+  const { s, root, done } = env;
+  put(root, 'Saved/Tour/sujets/animation.md', '## Où on en est\n\n**11/10/2026, 00:15** — chantier « coup de pied dans les portes » (ADR 0081), partie animation, étapes 1 et 2 FAITES\npar MCP, éditeur ouvert.\n');
+  put(root, 'Saved/Tour/sujets/interface.md', '## Où on en est\n\n- 11/10, 17:01–17:30 — le glyphe du mini-menu de la porte (ADR 0081) est CORRIGÉ\n- 11/10, 18:00 — le HUD de la radio (ADR 0076)\n', new Date(2026, 9, 11, 20, 0));
+  put(root, 'Saved/Tour/sujets/gameplay.md', '## Journal\n- 11/10, 00:23 — chantier coup de pied dans les portes (ADR 0081) : composant posé\n', new Date(2026, 9, 11, 20, 0));
+  put(root, 'Saved/Tour/chef/envoyes/2026-10-11-17-00-depot-distant.md', 'pour: sujet-livraison\n---\n# Mettre le projet à l\'abri : un dépôt distant avec LFS\n\n## Ce qu\'ali a dit\n6. Ne touche à rien d\'autre : trois chantiers non committés (coup de pied dans les portes, ragdoll, agents).\n');
+  put(root, 'Saved/Tour/chef/envoyes/2026-10-13-19-33-mondes-de-validation.md', 'pour: nouvelle feature\ntitre: Mondes de validation : un banc jouable par feature\nsujets: sujet-gameplay\n---\n# Mondes de validation\n\nUne map pour tester le coup de pied dans la porte.\n');
+  put(root, 'Saved/Tour/conseil/2026-10-11-16-16-un-point-sur-le-projet-tower.md', '# Conseil : un point sur le projet Tower\n\nUn cas réel, la nuit du 11/10 (coup de pied dans les portes).\n\n**Décision :** sécuriser le dépôt.\n');
+  s.addFeature({ title: 'Coup de pied dans les portes', idea: 'idée', project: 'CTB' });
+  const past = features.past(root, s.features[0]);
+  assert.deepStrictEqual(past.map(x => `${x.src}:${x.who}`), ['carnet:Animation', 'carnet:Gameplay', 'carnet:Interface']);
+  assert.match(past[0].text, /^11\/10\/2026, 00:15 — chantier/);
+  assert.strictEqual(new Date(past[0].at).getFullYear(), 2026);
+  assert.match(past[2].text, /glyphe/);
+  done();
+});
