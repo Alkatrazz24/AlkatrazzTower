@@ -123,6 +123,9 @@ test('« tout sauf supprimer » : reecrire l\'historique git ou ecrire hors du p
   assert.ok(permis.autoAllow('Write', { file_path: 'c:/users/alkatrazz/documents/unreal/conquerthebackrooms 5.8/docs/x.md' }, sauf, CTB));
   assert.ok(!permis.autoAllow('Edit', { file_path: 'C:\\Users\\Alkatrazz\\.claude\\settings.json' }, sauf, CTB));
   assert.ok(!permis.autoAllow('Edit', { file_path: `${CTB}\\..\\autre\\a.cpp` }, sauf, CTB));
+  assert.ok(!permis.autoAllow('Edit', { file_path: `${CTB}\\Plugins\\AlkatrazzTower\\Source\\a.cpp` }, sauf, CTB)); // jonction vers la tour
+  assert.ok(!ok('Set-Content Plugins\\AlkatrazzTower\\x.txt y'));
+  assert.ok(permis.autoAllow('Edit', { file_path: `${CTB}\\Plugins\\SKGShooterFramework\\a.cpp` }, sauf, CTB));
   assert.ok(!permis.autoAllow('Edit', { file_path: 'Source/a.cpp' }, sauf, '')); // sans dossier connu, on demande
   assert.ok(permis.autoAllow('Edit', { file_path: 'C:\\x' }, { niveau: 'tout' }, CTB));
 });
