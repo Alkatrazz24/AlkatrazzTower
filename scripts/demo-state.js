@@ -509,6 +509,9 @@ await demoGit();
 await demoSauvegarde();
 demoDemandes();
 
+// Deux commandes deja autorisees par ali (Reglages, Autorisations des sessions).
+state.permis.retenues = ['git commit', 'build.bat'];
+
 // Les chemins du dossier temporaire deviennent des chemins Windows plausibles.
 const WIN = 'C:\\Users\\Alkatrazz\\Documents\\Unreal Projects';
 const winify = (v) => {

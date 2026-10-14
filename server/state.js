@@ -20,6 +20,7 @@ const regles = require('../lib/regles');
 const chefLib = require('../lib/chef');
 const docsLib = require('../lib/docs');
 const modifs = require('../lib/modifs');
+const permisLib = require('../lib/permis');
 
 // Agents des tutos (lib/tuto.js) : jamais sauvegardes, jamais comptes pour une version.
 const isTuto = (id) => String(id || '').startsWith('tuto-');
@@ -94,6 +95,7 @@ class TowerState {
     this.sauvegardeView = null; // () => ce que la page affiche de la sauvegarde, branche par le serveur
     this.gitFollow = [];   // dossiers ajoutes au suivi par ali, en plus de la tour et des projets connectes : [{ name, root }]
     this.answers = {};     // id de question -> reponse donnee dans la tour, en attente du hook
+    this.permis = permisLib.restore(); // ce que la tour autorise seule aux sessions, et ce qu'ali a deja autorise (lib/permis.js)
     this.redTests = {};    // projet -> chemins des tests rouges a leur dernier passage
     this.onVictory = null; // (campagne) => void, branche par le serveur
     this.onTaskDone = null; // (agent) => void : une tache vient de rendre son suivi (lib/verif.js)
@@ -894,11 +896,29 @@ class TowerState {
     const kind = req.kind === 'permission' ? 'permission' : 'question';
     if (kind === 'question' && !qs.length) return null;
     a.ask = { id, kind, at: t, questions: qs, tool: snip(req.tool, 60), summary: snip(req.summary, 300), window: false };
+    // ce qu'un « Autoriser » d'ali retiendra : la tour ne redemandera plus pour ce genre de commande
+    if (kind === 'permission') a.ask.retenir = permisLib.keysFor(req.tool, req.input);
     a.status = 'waiting';
     a.lastSeen = t;
     a.message = kind === 'permission' ? snip(`Autorisation : ${req.tool || 'outil'} ${req.summary || ''}`, 200) : snip(qs[0].question, 200);
     this.changed();
     return id;
+  }
+
+  // Une demande de permission a laquelle la tour repond seule (lib/permis.js) : rien ne s'affiche.
+  autoPermis(req) {
+    return !!(req && req.kind === 'permission' && permisLib.autoAllow(req.tool, req.input, this.permis));
+  }
+
+  // Le reglage des autorisations : { niveau } ou { oublier: cle | '*' }.
+  setPermis(body = {}) {
+    if (body.niveau !== undefined) {
+      if (!permisLib.NIVEAUX.includes(body.niveau)) return { ok: false, error: 'Niveau inconnu.' };
+      this.permis.niveau = body.niveau;
+    }
+    if (body.oublier !== undefined) this.permis.retenues = body.oublier === '*' ? [] : this.permis.retenues.filter(k => k !== body.oublier);
+    this.changed();
+    return { ok: true };
   }
 
   // Reponse d'ali dans la tour : { answers: { question: reponse } } ou { decision: 'allow' | 'deny' },
@@ -923,6 +943,7 @@ class TowerState {
       answer = { answers };
     }
     this.answers[id] = { ...answer, at: this.now() };
+    if (answer.decision === 'allow') permisLib.remember(this.permis, ask.retenir);
     if (answer.decision === 'window') { ask.window = true; this.changed(); return { ok: true }; }
     delete a.ask;
     a.status = 'working';
@@ -1001,6 +1022,7 @@ class TowerState {
       sujets: this.sujets,
       docs: this.docs,
       docRules: this.docRules,
+      permis: this.permis,
       git: this.git,
       modifs: modifs.view(this.modifs),
       sauvegarde: this.sauvegardeView ? this.sauvegardeView() : null,
@@ -1020,7 +1042,7 @@ class TowerState {
     return {
       agents: keep(this.agents, a => !isTuto(a.sessionId)), builds: this.builds.filter(b => !isTuto(b.sessionId)), seq: this.seq,
       campaigns: this.campaigns, testGroups: this.testGroups, characters: keep(this.characters, c => !c.tuto), projects: this.projects,
-      tasks: this.tasks, redTests: this.redTests, features: this.features, featureSeeds: this.featureSeeds, regles: this.regles, misePlace: this.misePlace, chef: this.chef, conseil: this.conseil, demandes: this.demandes, docRules: this.docRules, gitFollow: this.gitFollow, sauvegarde: this.sauvegarde, modifs: this.modifs,
+      tasks: this.tasks, redTests: this.redTests, features: this.features, featureSeeds: this.featureSeeds, regles: this.regles, misePlace: this.misePlace, chef: this.chef, conseil: this.conseil, demandes: this.demandes, docRules: this.docRules, permis: this.permis, gitFollow: this.gitFollow, sauvegarde: this.sauvegarde, modifs: this.modifs,
     };
   }
 
@@ -1046,6 +1068,7 @@ class TowerState {
     if (saved.sauvegarde && typeof saved.sauvegarde === 'object') this.sauvegarde = require('../lib/sauvegarde').restore(saved.sauvegarde);
     if (saved.modifs) this.modifs = modifs.restore(saved.modifs);
     if (Array.isArray(saved.gitFollow)) this.gitFollow = saved.gitFollow.filter(x => x && typeof x.root === 'string');
+    if (saved.permis) this.permis = permisLib.restore(saved.permis);
     if (saved.docRules && docsLib.UNREAL_MODES.includes(saved.docRules.unreal)) this.docRules = { unreal: saved.docRules.unreal };
     // une mise en place en cours ou en file est partie avec l'ancienne tour
     if (saved.misePlace && typeof saved.misePlace === 'object') {
