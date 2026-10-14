@@ -6,8 +6,10 @@ const assert = require('node:assert');
 const permis = require('../lib/permis');
 const { TowerState } = require('../server/state');
 
-const ps = (command, conf) => permis.autoAllow('PowerShell', { command }, conf);
-const sh = (command, conf) => permis.autoAllow('Bash', { command }, conf);
+// sans niveau donne : « lecture », le plus strict (le niveau de depart est teste a part)
+const LECT = { niveau: 'lecture' };
+const ps = (command, conf = LECT) => permis.autoAllow('PowerShell', { command }, conf);
+const sh = (command, conf = LECT) => permis.autoAllow('Bash', { command }, conf);
 
 test('ce qui ne fait que lire passe sans demander (la commande de la capture d\'ali comprise)', () => {
   assert.ok(ps('Get-ChildItem Saved\\Logs\\*.log | Sort-Object LastWriteTime -Descending | Select-Object -First 6 Name, LastWriteTime, Length'));
@@ -29,7 +31,7 @@ test('ce qui ecrit, supprime ou peut cacher une autre commande demande toujours'
     '. .\\x.ps1', '. $profile', 'Start-Process notepad', 'cmd /c dir', 'Get-Item $(Get-Location)', 'Get-ChildItem; Remove-Item x']) assert.ok(!ps(c), c);
   for (const c of ['find . -name x -delete', 'echo $(rm -rf /)', 'echo `rm x`', 'sort -o out.txt in.txt', 'git -c core.pager=x log', 'git branch -D old'])
     assert.ok(!sh(c), c);
-  assert.ok(!permis.autoAllow('Edit', { file_path: 'Source/x.cpp' }));
+  assert.ok(!permis.autoAllow('Edit', { file_path: 'Source/x.cpp' }, LECT));
   assert.ok(!permis.autoAllow('PowerShell', { command: '' }));
 });
 
@@ -58,11 +60,14 @@ test('les niveaux : tout sauf supprimer, puis tout', () => {
   assert.ok(!ps('powershell -Command "Remove-Item x"', sauf));
   assert.ok(!sh('git push --force', sauf));
   assert.ok(ps('Remove-Item x -Recurse', { niveau: 'tout' }));
-  assert.deepStrictEqual(permis.restore({ niveau: 'n\'importe', retenues: ['a', 3] }), { niveau: 'lecture', retenues: ['a'] });
+  assert.deepStrictEqual(permis.restore({ niveau: 'n\'importe', retenues: ['a', 3] }), { niveau: 'sauf-suppression', retenues: ['a'] });
+  assert.strictEqual(permis.restore().niveau, 'sauf-suppression'); // le choix d'ali : le niveau de depart
 });
 
 test('dans la tour : la lecture passe seule, « Autoriser » retient, le reglage se change et survit au redemarrage', () => {
   const s = new TowerState();
+  assert.strictEqual(s.permis.niveau, 'sauf-suppression');
+  s.setPermis({ niveau: 'lecture' });
   assert.ok(s.autoPermis({ kind: 'permission', tool: 'PowerShell', input: { command: 'Get-ChildItem Saved' } }));
   const req = { sessionId: 'K', kind: 'permission', tool: 'PowerShell', summary: 'git commit -m x', input: { command: 'git commit -m x' } };
   assert.ok(!s.autoPermis(req));

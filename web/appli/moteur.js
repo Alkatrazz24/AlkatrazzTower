@@ -528,7 +528,7 @@
     ['sauf-suppression', 'Tout sauf supprimer', 'Lire et modifier les fichiers du projet passe sans demander. Supprimer, déplacer, réécrire l\'historique git (reset, rebase, push --force...) ou écrire hors du projet te demande.'],
     ['tout', 'Tout', 'Plus aucune demande, suppressions comprises.']];
   function permisBlock(M) {
-    const P = (M.S && M.S.permis) || { niveau: 'lecture', retenues: [] };
+    const P = (M.S && M.S.permis) || { niveau: 'sauf-suppression', retenues: [] };
     const set = async (o) => { const r = await T.call('/api/permis', o); if (r && r.ok && o.niveau) T.toast('Vaut tout de suite, pour toutes les sessions lancées par la tour.'); };
     const cur = PERMIS.find(x => x[0] === P.niveau) || PERMIS[0];
     return [
