@@ -53,7 +53,7 @@ test('les niveaux : tout sauf supprimer, puis tout', () => {
   const sauf = { niveau: 'sauf-suppression' };
   assert.ok(ps('New-Item -ItemType Directory x', sauf));
   assert.ok(ps('npm install', sauf));
-  assert.ok(permis.autoAllow('Edit', { file_path: 'x' }, sauf));
+  assert.ok(permis.autoAllow('Edit', { file_path: 'x' }, sauf, 'C:\\p'));
   assert.ok(!ps('Remove-Item x -Recurse', sauf));
   assert.ok(!ps('powershell -Command "Remove-Item x"', sauf));
   assert.ok(!sh('git push --force', sauf));
@@ -104,4 +104,31 @@ test('le hook repond seul quand la tour dit « auto », sans ouvrir de question'
   assert.deepStrictEqual(JSON.parse(out).hookSpecificOutput.decision, { behavior: 'allow' });
   assert.deepStrictEqual(seen.map(x => x[0]), ['/api/ask/open']);
   assert.strictEqual(seen[0][1].input.command, 'Get-ChildItem Saved\\Logs');
+});
+
+test('« tout sauf supprimer » : reecrire l\'historique git ou ecrire hors du projet demande (chemins Windows)', () => {
+  const CTB = 'C:\\Users\\Alkatrazz\\Documents\\unreal\\ConquerTheBackrooms 5.8';
+  const sauf = { niveau: 'sauf-suppression' };
+  const ok = (c) => permis.autoAllow('PowerShell', { command: c }, sauf, CTB);
+  assert.ok(ok('New-Item -ItemType Directory Saved\\Tour\\x'));
+  assert.ok(ok('Set-Content Source\\a.txt b'));
+  assert.ok(ok('Copy-Item Content\\a.uasset "C:\\Users\\alkatrazz\\Documents\\Unreal\\ConquerTheBackrooms 5.8\\Content\\b.uasset"'));
+  assert.ok(ok('& "C:\\Program Files\\Epic Games\\UE_5.8\\Engine\\Build\\BatchFiles\\Build.bat" X Win64 -project="C:\\Users\\Alkatrazz\\Documents\\unreal\\ConquerTheBackrooms 5.8\\CTB.uproject" 2>&1'));
+  assert.ok(ok('git commit -m "porte"'));
+  for (const c of ['git reset --soft HEAD~1', 'git reset HEAD~2', 'git commit --amend -m x', 'git rebase -i main', 'git push --force', 'git clean -fd',
+    'Set-Content ..\\x.txt y', 'New-Item C:\\Users\\Alkatrazz\\Desktop\\x', 'Get-Content a > C:\\temp\\b.txt', 'Copy-Item a $env:TEMP\\b', 'cd ..; New-Item x',
+    'Copy-Item a "C:\\Users\\Alkatrazz\\Documents\\unreal\\ConquerTheBackrooms 5.8 copie\\a"']) assert.ok(!ok(c), c);
+  assert.ok(ok('Get-Content C:\\Windows\\win.ini')); // lire ailleurs reste permis
+  assert.ok(permis.autoAllow('Edit', { file_path: `${CTB}\\Source\\a.cpp` }, sauf, CTB));
+  assert.ok(permis.autoAllow('Write', { file_path: 'c:/users/alkatrazz/documents/unreal/conquerthebackrooms 5.8/docs/x.md' }, sauf, CTB));
+  assert.ok(!permis.autoAllow('Edit', { file_path: 'C:\\Users\\Alkatrazz\\.claude\\settings.json' }, sauf, CTB));
+  assert.ok(!permis.autoAllow('Edit', { file_path: `${CTB}\\..\\autre\\a.cpp` }, sauf, CTB));
+  assert.ok(!permis.autoAllow('Edit', { file_path: 'Source/a.cpp' }, sauf, '')); // sans dossier connu, on demande
+  assert.ok(permis.autoAllow('Edit', { file_path: 'C:\\x' }, { niveau: 'tout' }, CTB));
+});
+
+test('un shell imbrique qui ecrit hors du projet demande aussi', () => {
+  const CTB = 'C:\\Users\\Alkatrazz\\Documents\\unreal\\ConquerTheBackrooms 5.8';
+  assert.ok(!permis.autoAllow('PowerShell', { command: 'cmd /c "copy a C:\\temp\\b"' }, { niveau: 'sauf-suppression' }, CTB));
+  assert.ok(permis.autoAllow('PowerShell', { command: 'cmd /c "copy a Saved\\b"' }, { niveau: 'sauf-suppression' }, CTB));
 });

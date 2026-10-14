@@ -47,7 +47,7 @@ function request(ev) {
     const { toolSummary } = require('../server/state');
     // la commande entiere (ou l'adresse) : la tour juge si elle peut repondre seule (lib/permis.js)
     const input = {};
-    for (const k of ['command', 'url', 'file_path']) if (typeof ti[k] === 'string') input[k] = ti[k].slice(0, 8000);
+    for (const k of ['command', 'url', 'file_path', 'notebook_path']) if (typeof ti[k] === 'string') input[k] = ti[k].slice(0, 8000);
     return { ...base, kind: 'permission', tool: ev.tool_name || '', summary: toolSummary(ev.tool_name, ti), input };
   }
   return { ...base, kind: 'question', questions: Array.isArray(ti.questions) ? ti.questions : [] };

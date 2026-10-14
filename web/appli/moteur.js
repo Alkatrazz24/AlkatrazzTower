@@ -525,7 +525,7 @@
   }
   // Ce que la tour autorise seule aux sessions qu'elle lance (lib/permis.js).
   const PERMIS = [['lecture', 'Lecture seule', 'Ce qui ne fait que lire passe sans demander, et chaque commande que tu autorises est retenue. Le reste te demande.'],
-    ['sauf-suppression', 'Tout sauf supprimer', 'Tout passe sans demander, sauf ce qui supprime, déplace ou écrase (Remove-Item, rm, git reset --hard...).'],
+    ['sauf-suppression', 'Tout sauf supprimer', 'Lire et modifier les fichiers du projet passe sans demander. Supprimer, déplacer, réécrire l\'historique git (reset, rebase, push --force...) ou écrire hors du projet te demande.'],
     ['tout', 'Tout', 'Plus aucune demande, suppressions comprises.']];
   function permisBlock(M) {
     const P = (M.S && M.S.permis) || { niveau: 'lecture', retenues: [] };

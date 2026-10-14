@@ -907,7 +907,7 @@ class TowerState {
 
   // Une demande de permission a laquelle la tour repond seule (lib/permis.js) : rien ne s'affiche.
   autoPermis(req) {
-    return !!(req && req.kind === 'permission' && permisLib.autoAllow(req.tool, req.input, this.permis));
+    return !!(req && req.kind === 'permission' && permisLib.autoAllow(req.tool, req.input, this.permis, req.cwd));
   }
 
   // Le reglage des autorisations : { niveau } ou { oublier: cle | '*' }.
