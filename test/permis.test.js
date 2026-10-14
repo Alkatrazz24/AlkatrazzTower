@@ -24,7 +24,9 @@ test('ce qui ne fait que lire passe sans demander (la commande de la capture d\'
 test('ce qui ecrit, supprime ou peut cacher une autre commande demande toujours', () => {
   for (const c of ['Get-ChildItem x | Remove-Item', 'Get-ChildItem x | % { Remove-Item $_ }', '$a = Remove-Item x', '$a = rm x',
     'Get-Content a > b.txt', '[IO.File]::Delete("x")', '(Get-Item x).Delete()', 'Set-Content a b', 'git commit -m x', 'git checkout -- .',
-    'powershell -Command "Get-ChildItem"', 'Invoke-Expression $x', 'Get-ChildItem "$(Remove-Item x)"']) assert.ok(!ps(c), c);
+    'powershell -Command "Get-ChildItem"', 'Invoke-Expression $x', 'Get-ChildItem "$(Remove-Item x)"',
+    'Get-ChildItem >> log.txt', 'Get-Content a | Out-File b', 'Add-Content a b', 'Get-ChildItem | Tee-Object x', 'iex $x', '& "Get-ChildItem"',
+    '. .\\x.ps1', '. $profile', 'Start-Process notepad', 'cmd /c dir', 'Get-Item $(Get-Location)', 'Get-ChildItem; Remove-Item x']) assert.ok(!ps(c), c);
   for (const c of ['find . -name x -delete', 'echo $(rm -rf /)', 'echo `rm x`', 'sort -o out.txt in.txt', 'git -c core.pager=x log', 'git branch -D old'])
     assert.ok(!sh(c), c);
   assert.ok(!permis.autoAllow('Edit', { file_path: 'Source/x.cpp' }));
