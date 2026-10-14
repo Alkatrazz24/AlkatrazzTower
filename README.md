@@ -542,6 +542,10 @@ node scripts\install-plugin.js "C:\chemin\vers\MonJeu.uproject"
 | `TOWER_NO_DOCS=1` | coupe le rappel de la doc Unreal en début de session |
 | `GITHUB_TOKEN` ou `GH_TOKEN` | le bâtiment Dépôts voit aussi les dépôts GitHub privés |
 
+Le serveur tient son journal dans `data/server.log` : démarrage, messages, erreurs avec leur pile et
+arrêt avec son code. Si la tour ne répond plus, c'est là qu'on voit pourquoi. Au-delà de 2 Mo, le
+fichier devient `server.log.1`.
+
 ## Développer la tour
 
 ```bat
@@ -602,6 +606,7 @@ Les consignes de travail de Claude sur ce dépôt sont dans [CLAUDE.md](CLAUDE.m
 | `lib/sauvegarde.js` | bâtiment Sauvegarde : copie complète d'un projet dans un dossier ou vers un dépôt, sans toucher au projet |
 | `lib/inventory.js` | comptage des assets du projet, par domaine |
 | `lib/projects.js` | recherche et connexion des projets Unreal |
+| `lib/journal.js` | journal du serveur dans `data/server.log` |
 | `lib/characters.js` | personnages des agents (l'API reste, la page ne les dessine plus) |
 | `web/index.html`, `web/core.js`, `web/core.css` | la page : flux en direct, données, actions et dialogues communs |
 | `web/appli/` | l'application : la page (`moteur.js`), ses fiches (`fiches.js`) et son thème (`hud.css`) |

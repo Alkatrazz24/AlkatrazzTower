@@ -16,6 +16,8 @@ const ROOT = path.resolve(__dirname, '..');
 const DATA_DIR = process.env.TOWER_DATA || path.join(ROOT, 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const WEB = path.join(ROOT, 'web');
+// lancee pour de vrai (pas chargee par un test) : tout ce qu'elle dit va aussi dans data/server.log
+if (require.main === module) require('../lib/journal').install(DATA_DIR, { port: PORT });
 
 // Version de la page : change des qu'un fichier de web/ change. Une page restee ouverte (onglet de
 // l'editeur Unreal, navigateur) la recoit a chaque connexion et se recharge quand elle differe.
@@ -760,7 +762,7 @@ const server = http.createServer((req, res) => {
     else { try { res.end(); } catch { /* deja ferme */ } }
   });
 });
-process.on('unhandledRejection', (e) => console.error('[tower] promesse rejetee :', e && e.message));
+process.on('unhandledRejection', (e) => console.error('[tower] promesse rejetee :', (e && (e.stack || e.message)) || e));
 
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') {
