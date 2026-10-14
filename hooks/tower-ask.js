@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 'use strict';
 // Hook des questions : quand un agent pose une question a ali (AskUserQuestion) ou demande une
-// permission, la question part dans la tour, et ali y repond d'un clic.
+// permission, la question part dans la tour, et ali y repond d'un clic. Une permission que la tour peut
+// donner seule (une lecture, une commande deja autorisee par ali : lib/permis.js) passe sans rien afficher.
 //
 // Branche sur PreToolUse (AskUserQuestion) et PermissionRequest (voir scripts/install-hooks.js).
 // Le hook attend la reponse de la tour au plus TOWER_ASK_WAIT secondes (10 min par defaut) :
@@ -44,7 +45,10 @@ function request(ev) {
   const base = { sessionId: ev.session_id, cwd: ev.cwd };
   if (ev.hook_event_name === 'PermissionRequest') {
     const { toolSummary } = require('../server/state');
-    return { ...base, kind: 'permission', tool: ev.tool_name || '', summary: toolSummary(ev.tool_name, ti) };
+    // la commande entiere (ou l'adresse) : la tour juge si elle peut repondre seule (lib/permis.js)
+    const input = {};
+    for (const k of ['command', 'url', 'file_path', 'notebook_path']) if (typeof ti[k] === 'string') input[k] = ti[k].slice(0, 8000);
+    return { ...base, kind: 'permission', tool: ev.tool_name || '', summary: toolSummary(ev.tool_name, ti), input };
   }
   return { ...base, kind: 'question', questions: Array.isArray(ti.questions) ? ti.questions : [] };
 }
@@ -62,6 +66,8 @@ async function main() {
   if (isPerm && ev.tool_name === 'AskUserQuestion') return quit();
 
   const opened = await post('/api/ask/open', request(ev), 800);
+  // une lecture, ou une commande qu'ali a deja autorisee : la tour repond seule, sans rien afficher
+  if (opened && opened.auto === 'allow' && isPerm) { process.stdout.write(JSON.stringify(output(ev, { decision: 'allow' })), quit); return; }
   if (!opened || !opened.id) return quit();
   const deadline = Date.now() + WAIT_S * 1000;
   let misses = 0;

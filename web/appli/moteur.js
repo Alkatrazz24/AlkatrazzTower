@@ -478,7 +478,7 @@
         h('ul', { class: 'ap-health' }, healthRows(M).map(([k, label, tone, txt]) => h('li', null,
           h('button', { type: 'button', class: 'ap-hrow' + on(k), 'data-sheet': k, onclick: () => sheet(k) },
             h('span', { class: `us-dot us-d-${tone}` }), h('b', null, label), h('small', null, txt)))))),
-      h('button', { type: 'button', class: 'ap-hrow ap-settings' + on('reglages'), 'data-sheet': 'reglages', onclick: () => sheet('reglages') }, h('span', { class: 'ap-gear', 'aria-hidden': 'true' }, '⚙'), h('b', null, 'Réglages'), h('small', null, 'projets, thème, ancienne interface')),
+      h('button', { type: 'button', class: 'ap-hrow ap-settings' + on('reglages'), 'data-sheet': 'reglages', onclick: () => sheet('reglages') }, h('span', { class: 'ap-gear', 'aria-hidden': 'true' }, '⚙'), h('b', null, 'Réglages'), h('small', null, 'projets, autorisations, thème')),
     ];
   }
 
@@ -523,6 +523,27 @@
       h('div', { class: 'us-ehead' }, h('h2', null, title), F.btn('Fermer', close, 'us-x', { 'aria-label': `Fermer : ${title}`, title: 'Échap' })),
       h('div', { class: 'us-ebody' }, body));
   }
+  // Ce que la tour autorise seule aux sessions qu'elle lance (lib/permis.js).
+  const PERMIS = [['lecture', 'Lecture seule', 'Ce qui ne fait que lire passe sans demander, et chaque commande que tu autorises est retenue. Le reste te demande.'],
+    ['sauf-suppression', 'Tout sauf supprimer', 'Lire et modifier les fichiers du projet passe sans demander. Supprimer, déplacer, réécrire l\'historique git (reset, rebase, push --force...) ou écrire hors du projet te demande.'],
+    ['tout', 'Tout', 'Plus aucune demande, suppressions comprises.']];
+  function permisBlock(M) {
+    const P = (M.S && M.S.permis) || { niveau: 'sauf-suppression', retenues: [] };
+    const set = async (o) => { const r = await T.call('/api/permis', o); if (r && r.ok && o.niveau) T.toast('Vaut tout de suite, pour toutes les sessions lancées par la tour.'); };
+    const cur = PERMIS.find(x => x[0] === P.niveau) || PERMIS[0];
+    return [
+      h('div', { class: 'us-sub' }, 'Autorisations des sessions'),
+      h('div', { class: 'us-filters', role: 'group', 'aria-label': 'Ce que les sessions font sans demander' }, PERMIS.map(([id, text, hint]) =>
+        h('button', { type: 'button', class: 'us-chip2' + (P.niveau === id ? ' on' : ''), 'aria-pressed': String(P.niveau === id), title: hint, disabled: !!M.demo, onclick: () => { if (id !== P.niveau) set({ niveau: id }); } }, text))),
+      h('small', { class: 'us-dim' }, cur[2]),
+      P.retenues.length ? [
+        h('p', { class: 'us-dim' }, 'Déjà autorisé, ne redemande plus :'),
+        h('ul', { class: 'ap-projs' }, P.retenues.map(k => h('li', null, h('code', null, k),
+          F.btn('Oublier', () => set({ oublier: k }), '', M.demo ? { disabled: true } : { title: 'La prochaine fois, la session te redemandera' })))),
+      ] : null,
+    ];
+  }
+
   function settingsBody(M) {
     const theme = document.documentElement.dataset.theme;
     return [
@@ -531,6 +552,7 @@
         F.btn('Déconnecter', () => T.act.disconnect(p), 'us-danger', M.demo ? { disabled: true } : {}))))
         : h('p', { class: 'us-dim' }, 'Aucun projet connecté : les sujets, la doc et la sauvegarde en ont besoin.'),
       h('div', { class: 'us-actions' }, F.btn('Connecter un projet', T.act.openProjects, M.projects.length ? '' : 'us-go')),
+      permisBlock(M),
       h('div', { class: 'us-sub' }, 'Apparence'),
       h('div', { class: 'us-seg', role: 'group', 'aria-label': 'Thème' }, [['sombre', 'Sombre'], ['clair', 'Clair']].map(([v, txt]) =>
         h('button', { type: 'button', class: 'us-segbtn', 'aria-pressed': String(theme === v), onclick: () => { setTheme(v); paint(); } }, txt))),

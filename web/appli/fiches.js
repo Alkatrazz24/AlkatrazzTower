@@ -239,6 +239,7 @@
     if (k.kind === 'permission') {
       return h('div', { class: 'us-ask us-askq' },
         h('b', null, 'Il demande l\'autorisation'), h('p', null, h('code', null, k.tool), ' ', k.summary),
+        k.retenir && k.retenir.length ? h('small', { class: 'us-dim' }, `Autoriser vaut aussi pour la suite : la tour ne redemandera plus pour ${k.retenir.map(x => `« ${x} »`).join(', ')}.`) : null,
         h('div', { class: 'us-actions' }, btn('Autoriser', () => sendAsk(a, { decision: 'allow' }), 'us-go'), btn('Refuser', () => sendAsk(a, { decision: 'deny' })), later));
     }
     const sel = picks.get(k.id) || {};
