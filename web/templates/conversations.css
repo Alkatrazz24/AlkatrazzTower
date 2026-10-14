@@ -61,6 +61,7 @@ body { margin: 0; color: var(--us-ink); font: 15px/1.5 var(--us-text); backgroun
 .ap-d-blue { background: var(--us-blue); }
 .ap-d-ko { background: var(--us-ko); }
 .ap-d-grey { background: var(--us-grey); }
+.ap-d-test, .us-dot.us-d-test { background: var(--us-you); }
 .ap-wait .ap-dot, .ap-c-warn .ap-dot { animation: ap-blink 1.2s ease-in-out infinite; }
 @keyframes ap-blink { 50% { opacity: .35; } }
 .ap-itext { min-width: 0; display: grid; gap: 1px; }
@@ -84,6 +85,9 @@ body { margin: 0; color: var(--us-ink); font: 15px/1.5 var(--us-text); backgroun
 .ap-c-warn { color: var(--us-warn); background: color-mix(in srgb, var(--us-warn) 13%, transparent); }
 .ap-c-ok { color: var(--us-ok); background: color-mix(in srgb, var(--us-ok) 13%, transparent); }
 .ap-c-blue { color: var(--us-blue); background: color-mix(in srgb, var(--us-blue) 13%, transparent); }
+.ap-c-ko { color: var(--us-ko); background: color-mix(in srgb, var(--us-ko) 13%, transparent); }
+.ap-c-grey { color: var(--us-muted); background: var(--us-soft); }
+.ap-c-test { color: var(--us-you); background: color-mix(in srgb, var(--us-you) 13%, transparent); }
 .ap-chip .ap-dot { width: 7px; height: 7px; }
 .ap-hacts { display: flex; gap: 6px; flex: none; }
 .ap-hacts .us-btn.on { background: var(--us-sel-bg); border-color: var(--us-line2); }
@@ -107,6 +111,7 @@ body { margin: 0; color: var(--us-ink); font: 15px/1.5 var(--us-text); backgroun
 .ap-dem-attend { border-left-color: var(--us-warn); }
 .ap-dem-fini { border-left-color: var(--us-ok); }
 .ap-dem-erreur { border-left-color: var(--us-ko); }
+.ap-dem-test { border-left-color: var(--us-you); }
 .ap-dem-txt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ap-dem-txt b { font-weight: 600; }
 .ap-dem small { color: var(--us-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -182,13 +187,15 @@ button.ap-att:hover { border-color: var(--us-line2); }
 .ap-bcount[data-n="0"] .us-dot { animation: none; }
 .ap-bcount-attend:not([data-n="0"]), .ap-bcount-attend:not([data-n="0"]) b { color: var(--us-warn); }
 .ap-bcount-attend:not([data-n="0"]) .us-dot { animation: ap-blink 1.2s ease-in-out infinite; }
+.ap-bcount-test:not([data-n="0"]), .ap-bcount-test:not([data-n="0"]) b { color: var(--us-you); }
 .ap-bcount .us-dot { width: 8px; height: 8px; }
 .ap-bempty { font-size: 13px; color: var(--us-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ap-ballseen { flex: none; padding: 4px 10px; font-size: 13px; }
-.ap-bcols { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 0 12px 12px; }
+.ap-bcols { display: grid; grid-template-columns: repeat(5, minmax(150px, 1fr)); gap: 10px; padding: 0 12px 12px; overflow-x: auto; }
 .ap-bcol { min-width: 0; display: flex; flex-direction: column; min-height: 0; max-height: min(36vh, 340px); background: var(--us-inset); border: 1px solid var(--us-line); border-radius: var(--us-radius); }
 .ap-bcol > .ap-gtitle { flex: none; padding: 8px 10px 4px; }
 .ap-bcol-attend > .ap-gtitle { color: var(--us-warn); }
+.ap-bcol-test > .ap-gtitle { color: var(--us-you); }
 .ap-bitems { list-style: none; margin: 0; padding: 2px 6px 8px; display: grid; gap: 6px; overflow-y: auto; min-height: 0; align-content: start; }
 .ap-bnone { padding: 4px 10px 10px; font-size: 12.5px; color: var(--us-muted); }
 .ap-bcard { all: unset; box-sizing: border-box; width: 100%; display: grid; gap: 3px; padding: 8px 10px; cursor: pointer; font-size: 13px;
@@ -198,6 +205,9 @@ button.ap-att:hover { border-color: var(--us-line2); }
 .ap-bc-en-cours, .ap-bc-envoyee { border-left-color: var(--us-blue); }
 .ap-bc-attend { border-left-color: var(--us-warn); }
 .ap-bc-fini { border-left-color: var(--us-ok); }
+.ap-bc-test { border-left-color: var(--us-you); }
+.ap-bc-tfoot { color: var(--us-you); font-weight: 600; }
+.ap-bc-foot .ap-bc-ko { color: var(--us-ko); font-weight: 600; }
 .ap-bc-erreur { border-left-color: var(--us-ko); }
 .ap-bc-seen { opacity: .7; }
 .ap-bc-feature { background: color-mix(in srgb, var(--us-ink) 4%, var(--us-panel)); box-shadow: inset 0 2px 0 var(--us-line2); }
@@ -311,4 +321,33 @@ button.ap-att:hover { border-color: var(--us-line2); }
   .ap-bcol { flex: 1 0 82%; scroll-snap-align: start; max-height: 40vh; }
   /* les colonnes vides ne prennent pas l'ecran : les compteurs du haut disent deja 0 */
   .ap-bcol:has(> .ap-bnone) { display: none; }
+}
+
+/* la phase de test d'une carte : les essais d'ali (et leur niveau), puis les tests lances et leur journal */
+.ap-tchecks { display: grid; gap: 6px; }
+.ap-tchecks > b { font-size: 13px; color: var(--us-you); }
+.ap-tlist, .ap-truns { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ap-tcheck { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr); gap: 4px 10px; align-items: center; padding: 7px 10px;
+  border: 1px solid var(--us-line); border-left: 3px solid var(--us-you); border-radius: var(--us-r-sm); background: var(--us-panel); font-size: 13.5px; }
+.ap-tcheck.ap-t-ok { border-left-color: var(--us-ok); }
+.ap-tcheck.ap-t-ko { border-left-color: var(--us-ko); }
+.ap-tlevel { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
+.ap-tmap { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; font-weight: 600; padding: 1px 7px; border-radius: 6px;
+  background: color-mix(in srgb, var(--us-you) 14%, transparent); color: var(--us-you); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ap-tmiss { font-size: 11px; color: var(--us-warn); white-space: nowrap; }
+.ap-tquoi { min-width: 0; overflow-wrap: anywhere; line-height: 1.4; }
+.ap-tbtns { grid-column: 1 / -1; justify-self: end; display: inline-flex; gap: 4px; }
+.ap-tbtns .us-btn { padding: 3px 9px; font-size: 12.5px; }
+.ap-tyes[aria-pressed="true"] { background: color-mix(in srgb, var(--us-ok) 18%, transparent); color: var(--us-ok); border-color: var(--us-ok); }
+.ap-tno[aria-pressed="true"] { background: color-mix(in srgb, var(--us-ko) 16%, transparent); color: var(--us-ko); border-color: var(--us-ko); }
+.ap-trun { display: grid; gap: 4px; padding: 7px 10px; border: 1px solid var(--us-line); border-left: 3px solid var(--us-ok); border-radius: var(--us-r-sm); background: var(--us-panel); font-size: 13px; }
+.ap-trun.ap-t-ko { border-left-color: var(--us-ko); }
+.ap-trun.ap-t-now { border-left-color: var(--us-blue); }
+.ap-trun.ap-t-now .us-dim { font-family: ui-monospace, Consolas, monospace; font-size: 12px; overflow-wrap: anywhere; }
+.ap-trun-res { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.ap-trun-red { color: var(--us-ko); font-size: 12.5px; overflow-wrap: anywhere; }
+.ap-tlog { margin-left: auto; padding: 2px 9px; font-size: 12.5px; }
+@media (max-width: 640px) {
+  .ap-tcheck { grid-template-columns: minmax(0, 1fr); }
+  .ap-tbtns { justify-self: start; }
 }

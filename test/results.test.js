@@ -39,3 +39,24 @@ test('resume de tests.ps1', () => {
   assert.strictEqual(r.ok, true);
   assert.strictEqual(r.summary, '140/140 tests');
 });
+
+// Sur le PC, tests.ps1 lance par PowerShell rend sa sortie en CLIXML (Write-Host) : la tour la relit
+// en clair, et la ligne de bilan de tests.ps1 compte plus que les quelques « Test Completed » visibles.
+test('tests.ps1 en CLIXML : la tour lit le vrai bilan', () => {
+  const { declixml } = require('../lib/results');
+  const out = [
+    '#< CLIXML',
+    '<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04"><S S="Information">==&gt; Suite CTB_x000D__x000A_</S>'
+      + '<S S="Information">LogAutomationController: Display: Test Completed. Result={Success} Name={Porte} Path={CTB.Porte}_x000D__x000A_</S>'
+      + '<S S="Information">LogAutomationController: Display: Test Completed. Result={Fail} Name={Ragdoll} Path={CTB.Ragdoll}_x000D__x000A_</S>'
+      + '<S S="Information">637 tests, 1 ECHEC(S)_x000D__x000A_</S></Objs>',
+  ].join('\n');
+  assert.match(declixml(out), /==> Suite CTB\r?\n/);
+  assert.doesNotMatch(declixml(out), /<Objs|_x000D_/);
+  const r = parseOutput(out, 1, 'test');
+  assert.strictEqual(r.ok, false);
+  assert.deepStrictEqual([r.tests.total, r.tests.failed], [637, 1]);
+  assert.deepStrictEqual(r.tests.failedNames, ['Ragdoll']);
+  assert.ok(!r.errorLines.some(l => /<Objs|<S /.test(l)), 'pas de balises dans les erreurs');
+  assert.strictEqual(declixml('texte simple'), 'texte simple');
+});

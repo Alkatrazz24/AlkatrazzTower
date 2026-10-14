@@ -10,12 +10,14 @@
 
 const { spawn, execFile } = require('child_process');
 const { post } = require('../lib/client');
-const { parseOutput, testsFromAbslog, testsFromProjectLogs } = require('../lib/results');
+const { parseOutput, declixml, testsFromAbslog, testsFromProjectLogs } = require('../lib/results');
 const { findProject, buildTarget, testFilter } = require('../lib/detect');
 
 const HEARTBEAT_MS = 5000;
 const NOTICE_MS = 30_000;
 const KEEP_BYTES = 4 * 1024 * 1024;
+const LOG_LINES = 200;
+const LOG_CHARS = 24 * 1024;
 
 function parseArgs(argv) {
   const o = { shell: process.platform === 'win32' ? 'powershell' : 'bash', session: process.env.TOWER_SESSION || '', kind: 'build', cmd: '' };
@@ -195,6 +197,8 @@ async function main() {
     }
   }
   result.durationMs = Date.now() - started;
+  // La fin du journal, pour la carte de la demande dans la tour (« Voir le log »).
+  result.logTail = declixml(text).split(/\r?\n/).slice(-LOG_LINES).join('\n').slice(-LOG_CHARS);
 
   if (ticket) {
     const r = await post('/api/lock/release', { ticket, result }, 2000);

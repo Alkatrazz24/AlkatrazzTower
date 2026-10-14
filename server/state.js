@@ -98,6 +98,7 @@ class TowerState {
     this.permis = permisLib.restore(); // ce que la tour autorise seule aux sessions, et ce qu'ali a deja autorise (lib/permis.js)
     this.redTests = {};    // projet -> chemins des tests rouges a leur dernier passage
     this.onVictory = null; // (campagne) => void, branche par le serveur
+    this.onBuildLog = null; // (id du build, fin du journal) => void : le serveur la garde dans data/logs/
     this.onTaskDone = null; // (agent) => void : une tache vient de rendre son suivi (lib/verif.js)
     this.seq = 0;
     this.listeners = new Set();
@@ -619,6 +620,8 @@ class TowerState {
       testFilter: entry.testFilter || null,
       how,
     };
+    // la fin de son journal part dans un fichier (data/logs/, serveur) : la carte d'une demande l'affiche
+    if (result.logTail && this.onBuildLog) try { this.onBuildLog(b.id, String(result.logTail)); b.hasLog = true; } catch { /* sans journal */ }
     // Un faux build de tuto ne prouve rien.
     if (!isTuto(b.sessionId)) this.noteTestGroups(b);
     // Un verrou perdu ou libere a la main ne dit rien de la qualite du code.

@@ -63,6 +63,12 @@ test('deux builds simultanes passent l\'un apres l\'autre', { timeout: 60_000 },
   const bb = st.builds.find(x => x.sessionId === 'BBB');
   assert.strictEqual(bb.ok, false);
   assert.ok(bb.waitMs > 1000);
+  // la fin de son journal est gardee : la carte de la demande l'affiche
+  assert.strictEqual(bb.hasLog, true);
+  const log = await get(`/api/builds/log?id=${encodeURIComponent(bb.id)}`);
+  assert.ok(log.ok, log.error);
+  assert.match(log.text, /Result: Failed/);
+  assert.strictEqual((await get('/api/builds/log?id=../state')).ok, false);
 });
 
 test('tour eteinte : la commande part sans verrou', { timeout: 30_000 }, async () => {

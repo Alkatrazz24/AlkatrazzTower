@@ -320,10 +320,11 @@ tableau s'ouvre pour la montrer. La carte passe seule d'une colonne à l'autre :
 - **En cours** : un agent y travaille, avec ce qu'il fait en ce moment (« lit Source/… », « les membres
   réfléchissent · 3 avis sur 5 ») et depuis combien de temps ;
 - **T'attend** : une question, une autorisation, ou un envoi du chef à valider ;
+- **À tester** : l'agent a fini et t'a laissé des essais à faire en jeu (voir plus bas) ;
 - **Fini** : la réponse, la décision ou le rapport. Une carte finie que tu n'as pas ouverte porte la
   marque « nouveau » ; **Tout vu** les retire toutes.
 
-Le bandeau du haut garde les quatre compteurs quand tu replies le tableau. Un clic sur une carte l'ouvre
+Le bandeau du haut garde les cinq compteurs quand tu replies le tableau. Un clic sur une carte l'ouvre
 dans le volet :
 
 - un **résumé** écrit par la tour à partir de ce que les agents rapportent (où ça en est, ce que le chef
@@ -339,6 +340,25 @@ Ce que le chef confie aux sessions pendant ta demande reste dans sa carte : elle
 les sessions ont fini aussi (leur ligne au tableau des sujets pour « Chef » sert de réponse). Le chef et
 les sessions suivent les mêmes demandes, avec tes commentaires, dans `Saved/Tour/demandes.md`, que la
 tour réécrit ; le chef le lit avant chaque demande.
+
+### La phase de test
+
+Une carte montre, dans sa partie **Tests**, tout ce qui a été vérifié pour elle :
+
+- **les tests lancés** par ses sessions (et la vérification de fin de tâche de la tour), dans l'ordre :
+  compilation ou tests, qui, combien de temps, le bilan (« 636/637 verts », le rouge nommé) et
+  **Voir le log** pour la fin de leur sortie. `tower-run` envoie les 200 dernières lignes à la tour, qui
+  les garde dans `data/logs/` (les 300 derniers journaux). La sortie de `tests.ps1`, que PowerShell rend
+  en CLIXML, est relue en clair : le bilan est celui de sa ligne « N tests, M échec(s) » ;
+- **ce que tu dois essayer toi-même**, une ligne par essai, avec le **niveau à ouvrir** devant (un badge
+  « n'existe pas encore » si la map n'est pas dans `Content/`). Les sessions l'écrivent dans la section
+  « À tester par ali » de leur suivi ; le chef le demande aussi aux sessions à qui il confie un travail.
+
+Tant qu'un essai n'est pas fait, la carte reste dans **À tester**. Pour chaque essai, **Marche** ou **Ne
+marche pas** ; **Tout marche** les valide d'un coup et la carte passe dans **Fini**. Écris ce qui ne va pas
+dans « Commenter » avant **Ne marche pas** : le texte part à l'agent avec l'essai raté, la carte repasse
+**En cours**, et sa réponse remet l'essai à refaire (avec ses nouveaux essais s'il en donne). Les essais et
+leur résultat sont aussi dans `Saved/Tour/demandes.md`, que lisent le chef et les sessions.
 
 ### Les features au tableau
 
@@ -356,7 +376,8 @@ la touche :
   des sujets, les envois du chef déjà lus, les verdicts du conseil, les rapports des tâches et les lignes
   datées des carnets. Rien n'est écrit pour ça : la tour relit `Saved/Tour/` toutes les 10 s ;
 - où elle en est : **À faire** quand personne n'y travaille, **En cours** quand une de ses demandes (ou
-  sa propre session) tourne, **T'attend**, puis **Fini** quand tu la termines (bouton **Terminer**).
+  sa propre session) tourne, **T'attend**, **À tester** quand une de ses demandes a des essais pour toi
+  (la carte les regroupe tous), puis **Fini** quand tu la termines (bouton **Terminer**).
 
 Ouverte, la carte montre son résumé (la situation, son carnet si elle en a un, la dernière réponse), ses
 demandes (un clic ouvre chacune), tout l'historique daté, et une case pour commenter : le commentaire part

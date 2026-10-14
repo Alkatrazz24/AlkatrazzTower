@@ -322,3 +322,88 @@ test('commentaires : sur un verdict confie au chef, le commentaire va au chef ; 
   assert.ok(!n.pending && n.lost);
   done();
 });
+
+test('phase de test : les essais de l\'agent (avec leur niveau), les tests lances et leur journal, puis ali essaie', () => {
+  const env = setup();
+  const { s, d, dm, kids, runs, finish, one, tick, done } = env;
+  const logs = {};
+  s.onBuildLog = (id, text) => { logs[id] = text; };
+  const st = d.start({ cwd: env.root, text: 'Tache de la tour [sujet-animation] : lis la consigne', def: 'sujet-animation' });
+  kids[0].emit('close', 0);
+  tick(1000);
+  const x = say(env, st.sessionId, 'Le coup de pied ne fait rien sur les portes.');
+  // la session lance les tests sous le verrou : la carte le montre pendant qu'ils tournent
+  tick(1000);
+  const tk = s.acquire({ sessionId: st.sessionId, kind: 'test', command: 'tests.ps1 -Filtre CTB.CoupDePied' });
+  assert.ok(tk.granted);
+  let v = one(x.id);
+  assert.strictEqual(v.running.kind, 'test');
+  assert.match(v.summary.join(' '), /Tests en cours/);
+  tick(60_000);
+  s.release(tk.ticket, { ok: false, summary: '636/637 tests', tests: { total: 637, failed: 1, passed: 636, failedNames: ['Ragdoll'] }, errorLines: [], logTail: 'Test Completed. Result={Fail} Name={Ragdoll}\n637 tests, 1 ECHEC(S)' });
+  assert.match(logs[tk.ticket], /637 tests/);
+  finish(1, 'Le montage manquait : branché.\n\nÀ tester par ali :\n- L_Parcelle : porte fermée, F face à elle → elle part en arrière\n- ouvre le menu pause pendant le coup');
+  v = one(x.id);
+  assert.strictEqual(v.state, 'test');
+  assert.strictEqual(v.stateText, 'à tester');
+  assert.deepStrictEqual(v.checks.map(c => [c.niveau, c.ok]), [['L_Parcelle', null], ['', null]]);
+  assert.match(v.checks[0].quoi, /^porte fermée/);
+  assert.strictEqual(v.runs.length, 1);
+  assert.deepStrictEqual([v.runs[0].kind, v.runs[0].total, v.runs[0].failed, v.runs[0].failedNames, v.runs[0].hasLog], ['test', 637, 1, ['Ragdoll'], true]);
+  assert.strictEqual(v.running, null);
+  const sum = v.summary.join(' ');
+  assert.match(v.summary[0], /a fini : à toi d'essayer en jeu/);
+  assert.strictEqual(v.result.text, 'Le montage manquait : branché.');
+  assert.match(sum, /Derniers tests : 636\/637 verts, 1 rouge \(Ragdoll\)/);
+  assert.match(sum, /À tester par toi : 2 essais, sur L_Parcelle/);
+  // un build d'une autre session ne s'y range pas
+  s.builds.unshift({ id: 'T99', sessionId: 'autre', kind: 'test', ok: true, summary: 'x', startedAt: s.now(), endedAt: s.now(), tests: null, errorLines: [] });
+  s.changed();
+  assert.strictEqual(one(x.id).runs.length, 1);
+  // ali essaie : le premier marche, le second non, avec ce qui ne va pas : ca part a la session
+  assert.ok(dm.test(x.id, { check: 0, ok: true }).ok);
+  const n = runs.length;
+  const r = dm.test(x.id, { check: 1, ok: false, note: 'le menu reste bloqué' });
+  assert.ok(r.ok);
+  assert.strictEqual(r.to, x.to);
+  assert.strictEqual(runs.length, n + 1);
+  assert.match(runs[n].input || runs[n].args.join(' '), /Essai raté par ali \(« ouvre le menu pause pendant le coup »\) : le menu reste bloqué/);
+  v = one(x.id);
+  assert.strictEqual(v.state, 'en-cours');
+  assert.match(v.live, /reprend ce qui ne marche pas/);
+  assert.deepStrictEqual(v.checks.map(c => c.ok), [true, false]);
+  // la session repond : l'essai rate est a refaire, et son nouvel essai s'ajoute
+  finish(n, 'Corrigé : le menu attend la fin du coup.\n\n**À tester par ali :**\n- L_Parcelle : coup de pied puis Échap → le menu s\'ouvre après le coup');
+  v = one(x.id);
+  assert.strictEqual(v.state, 'test');
+  assert.deepStrictEqual(v.checks.map(c => c.ok), [true, null, null]);
+  // tout marche : la carte passe a Fini
+  assert.ok(dm.test(x.id, { ok: true }).ok);
+  v = one(x.id);
+  assert.strictEqual(v.state, 'fini');
+  assert.match(v.summary.join(' '), /Tes essais marchent tous/);
+  // le chef et les sessions lisent les essais dans demandes.md
+  assert.match(dm.fileText('CTB'), /à tester par ali \(L_Parcelle\) : porte fermée.* : marche/);
+  assert.ok(!dm.test('nope', { ok: true }).ok);
+  done();
+});
+
+test('phase de test : une demande sans essai finit directement ; « Ne marche pas » sans note reste a tester', () => {
+  const env = setup();
+  const { d, dm, kids, finish, one, done } = env;
+  const st = d.start({ cwd: env.root, text: 'Tache de la tour [sujet-interface] : lis la consigne', def: 'sujet-interface' });
+  kids[0].emit('close', 0);
+  const a = say(env, st.sessionId, 'Pourquoi la barre de vie clignote ?');
+  finish(1, 'Elle clignote sous 20 % de vie, c\'est voulu.\n\n## Suivi\nFait :\n- lu WBP_Vie\nÀ tester par ali :\n- aucun');
+  assert.strictEqual(one(a.id).state, 'fini');
+  assert.ok(!dm.test(a.id, { ok: true }).ok, 'pas d\'essai sur cette carte');
+  const b = say(env, st.sessionId, 'Ajoute un son quand elle clignote.');
+  finish(2, 'Ajouté.\n\n## Suivi\nÀ tester par ali :\n- L_TestRange : prends des dégâts sous 20 % → un bip');
+  assert.strictEqual(one(b.id).state, 'test');
+  assert.ok(dm.test(b.id, { ok: false }).ok);
+  const v = one(b.id);
+  assert.strictEqual(v.state, 'test');
+  assert.strictEqual(v.stateText, 'un essai ne marche pas');
+  assert.match(v.summary.join(' '), /Un essai ne marche pas/);
+  done();
+});
