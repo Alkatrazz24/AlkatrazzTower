@@ -19,6 +19,9 @@
   const ui = { conv: store.get(CONV_KEY) || 'chef', at: 0, sheet: null, q: '', old: false, sleep: false, menu: false, view: 'list', drafts: new Map(),
     board: store.get('appli.board') !== 'replie' };
   const A = window.Appli = { M: null, nav: { paint, conv, sheet, close }, mode };
+  // La taille de chaque zone, choisie par ali (separateurs a glisser, boutons replier et agrandir), gardee
+  // d'une visite a l'autre. Une taille absente reprend celle de la feuille de style.
+  const Z = (() => { try { return JSON.parse(store.get('appli.zones')) || {}; } catch { return {}; } })();
   setTheme(store.get('appli.theme') || 'sombre');
 
   const ready = new Promise((res) => {
@@ -217,7 +220,8 @@
       h('div', { class: 'ap-sideacts' },
         h('button', { type: 'button', class: 'us-btn ap-railbtn' + on('rail'), 'data-sheet': 'rail', onclick: () => sheet('rail'), title: 'Ce qui t\'attend, la forge, la version, la santé du projet, les réglages' },
           'Tableau', M.attention.length ? h('span', { class: 'ap-badge' }, M.attention.length) : null),
-        newMenu(M)),
+        newMenu(M),
+        h('button', { type: 'button', class: 'us-btn ap-fold', onclick: () => fold('sideOff', true), title: 'Replier la liste des conversations', 'aria-label': 'Replier la liste des conversations' }, '«')),
     ]);
     swap(G.list, [
       group('Épinglées', L.pinned),
@@ -312,10 +316,12 @@
     } else if (t.kind === 'starting') { title = t.chef ? 'Chef' : 'Nouvelle session'; chip = 'démarre'; tone = 'blue'; }
     return [
       h('button', { type: 'button', class: 'ap-back', 'aria-label': 'Retour aux conversations', onclick: () => { ui.view = 'list'; paint(); } }, '‹'),
+      Z.sideOff ? h('button', { type: 'button', class: 'us-btn ap-unfold ap-unfold-side', onclick: () => fold('sideOff', false), title: 'Montrer la liste des conversations', 'aria-label': 'Montrer la liste des conversations' }, '»') : null,
       h('div', { class: 'ap-htext' },
         h('h1', null, title, chip ? h('span', { class: `ap-chip ap-c-${tone}` }, h('i', { class: `ap-dot ap-d-${tone}` }), chip) : null),
         h('p', null, sub.filter(Boolean).join(' · '))),
-      h('div', { class: 'ap-hacts' }, actions),
+      h('div', { class: 'ap-hacts' }, actions,
+        Z.railOff ? h('button', { type: 'button', class: 'us-btn ap-unfold ap-unfold-rail', onclick: () => fold('railOff', false), title: 'Montrer le tableau de bord (ce qui t\'attend, la forge, le projet)' }, 'Tableau de bord') : null),
     ];
   }
 
@@ -457,13 +463,14 @@
       ['tuto', 'Tutos', tuto.running ? 'blue' : 'grey', tuto.running ? 'un tuto tourne' : 'scénarios courts sur ta tour'],
     ];
   }
-  function railNodes(M) {
+  function railNodes(M, inSheet) {
     const att = M.attention;
     const L = M.lock, c = M.campaign;
     const lastKo = M.builds.find(b => !b.ok);
     return [
       h('section', { class: 'ap-rsec' },
-        h('h2', { class: 'ap-gtitle' }, h('span', null, 'À toi'), att.length ? h('small', null, att.length) : null),
+        h('h2', { class: 'ap-gtitle' }, h('span', null, 'À toi'), att.length ? h('small', null, att.length) : null,
+          inSheet ? null : h('button', { type: 'button', class: 'us-btn ap-fold ap-fold-rail', onclick: () => fold('railOff', true), title: 'Replier le tableau de bord', 'aria-label': 'Replier le tableau de bord' }, '»')),
         att.length ? h('ul', { class: 'ap-atts' }, att.slice(0, 8).map(attentionItem)) : h('p', { class: 'ap-calm' }, 'Rien ne t\'attend. La tour tourne seule.')),
       h('section', { class: 'ap-rsec' },
         card('forge', 'Forge', L ? 'blue' : lastKo && M.now - lastKo.endedAt < 3600000 ? 'ko' : 'ok', [
@@ -489,7 +496,7 @@
     // une demande qui part : sa carte apparait, le tableau s'ouvre pour la montrer
     if (F.boardFresh(M)) setBoard(true);
     G.board.classList.toggle('ap-board-open', ui.board);
-    swap(G.board, F.boardNodes(M, ui.board, () => { setBoard(!ui.board); paint(); }));
+    swap(G.boardIn, F.boardNodes(M, ui.board, () => { setBoard(!ui.board); paint(); }));
   }
 
   // ---------- le volet (une fiche ouverte par-dessus) ----------
@@ -517,7 +524,7 @@
     else if (k === 'git') body = F.gitBody(M, 'git');
     else if (k === 'sauvegarde') body = F.svBody(M);
     else if (k === 'reglages') body = settingsBody(M);
-    else if (k === 'rail') body = railNodes(M);
+    else if (k === 'rail') body = railNodes(M, true);
     else return null;
     return h('section', { class: `us-panel us-entity ap-k-${k}`, 'aria-label': title },
       h('div', { class: 'us-ehead' }, h('h2', null, title), F.btn('Fermer', close, 'us-x', { 'aria-label': `Fermer : ${title}`, title: 'Échap' })),
@@ -559,6 +566,84 @@
     ];
   }
 
+  // ---------- la taille des zones ----------
+  // Un separateur a glisser entre deux zones (souris, doigt ou fleches du clavier) ; un double-clic remet
+  // la taille d'origine. dir dit dans quel sens la zone grandit quand on tire vers la droite ou le bas.
+  const ZONES = {
+    side: { label: 'Largeur de la liste des conversations', axis: 'x', dir: 1, min: 200, max: () => Math.min(560, G.app.clientWidth * 0.45), el: () => G.side },
+    rail: { label: 'Largeur du tableau de bord', axis: 'x', dir: -1, min: 240, max: () => Math.min(600, G.app.clientWidth * 0.45), el: () => G.rail },
+    sheet: { label: 'Largeur de la fiche ouverte', axis: 'x', dir: -1, min: 340, max: () => G.app.clientWidth, el: () => G.sheet },
+    board: { label: 'Hauteur du tableau des demandes', axis: 'y', dir: 1, min: 90, max: () => Math.max(120, window.innerHeight * 0.7), el: () => G.board.querySelector('.ap-bcol') },
+  };
+  function saveZones() { store.set('appli.zones', JSON.stringify(Z)); }
+  function applyZones() {
+    if (!G) return;
+    // une zone repliee laisse sa colonne a la conversation (seulement sur un ecran assez large pour trois colonnes)
+    const off = { side: Z.sideOff, rail: Z.railOff };
+    for (const k of Object.keys(ZONES)) {
+      if (off[k]) G.app.style.setProperty(`--ap-${k}`, '0px');
+      else if (Z[k]) G.app.style.setProperty(`--ap-${k}`, `${Math.round(Z[k])}px`);
+      else G.app.style.removeProperty(`--ap-${k}`);
+    }
+    G.app.classList.toggle('ap-side-off', !!Z.sideOff);
+    G.app.classList.toggle('ap-rail-off', !!Z.railOff);
+    G.app.classList.toggle('ap-sheet-max', !!Z.sheetMax);
+    G.app.classList.toggle('ap-board-sized', !!Z.board);
+    G.max.textContent = Z.sheetMax ? 'Réduire' : 'Agrandir';
+    G.max.setAttribute('aria-pressed', String(!!Z.sheetMax));
+    G.max.title = Z.sheetMax ? 'Rendre à la fiche sa largeur' : 'Ouvrir la fiche sur toute la largeur';
+    for (const g of G.grips) {
+      const z = ZONES[g.dataset.zone], el = z.el();
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      g.setAttribute('aria-valuenow', String(Math.round(z.axis === 'x' ? r.width : r.height)));
+      g.setAttribute('aria-valuemin', String(z.min));
+      g.setAttribute('aria-valuemax', String(Math.round(z.max())));
+    }
+  }
+  function fold(key, v) {
+    Z[key] = v;
+    saveZones();
+    applyZones();
+    paint();
+  }
+  function setZone(k, px) {
+    const z = ZONES[k];
+    Z[k] = Math.max(z.min, Math.min(z.max(), px));
+    if (k === 'sheet') Z.sheetMax = false;
+    applyZones();
+  }
+  function grip(k) {
+    const z = ZONES[k];
+    const g = h('div', { class: `ap-grip ap-grip-${z.axis} ap-grip-${k}`, 'data-zone': k, role: 'separator', tabindex: 0, 'aria-label': z.label,
+      'aria-orientation': z.axis === 'x' ? 'vertical' : 'horizontal', title: 'Glisser pour agrandir ou réduire · double-clic : taille d\'origine' });
+    const size = () => { const el = z.el(); if (!el) return 0; const r = el.getBoundingClientRect(); return z.axis === 'x' ? r.width : r.height; };
+    g.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      const start = z.axis === 'x' ? e.clientX : e.clientY, from = size();
+      try { g.setPointerCapture(e.pointerId); } catch { /* pointeur deja relache */ }
+      G.app.classList.add('ap-dragging', `ap-dragging-${z.axis}`);
+      const move = (ev) => setZone(k, from + z.dir * ((z.axis === 'x' ? ev.clientX : ev.clientY) - start));
+      const up = () => {
+        g.removeEventListener('pointermove', move);
+        G.app.classList.remove('ap-dragging', `ap-dragging-${z.axis}`);
+        saveZones();
+      };
+      g.addEventListener('pointermove', move);
+      g.addEventListener('pointerup', up, { once: true });
+      g.addEventListener('pointercancel', up, { once: true });
+    });
+    g.addEventListener('dblclick', () => { delete Z[k]; if (k === 'sheet') Z.sheetMax = false; saveZones(); applyZones(); });
+    g.addEventListener('keydown', (e) => {
+      const step = e.shiftKey ? 64 : 16;
+      const grow = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 1, ArrowUp: -1 }[e.key];
+      if (grow && (z.axis === 'x') === (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); setZone(k, size() + z.dir * grow * step); saveZones(); }
+      else if (e.key === 'Home') { e.preventDefault(); delete Z[k]; saveZones(); applyZones(); }
+    });
+    return g;
+  }
+
   // ---------- la page ----------
   let G = null;
   function build(root) {
@@ -571,7 +656,8 @@
         if (e.key === 'Escape' && ui.q) { e.stopPropagation(); ui.q = ''; e.target.value = ''; paintSide(); }
       } });
     G.list = h('nav', { class: 'ap-list', 'aria-label': 'Conversations' });
-    G.side = h('aside', { class: 'ap-side' }, G.head1, h('div', { class: 'ap-searchbox' }, G.search), G.list);
+    G.grips = ['side', 'rail', 'sheet', 'board'].map(grip);
+    G.side = h('aside', { class: 'ap-side' }, G.head1, h('div', { class: 'ap-searchbox' }, G.search), G.list, G.grips[0]);
     G.head = h('header', { class: 'ap-head' });
     G.log = h('div', { class: 'ap-log', role: 'log', 'aria-live': 'polite' });
     G.live = h('div', { class: 'ap-livebox' });
@@ -585,10 +671,14 @@
     G.compose = h('form', { class: 'ap-compose', onsubmit: (e) => { e.preventDefault(); send(); } },
       h('div', { class: 'ap-col' }, G.note, h('div', { class: 'ap-cbox' }, G.text, G.stop, G.send), h('small', { class: 'ap-keys' }, 'Entrée envoie · Maj+Entrée va à la ligne')));
     G.main = h('main', { class: 'ap-main' }, G.head, G.scroll, G.compose);
-    G.rail = h('aside', { class: 'ap-rail', 'aria-label': 'Tableau de bord' });
-    G.sheet = h('div', { class: 'ap-sheet', role: 'dialog', 'aria-modal': 'false' });
+    G.railIn = h('div', { class: 'ap-rail' });
+    G.rail = h('aside', { class: 'ap-railbox', 'aria-label': 'Tableau de bord' }, G.grips[1], G.railIn);
+    G.sheetIn = h('div', { class: 'ap-sheetin' });
+    G.max = h('button', { type: 'button', class: 'us-btn ap-max', onclick: () => { Z.sheetMax = !Z.sheetMax; saveZones(); applyZones(); } }, 'Agrandir');
+    G.sheet = h('div', { class: 'ap-sheet', role: 'dialog', 'aria-modal': 'false' }, G.grips[2], G.max, G.sheetIn);
     G.shade = h('div', { class: 'ap-shade', onclick: close });
-    G.board = h('section', { class: 'ap-board', 'aria-label': 'Tableau des demandes' });
+    G.boardIn = h('div', { class: 'ap-boardin' });
+    G.board = h('section', { class: 'ap-board', 'aria-label': 'Tableau des demandes' }, G.boardIn, G.grips[3]);
     G.app = h('div', { class: 'ap' }, G.board, G.side, G.main, G.rail, G.shade, G.sheet);
     root.replaceChildren(G.app);
     document.addEventListener('keydown', (e) => {
@@ -600,6 +690,7 @@
       }
     });
     document.addEventListener('click', (e) => { if (ui.menu && !e.target.closest('.ap-new')) { ui.menu = false; paintSide(); } });
+    window.addEventListener('resize', applyZones);
     loadDraft();
   }
 
@@ -613,15 +704,16 @@
     paintSide();
     paintMain();
     paintBoard();
-    swap(G.rail, railNodes(M));
+    swap(G.railIn, railNodes(M));
     const panel = ui.sheet ? sheetPanel(M) : null;
     if (ui.sheet && !panel) ui.sheet = null;
-    const was = G.sheet.firstChild;
+    const was = G.sheetIn.firstChild;
     const same = (x, y) => (x.dataset.key || x.getAttribute('aria-label')) === (y.dataset.key || y.getAttribute('aria-label'));
-    if (panel && was && same(was, panel)) swap(G.sheet, [panel]);
-    else G.sheet.replaceChildren(...(panel ? [panel] : []));
+    if (panel && was && same(was, panel)) swap(G.sheetIn, [panel]);
+    else G.sheetIn.replaceChildren(...(panel ? [panel] : []));
     G.app.classList.toggle('ap-has-sheet', !!panel);
     if (panel) G.sheet.setAttribute('aria-label', panel.getAttribute('aria-label')); else G.sheet.removeAttribute('aria-label');
+    applyZones();
   }
 
   function render(root, M) {
