@@ -106,6 +106,11 @@ l'ancienne interface en jeu (bâtiment, salles, personnages, carte) a été reti
 - **À droite**, ce qui t'attend, la forge (un seul build à la fois et sa file), la version à sortir et la
   santé du projet (sauvegarde, git, doc, skills, agents, Unreal). Chaque ligne ouvre sa fiche dans un volet.
 - **Réglages** (⚙) : les projets Unreal connectés, le thème sombre ou clair.
+- **Chaque zone se règle** : on fait glisser le bord de la liste, du tableau de bord, d'une fiche ou du
+  tableau des demandes pour l'agrandir ou la réduire (double-clic : taille d'origine ; au clavier,
+  Tab jusqu'au bord puis les flèches). Un petit bouton replie la liste ou le tableau de bord, pour laisser
+  toute la place à la conversation. « Agrandir » ouvre une fiche sur toute la largeur. Les tailles
+  restent d'une visite à l'autre.
 
 Le nom d'une session dit ce qu'elle fait : le nom que tu lui as donné dans la tour, sinon la tâche
 lancée, le titre de la session dans Claude Code (`/rename` ou celui qu'il génère), sa première demande

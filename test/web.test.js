@@ -25,6 +25,10 @@ test('une seule interface : l application Conversations, son moteur et ses fiche
   const js = fs.readFileSync(path.join(WEB, 'appli', 'moteur.js'), 'utf8');
   assert.match(js, /T\.register\(/);
   assert.match(js, /appli\/fiches\.js/);
+  // chaque zone se regle : un separateur par zone, accessible au clavier, et des tailles gardees
+  assert.match(js, /\['side', 'rail', 'sheet', 'board'\]\.map\(grip\)/);
+  assert.match(js, /role: 'separator'/);
+  assert.match(js, /store\.set\('appli\.zones'/);
   // l'ancienne interface en jeu est retiree : plus rien ne la charge ni n'y renvoie
   for (const gone of ['usine', 'galerie.html', 'classique.html', 'avatar.js', 'map.js']) assert.ok(!fs.existsSync(path.join(WEB, gone)), `${gone} devrait etre retire`);
   const page = ['index.html', 'core.js', path.join('appli', 'moteur.js'), path.join('appli', 'fiches.js')].map(f => fs.readFileSync(path.join(WEB, f), 'utf8')).join('\n');
