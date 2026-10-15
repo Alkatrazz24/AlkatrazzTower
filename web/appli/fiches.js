@@ -807,6 +807,108 @@
     if (!M.demo && !confirm(`Relier ${r.name} à ${url} ?\n\nLa tour lance « git remote add origin ». Rien n'est envoyé : pousser reste ton geste.`)) return;
     gitDo('remote:' + r.root, '/api/git/remote', { root: r.root, url }, 'Dépôt relié à GitHub.');
   }
+  // ---------- le graphe des branches ----------
+  // main est la ligne de gauche ; chaque branche est un trait de couleur qui part d'un commit de main et la
+  // rejoint la ou elle a ete fusionnee. Une ligne par commit, du plus recent au plus ancien ; au survol, le
+  // message entier. Lu par GET /api/git/graph (lib/git.js), en lecture seule.
+  function graphLayout(G) {
+    const C = G.commits, at = new Map(C.map((c, i) => [c.sha, i]));
+    const trunk = new Set();
+    for (let s = G.tip || (C[0] && C[0].sha); s && at.has(s) && !trunk.has(s); s = C[at.get(s)].parents[0]) trunk.add(s);
+    const lanes = [null]; // couloir -> commit attendu ; le couloir 0 est celui de main
+    const freeLane = () => { let k = 1; while (lanes[k] != null) k++; return k; };
+    const lane = new Map(), color = new Map(); // une couleur par branche, gardee le long de ses commits
+    let width = 1, next = 1;
+    for (const c of C) {
+      let L = trunk.has(c.sha) ? 0 : lanes.indexOf(c.sha, 1);
+      if (L < 0) L = freeLane();
+      lanes.forEach((s, k) => { if (s === c.sha) lanes[k] = null; }); // les branches qui attendaient ce commit s'y rejoignent
+      lane.set(c.sha, L);
+      if (!color.has(c.sha)) color.set(c.sha, L === 0 ? 0 : next++);
+      lanes[L] = c.parents[0] || null;
+      if (c.parents[0] && L !== 0 && !trunk.has(c.parents[0]) && !color.has(c.parents[0])) color.set(c.parents[0], color.get(c.sha));
+      for (const p of c.parents.slice(1)) {
+        if (!trunk.has(p) && !color.has(p)) color.set(p, next++);
+        if (trunk.has(p) || lanes.includes(p)) continue;
+        lanes[freeLane()] = p;
+      }
+      width = Math.max(width, lanes.length);
+    }
+    // les traits : vers chaque parent, dans le couloir du parent (ou vers le bas s'il est hors de la fenetre)
+    const edges = [];
+    C.forEach((c, i) => c.parents.forEach((p, n) => {
+      const j = at.has(p) ? at.get(p) : C.length;
+      const to = at.has(p) ? lane.get(p) : n === 0 ? lane.get(c.sha) : (lanes.indexOf(p) > 0 ? lanes.indexOf(p) : lane.get(c.sha));
+      const side = lane.get(c.sha) !== 0 ? c.sha : p; // le trait prend la couleur de la branche, pas celle de main
+      edges.push({ i, j, from: lane.get(c.sha), to, merge: n > 0, out: !at.has(p), col: lane.get(c.sha) === 0 && to === 0 ? 0 : color.get(side) || 1 });
+    }));
+    return { lane, color, edges, width, trunk };
+  }
+  const LANE_COL = ['var(--us-blue)', 'var(--us-ok)', 'var(--us-warn)', 'var(--us-you)', 'var(--us-ko)', '#3fb6b2', '#d08bd8', '#c2a14a'];
+  const laneCol = (k) => k ? LANE_COL[1 + (k - 1) % (LANE_COL.length - 1)] : LANE_COL[0]; // le bleu reste a main
+  function graphSvg(G, L) {
+    const ROW = 28, LW = 16, X = (k) => 12 + k * LW, Y = (i) => i * ROW + ROW / 2, n = G.commits.length;
+    const w = X(L.width) + 4, hgt = n * ROW;
+    const NS = 'http://www.w3.org/2000/svg', el = (t, a) => { const e = document.createElementNS(NS, t); for (const [k, v] of Object.entries(a)) e.setAttribute(k, v); return e; };
+    const s = el('svg', { width: w, height: hgt, viewBox: `0 0 ${w} ${hgt}`, class: 'us-graph-svg', 'aria-hidden': 'true' });
+    for (const e of L.edges) {
+      const x1 = X(e.from), y1 = Y(e.i), x2 = X(e.to), y2 = e.out ? hgt : Y(e.j);
+      let d;
+      if (x1 === x2) d = `M${x1} ${y1} V${y2}`;
+      else if (e.merge) { const yb = Math.min(y1 + ROW, y2); d = `M${x1} ${y1} C${x1} ${y1 + ROW * .6} ${x2} ${yb - ROW * .6} ${x2} ${yb} V${y2}`; } // la fusion : la branche rejoint main
+      else { const ya = Math.max(y2 - ROW, y1); d = `M${x1} ${y1} V${ya} C${x1} ${ya + ROW * .6} ${x2} ${y2 - ROW * .6} ${x2} ${y2}`; } // le depart : la branche part d'un commit
+      s.append(el('path', { d, fill: 'none', stroke: laneCol(e.col), 'stroke-width': e.from === 0 && e.to === 0 ? 3 : 2, 'stroke-linecap': 'round', opacity: e.out ? .45 : 1 }));
+    }
+    G.commits.forEach((c, i) => {
+      const k = L.lane.get(c.sha), x = X(k), y = Y(i), col = laneCol(L.color.get(c.sha) || 0);
+      if (c.head) s.append(el('circle', { cx: x, cy: y, r: 9, fill: 'none', stroke: 'var(--us-ink)', 'stroke-width': 1.5 }));
+      if (c.parents.length > 1) s.append(el('circle', { cx: x, cy: y, r: 6, fill: 'var(--us-panel)', stroke: col, 'stroke-width': 3 })); // une fusion : un anneau
+      else s.append(el('circle', { cx: x, cy: y, r: k === 0 ? 5.5 : 4.5, fill: col, stroke: 'var(--us-panel)', 'stroke-width': 1.5 }));
+    });
+    return s;
+  }
+  const graphUi = { n: 80 };
+  let graphDlg = null;
+  async function gitGraph(r, M, n) {
+    if (!graphDlg) {
+      const f = {};
+      graphDlg = h('dialog', { class: 'us-dialog us-wide us-graphdlg', 'aria-label': 'Graphe des branches' },
+        h('form', { method: 'dialog' }, f.h2 = h('h2', null), f.sub = h('p', { class: 'us-dim' }), f.body = h('div', { class: 'us-graph' }),
+          f.acts = h('div', { class: 'us-actions' })));
+      graphDlg.f = f;
+      document.body.append(graphDlg);
+    }
+    const f = graphDlg.f;
+    graphUi.n = n || 80;
+    f.h2.textContent = `Branches de ${r.name}`;
+    f.sub.textContent = 'main à gauche, en gras ; chaque trait de couleur est une branche, qui part d\'un commit et rejoint main là où elle a été fusionnée (anneau). Survole un commit pour lire son message.';
+    f.body.replaceChildren(h('p', { class: 'us-dim' }, 'Lecture…'));
+    f.acts.replaceChildren(h('button', { type: 'submit', class: 'us-btn' }, 'Fermer'));
+    if (!graphDlg.open) graphDlg.showModal();
+    if (M && M.demo) { f.body.replaceChildren(h('p', { class: 'us-dim' }, 'Démo : le graphe se lit sur ta tour.')); return; }
+    let G;
+    try { G = await fetch(`/api/git/graph?root=${encodeURIComponent(r.root)}&n=${graphUi.n}`).then(res => res.json()); } catch { G = null; }
+    if (!G || !G.ok) { f.body.replaceChildren(h('p', { class: 'us-t-ko' }, (G && G.error) || 'Tour injoignable.')); return; }
+    if (!G.commits.length) { f.body.replaceChildren(h('p', { class: 'us-dim' }, 'Encore aucun commit.')); return; }
+    const L = graphLayout(G), gh = r.github ? `https://github.com/${r.github.owner}/${r.github.repo}` : null;
+    const branches = new Set(G.commits.flatMap(c => c.refs)).size, merges = G.commits.filter(c => c.parents.length > 1 && L.trunk.has(c.sha)).length;
+    f.sub.textContent = `${G.main ? `Sur ${G.main}` : 'Ici'} : ${T.plural(G.commits.length, 'commit', 'commits')}${G.more ? ' (les plus récents)' : ''}, ${T.plural(merges, 'fusion', 'fusions')}, ${T.plural(branches, 'branche ou étiquette', 'branches ou étiquettes')}. main à gauche, en gras ; chaque trait de couleur est une branche, qui rejoint main là où elle a été fusionnée (anneau). Survole un commit pour lire son message.`;
+    const rows = G.commits.map((c) => {
+      const k = L.lane.get(c.sha);
+      const chips = c.refs.map(x => h('span', { class: 'us-gref' + (c.head && x === c.refs[0] ? ' us-gref-head' : '') + (/^origin\//.test(x) ? ' us-gref-remote' : ''), style: { borderColor: laneCol(L.color.get(c.sha) || 0) } }, x));
+      const m = c.merged && L.trunk.has(c.sha) ? c.merged : null;
+      const merged = m ? (m.pr && gh ? h('a', { class: 'us-gmerge us-link', href: `${gh}/pull/${m.pr}`, target: '_blank', rel: 'noopener', title: `Ouvrir la PR ${m.pr} sur GitHub` }, `fusion de ${m.branch} (PR ${m.pr})`) : h('span', { class: 'us-gmerge' }, `fusion de ${m.branch}`)) : null;
+      const text = m ? null : h('span', { class: 'us-gsubj' }, c.subject);
+      return h('li', { class: 'us-grow' + (k === 0 ? ' us-gtrunk' : ''), title: `${c.subject}\n${c.short} · ${c.author} · ${new Date(c.at).toLocaleString('fr-FR')}` },
+        h('code', { class: 'us-dim' }, c.short), ...chips, merged, text, h('span', { class: 'us-dim us-gwho' }, `${c.author}, `, T.agoEl(c.at)));
+    });
+    f.body.replaceChildren(h('div', { class: 'us-gwrap', style: { '--rows': G.commits.length } }, graphSvg(G, L), h('ol', { class: 'us-glist' }, rows)));
+    f.acts.replaceChildren(
+      G.more ? btn(`Voir ${graphUi.n < 200 ? 200 : 400} commits`, () => gitGraph(r, M, graphUi.n < 200 ? 200 : 400)) : null,
+      gh ? h('a', { class: 'us-btn', href: `${gh}/network`, target: '_blank', rel: 'noopener' }, 'Voir sur GitHub') : null,
+      h('button', { type: 'submit', class: 'us-btn' }, 'Fermer'));
+  }
+
   function repoCard(r, M, Gt) {
     const [tone, text] = repoTone(r, Gt), open = gitUi.open.has(r.root), busy = (k) => gitUi.busy === k + ':' + r.root;
     const kind = { tour: 'la tour', projet: 'projet', suivi: 'dossier ajouté' }[r.kind] || '';
@@ -825,7 +927,8 @@
         h('div', { class: 'us-actions' }, btn(busy('init') ? 'Initialisation…' : 'Initialiser git', () => gitInit(r, M), 'us-go', { disabled: !!gitUi.busy })));
     } else {
       // le PC
-      part.push(h('div', { class: 'us-sub' }, 'Sur le PC'));
+      const graphBtn = () => r.empty ? null : btn('Graphe des branches', () => gitGraph(r, M), 'us-gbtn', { title: 'main et ses branches fusionnées, en nœuds et en traits' });
+      part.push(h('div', { class: 'us-sub' }, 'Sur le PC', graphBtn()));
       part.push(h('p', null, r.detached ? 'Pas sur une branche (HEAD détaché).' : ['Branche ', h('b', null, r.branch || '?'), r.empty ? ', encore aucun commit.' : r.upstream ? ` (suit ${r.upstream}).` : '.']));
       if (D && D.total) {
         const bits = [D.modified && `${D.modified} modifié${D.modified > 1 ? 's' : ''}`, D.untracked && `${D.untracked} nouveau${D.untracked > 1 ? 'x' : ''}`, D.staged && `${D.staged} prêt${D.staged > 1 ? 's' : ''} à commiter`, D.conflicts && `${D.conflicts} en conflit`].filter(Boolean);
@@ -834,7 +937,7 @@
       } else part.push(h('p', { class: 'us-t-ok' }, 'Tout est commité.'));
       if (r.commits && r.commits.length) part.push(h('ul', { class: 'us-doclist' }, r.commits.map(k => h('li', null, h('code', null, k.short), ' ', k.subject, ' ', h('span', { class: 'us-dim' }, `${k.author}, `, T.agoEl(k.at))))));
       // GitHub
-      part.push(h('div', { class: 'us-sub' }, 'Sur GitHub'));
+      part.push(h('div', { class: 'us-sub' }, 'Sur GitHub', r.github ? graphBtn() : null));
       if (!r.github) {
         const other = (r.remotes || []).find(x => x.name === 'origin');
         if (other) part.push(h('p', null, 'Relié à ', h('code', { class: 'us-path' }, other.url), ', qui n\'est pas GitHub.'));

@@ -482,6 +482,7 @@ const routes = {
     return { ok: true, root };
   },
   'POST /api/git/unfollow': async (b) => { const ok = state.unfollowRepo(String(b.root || '')); if (ok) await gitSafe(gitTrack.refresh()); return { ok }; },
+  'GET /api/git/graph': (b, url) => gitTrack.graph(String(url.searchParams.get('root') || ''), url.searchParams.get('n')),
   'POST /api/git/init': (b) => gitTrack.init(String(b.root || '')),
   'POST /api/git/fetch': (b) => gitTrack.fetchRemote(String(b.root || '')),
   'POST /api/git/remote': (b) => gitTrack.addRemote(String(b.root || ''), String(b.url || '')),
