@@ -146,9 +146,10 @@ test('commandlet avec l\'editeur ouvert : la tour demande a ali de le fermer', {
   const ORIGIN = { Origin: `http://127.0.0.1:${PORT}` };
   const editorOpen = () => req('POST', '/api/editor/state', {}, { project: 'Banc', uproject: path.join(root, 'Banc.uproject') });
   // la commande : un faux UnrealEditor-Cmd qui ecrit LANCE
-  const cmd = `echo LANCE; : UnrealEditor-Cmd.exe Banc.uproject -run=pythonscript -script=creer_coup_de_pied.py`;
+  const win = process.platform === 'win32';
+  const cmd = `${win ? 'Write-Output LANCE #' : 'echo LANCE; :'} UnrealEditor-Cmd.exe Banc.uproject -run=pythonscript -script=creer_coup_de_pied.py`;
   const start = (extra = {}) => {
-    const p = spawn(process.execPath, [path.join(ROOT, 'bin', 'tower-run.js'), '--shell', 'bash', '--kind', 'commandlet', '--session', 'cmdlet-1', '--b64', Buffer.from(cmd).toString('base64')],
+    const p = spawn(process.execPath, [path.join(ROOT, 'bin', 'tower-run.js'), '--shell', win ? 'powershell' : 'bash', '--kind', 'commandlet', '--session', 'cmdlet-1', '--b64', Buffer.from(cmd).toString('base64')],
       { cwd: root, env: { ...env, TOWER_EDITOR_POLL_MS: '150', ...extra } });
     let out = '';
     p.stdout.on('data', c => { out += c; });
