@@ -1563,6 +1563,18 @@
           f.go.disabled = true;
           const r = await T.api('/api/features', { project: M_().sujetsProject, title: f.title.value, idea: f.idea.value, sujets });
           f.go.disabled = false;
+          if (r && r.existing) {
+            // une feature par sujet : on reprend celle qui existe, avec l'idee tapee comme demande
+            const z = ((M_().features) || []).find(x => x.id === r.existing) || { id: r.existing, title: '' };
+            f.err.replaceChildren(r.error, ' ', btn(`Reprendre « ${z.title || 'la feature'} »`, async () => {
+              if ((z.doneAt || z.done) && !(await T.api('/api/features/done', { id: z.id, done: false }) || {}).ok) return T.toast('Reprise impossible.');
+              featDlg.close();
+              if (f.where.value === 'fenetre') return launchTask({ id: z.id, title: z.title }, M_().sujetsProject);
+              const s = await T.api('/api/chat/start', { id: z.id, project: M_().sujetsProject, idea: f.idea.value });
+              if (s && s.ok) NAV().conv(s.sessionId); else if (s && s.error) T.toast(s.error);
+            }, 'us-go'));
+            return;
+          }
           if (!r || !r.ok) { f.err.textContent = (r && r.error) || 'Création impossible.'; return; }
           featDlg.close();
           const z = { ...r.feature, kind: 'feature' };

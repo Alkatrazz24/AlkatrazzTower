@@ -294,3 +294,24 @@ test('phase de test d\'une feature : ses essais a faire la mettent dans « À te
   assert.ok(!dm.testFeature(f.id + 'x', { ok: true }).ok);
   done();
 });
+
+test('similar : retrouve la feature du meme sujet sous un autre nom, en cours d\'abord, et rien pour un autre sujet', () => {
+  const list = [
+    { id: 'feature-coup-de-pied-dans-les-portes', title: 'Coup de pied dans les portes', project: 'CTB', createdAt: 1, doneAt: 5 },
+    { id: 'feature-lampe-torche', title: 'Lampe torche', project: 'CTB', createdAt: 2 },
+    { id: 'feature-mondes-de-validation', title: 'Mondes de validation : un banc jouable par feature', project: 'CTB', createdAt: 3, doneAt: 6 },
+  ];
+  const id = (n, p = 'CTB') => (features.similar(list, n, p) || {}).id || null;
+  assert.strictEqual(id('Animation du coup de pied'), 'feature-coup-de-pied-dans-les-portes');
+  assert.strictEqual(id('Coup de pied dans la porte'), 'feature-coup-de-pied-dans-les-portes');
+  assert.strictEqual(id('Feature : lampe torche'), 'feature-lampe-torche');
+  assert.strictEqual(id('Torche'), 'feature-lampe-torche');
+  assert.strictEqual(id('Mondes de validation'), 'feature-mondes-de-validation');
+  assert.strictEqual(id('Porte du SAS'), null);
+  assert.strictEqual(id('Recharge du fusil'), null);
+  assert.strictEqual(id('ab'), null);
+  assert.strictEqual(id('Lampe torche', 'AutreJeu'), null);
+  // deux candidates : celle en cours passe avant la terminee
+  list.push({ id: 'feature-coup-de-pied-dans-les-murs', title: 'Coup de pied dans les murs', project: 'CTB', createdAt: 9 });
+  assert.strictEqual(id('Animation du coup de pied'), 'feature-coup-de-pied-dans-les-murs');
+});
