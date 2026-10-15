@@ -274,3 +274,23 @@ test('l\'historique d\'avant, comme sur le PC : carnets en gras ou en liste, ADR
   assert.match(past[2].text, /glyphe/);
   done();
 });
+
+test('phase de test d\'une feature : ses essais a faire la mettent dans « À tester », « Tout marche » la finit', () => {
+  const env = setup();
+  const { s, dm, kids, finish, toChef, startChef, card, done } = env;
+  const sid = startChef();
+  toChef(sid, 'Le coup de pied dans les portes, tu peux vérifier que tout est branché ?');
+  finish(kids.length - 1, 'Tout est branché, vérifié dans le code.\n\nÀ tester par ali :\n- L_Parcelle : F face à une porte fermée → elle part en arrière\n- L_Parcelle : F sur une porte ouverte → rien\n\nFeature : Coup de pied dans les portes');
+  const f = s.features.find(x => x.title === 'Coup de pied dans les portes');
+  let c = card('Coup de pied dans les portes');
+  assert.strictEqual(c.state, 'test');
+  assert.strictEqual(c.stateText, 'à tester');
+  assert.strictEqual(c.checks.length, 2);
+  assert.match(c.summary.join(' '), /À tester par toi : 2 essais, sur L_Parcelle/);
+  assert.ok(dm.testFeature(f.id, { ok: true }).ok);
+  c = card('Coup de pied dans les portes');
+  assert.notStrictEqual(c.state, 'test');
+  assert.match(c.summary.join(' '), /Tes essais marchent tous/);
+  assert.ok(!dm.testFeature(f.id + 'x', { ok: true }).ok);
+  done();
+});

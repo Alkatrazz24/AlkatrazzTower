@@ -44,6 +44,8 @@ const sets = [
   ['Content/AI', 'BB', ['Stalker', 'Hound'], 0.3],
 ];
 for (const [dir, pre, names, age] of sets) names.forEach((n, i) => touch(`${dir}/${pre}_${n}.uasset`, age + i * 1.7));
+// les niveaux, en .umap : la carte d'une demande dit si celui a ouvrir existe
+for (const n of ['Parcelle', 'SafeHouse', 'Menu']) touch(`Content/Maps/L_${n}.umap`, 3);
 const cpp = (n) => Array.from({ length: n }, (_, i) => `// ligne ${i}`).join('\n');
 for (const [f, n, age] of [['Weapons/CTBAmmoComponent', 420, 0.1], ['Weapons/CTBShotgun', 380, 0.2], ['AI/CTBStalkerController', 610, 0.4], ['Player/CTBFlashlight', 240, 6], ['Player/CTBCharacter', 900, 3], ['Raid/CTBRaidSubsystem', 520, 1], ['Save/CTBSaveGame', 300, 2]])
   touch(`Source/ConquerTheBackrooms/${f}.cpp`, age, `UCLASS()\n${cpp(n)}`);
@@ -487,6 +489,29 @@ function demoDemandes() {
   for (const x of state.demandes) if (x.id === 'd-demo-sas') x.feature = pied.id;
   state.demandes.splice(1, 0,
     d('d-demo-pied', -7, { kind: 'chef', to: 'Chef', feature: pied.id, text: 'Le coup de pied dans les portes : il manque l\'animation, tu peux la faire créer ?', ref: { tag: 'd-demo-pied', session: 's-chef' }, live: 'Animation crée le montage AM_CoupDePied' }));
+  // En phase de test : la session a fini, les tests sont passes (un rouge connu), ali a deux essais a faire,
+  // dont un sur un niveau qui n'existe pas encore.
+  const run = (id, min, o) => ({ id, kind: 'test', who: 'Gameplay', verif: false, ok: true, summary: '', at: m(min), endedAt: m(min + 6), durationMs: 360_000, total: 0, failed: 0, failedNames: [], errorLines: [], filter: '', hasLog: true, ...o });
+  state.demandes.splice(2, 0,
+    d('d-demo-porte', -40, { to: 'Gameplay', feature: pied.id, text: 'Le coup de pied ne fait rien sur la porte de la parcelle 3, tu peux regarder ?', ref: { tag: 'd-demo-porte', session: 's-gameplay' }, ...fini(-21),
+      phases: [{ at: m(-40), text: 'envoyée' }, { at: m(-40), text: 'prise en charge' }, { at: m(-21), text: 'fini' }],
+      result: { text: 'La porte de la parcelle 3 n\'avait pas le composant CTBKickableDoor : ajouté, et un test CTB.Portes.Parcelle3 pour qu\'elle ne le perde plus.', session: 's-gameplay' },
+      checks: [
+        { niveau: 'L_Parcelle', quoi: 'va à la porte de la parcelle 3, porte fermée, appuie sur F face à elle : elle part en arrière avec le son', ok: null },
+        { niveau: 'L_Parcelle', quoi: 'refais-le porte ouverte : rien ne se passe, pas d\'animation', ok: true, at: m(-15) },
+        { niveau: 'L_Banc_Portes', quoi: 'les 4 portes du banc à la suite : chacune part du bon côté', ok: null },
+      ],
+      runs: [
+        run('T41-demo', -30, { kind: 'build', summary: 'compile', durationMs: 95_000, endedAt: m(-28.4) }),
+        run('T42-demo', -27, { summary: '636/637 tests', ok: false, total: 637, failed: 1, failedNames: ['CTB.Ragdoll'], durationMs: 412_000, filter: 'CTB' }),
+        run('T43-demo', -22, { who: 'la tour', verif: true, summary: '18/18 tests', total: 18, failed: 0, durationMs: 64_000, filter: 'CTB.Portes' }),
+      ] }));
+  state.demandes.splice(3, 0,
+    d('d-demo-stamina', -35, { to: 'Interface', text: 'La barre de stamina passe sous la boussole du HUD, tu peux la remonter ?', ref: { tag: 'd-demo-stamina', session: 's-ui' }, ...fini(-26),
+      phases: [{ at: m(-35), text: 'envoyée' }, { at: m(-35), text: 'prise en charge' }, { at: m(-26), text: 'fini' }],
+      result: { text: 'La barre est remontée de 24 px dans WBP_HUD, au-dessus de la boussole.', session: 's-ui' },
+      checks: [{ niveau: 'L_SafeHouse', quoi: 'cours jusqu\'à vider la stamina : la barre reste au-dessus de la boussole, sans chevauchement', ok: null }],
+      runs: [run('T44-demo', -28, { who: 'Interface', kind: 'build', summary: 'compile', durationMs: 71_000 })] }));
   const day = (dd, hh, mm) => Date.UTC(2026, 9, dd, hh - 2, mm);
   state.setFeaturePast(pied.id, [
     { at: day(7, 22, 3), who: 'Chef', to: 'Gameplay', text: 'Chantier coup de pied dans les portes (ADR 0081) : le joueur ouvre une porte de parcelle d\'un coup de pied, la porte part en arrière.', src: 'envoi' },

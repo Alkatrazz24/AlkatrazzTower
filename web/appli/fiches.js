@@ -1637,8 +1637,9 @@
   // tableau en haut de l'application des que ca part. Elle passe seule de colonne en colonne (a faire,
   // en cours, t'attend, fini). Ouverte : un resume, le suivi des agents et les commentaires.
   const demUi = { open: null, states: null, known: null, fresh: new Map() };
-  const DEM_DOT = { envoyee: 'grey', 'en-cours': 'blue', attend: 'warn', fini: 'ok', erreur: 'ko', arretee: 'grey' };
-  const DEM_RANK = { attend: 0, 'en-cours': 1, envoyee: 1, fini: 2, erreur: 2, arretee: 3 };
+  const DEM_DOT = { envoyee: 'grey', 'en-cours': 'blue', attend: 'warn', test: 'test', fini: 'ok', erreur: 'ko', arretee: 'grey', repos: 'grey' };
+  const DEM_RANK = { attend: 0, test: 1, 'en-cours': 1, envoyee: 1, fini: 2, erreur: 2, arretee: 3 };
+  const DEM_CHIP = { attend: 'warn', test: 'test', 'en-cours': 'blue', envoyee: 'blue', fini: 'ok', erreur: 'ko' };
   const DEM_KIND = { conseil: 'Conseil', chef: 'Chef', discussion: 'Session', tache: 'Tâche', envoi: 'Envoi du Chef' };
   const demsOf = (M) => (M && M.S && M.S.demandes) || [];
   // Les features (lib/features.js) sont aussi des cartes : chacune regroupe les demandes qui en parlent
@@ -1652,7 +1653,9 @@
   const demFind = (M, id) => { if (isFeat(id)) return featsOf(M).find(x => x.id === id) || null; const walk = (l) => { for (const x of l) { if (x.id === id) return x; const k = walk(x.children || []); if (k) return k; } return null; }; return walk(demsOf(M)); };
   const dclip = (s, n) => { s = String(s || '').replace(/\*\*|__|`/g, '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s; };
   // Ou en est une demande, en une ligne : l'etape, ce qui se passe, ou le resultat.
+  const todoOf = (x) => (x.checks || []).filter(c => c.ok === null || c.ok === undefined);
   function demNow(x) {
+    if (x.state === 'test') { const n = todoOf(x).length; return n ? `à tester par toi : ${n > 1 ? `${n} essais` : 'un essai'}` : 'un essai ne marche pas : dis-le à l\'agent'; }
     if (x.state === 'fini') return x.result && x.result.text ? x.result.text : 'fini';
     if (x.state === 'attend') return x.live || x.phase;
     if (demFinal(x)) return x.phase;
@@ -1672,6 +1675,7 @@
     ['afaire', 'À faire', (x) => x.state === 'envoyee' || x.state === 'repos'],
     ['encours', 'En cours', (x) => x.state === 'en-cours'],
     ['attend', 'T\'attend', (x) => x.state === 'attend'],
+    ['test', 'À tester', (x) => x.state === 'test'],
     ['fini', 'Fini', demFinal],
   ];
   const FINI_MAX = 8;
@@ -1697,6 +1701,17 @@
     for (const [id, t] of demUi.fresh) if (now - t > 6000) demUi.fresh.delete(id);
     return spawned;
   }
+  // Le pied d'une carte : ses essais a faire, ou ses derniers tests.
+  function testFoot(x) {
+    const todo = todoOf(x).length, ko = (x.checks || []).filter(c => c.ok === false).length;
+    const runs = (x.runs || []).filter(r => r.kind === 'test'), lt = runs[runs.length - 1];
+    if (x.running) return h('span', { class: 'ap-bc-tfoot' }, x.running.kind === 'test' ? 'tests en cours' : 'compile');
+    if (todo) return h('span', { class: 'ap-bc-tfoot' }, T.plural(todo, 'essai à faire', 'essais à faire'));
+    if (ko) return h('span', { class: 'ap-bc-tfoot ap-bc-ko' }, T.plural(ko, 'essai raté', 'essais ratés'));
+    if (lt) return h('span', { class: lt.failed || !lt.ok ? 'ap-bc-ko' : '' }, lt.total ? `tests ${lt.total - lt.failed}/${lt.total}` : `tests : ${lt.summary}`);
+    return null;
+  }
+
   // Une feature au tableau : son nom, ce qui s'y passe, et ce qu'elle regroupe.
   function featCard(M, x) {
     const n = (x.demandes || []).length, p = (x.past || []).length, c = (x.comments || []).length;
@@ -1712,6 +1727,7 @@
       h('span', null, n ? T.plural(n, 'demande', 'demandes') : 'aucune demande'),
       p ? h('span', null, T.plural(p, 'trace d\'avant', 'traces d\'avant')) : null,
       c ? h('span', null, T.plural(c, 'commentaire', 'commentaires')) : null,
+      testFoot(x),
       fresh ? h('span', { class: 'ap-bc-badge' }, 'du nouveau') : null)));
   }
   function boardCard(M, x) {
@@ -1727,7 +1743,8 @@
       demFinal(x) ? h('time', null, T.clock(x.doneAt)) : T.forEl(x.at, 'time')),
     h('span', { class: 'ap-bc-text' }, dclip(x.text, 150)),
     h('span', { class: 'ap-bc-now' }, dclip(demNow(x), 120)),
-    kids.length || notes.length || unseen ? h('span', { class: 'ap-bc-foot' },
+    kids.length || notes.length || unseen || testFoot(x) ? h('span', { class: 'ap-bc-foot' },
+      testFoot(x),
       kids.length ? h('span', null, `${T.plural(kids.length, 'envoi', 'envois')}${kids.some(k => k.state === 'attend') ? ', un t\'attend' : kids.some(k => !demFinal(k)) ? ', en cours' : ''}`) : null,
       notes.length ? h('span', null, T.plural(notes.length, 'commentaire', 'commentaires')) : null,
       unseen ? h('span', { class: 'ap-bc-badge' }, 'nouveau') : null) : null));
@@ -1737,8 +1754,8 @@
     const cols = boardCols(M);
     const total = boardItems(M).length;
     const count = (c) => h('span', { class: `ap-bcount ap-bcount-${c.id}`, 'data-n': c.items.length },
-      h('i', { class: `us-dot us-d-${{ afaire: 'grey', encours: 'blue', attend: 'warn', fini: 'ok' }[c.id]}` }), c.title, ' ', h('b', null, c.items.length));
-    const unseen = cols[3].items.filter(x => !x.seenAt && x.kind !== 'feature').length;
+      h('i', { class: `us-dot us-d-${{ afaire: 'grey', encours: 'blue', attend: 'warn', test: 'test', fini: 'ok' }[c.id]}` }), c.title, ' ', h('b', null, c.items.length));
+    const unseen = cols.find(c => c.id === 'fini').items.filter(x => !x.seenAt && x.kind !== 'feature').length;
     const head = h('div', { class: 'ap-bhead' },
       h('button', { type: 'button', class: 'ap-btoggle', 'aria-expanded': total ? String(open) : null, 'aria-controls': total ? 'ap-bcols' : null, onclick: toggle, disabled: !total || null },
         h('b', null, 'Demandes'), total ? h('span', { class: 'ap-bcounts' }, cols.map(count)) : h('span', { class: 'ap-bempty' }, 'Ce que tu demandes au Chef, au Conseil ou à une session arrive ici, en carte.')),
@@ -1747,7 +1764,7 @@
     return [head, h('div', { class: 'ap-bcols', id: 'ap-bcols' }, cols.map(c => h('section', { class: `ap-bcol ap-bcol-${c.id}`, 'aria-label': c.title },
       h('h2', { class: 'ap-gtitle' }, h('span', null, c.title), h('small', null, c.items.length)),
       c.items.length ? h('ul', { class: 'ap-bitems' }, c.items.map(x => boardCard(M, x)))
-        : h('p', { class: 'ap-bnone' }, { afaire: 'Rien en attente de départ.', encours: 'Personne ne travaille pour toi en ce moment.', attend: 'Rien ne t\'attend.', fini: 'Rien de fini pour l\'instant.' }[c.id]))))];
+        : h('p', { class: 'ap-bnone' }, { afaire: 'Rien en attente de départ.', encours: 'Personne ne travaille pour toi en ce moment.', attend: 'Rien ne t\'attend.', test: 'Rien à essayer pour l\'instant.', fini: 'Rien de fini pour l\'instant.' }[c.id]))))];
   }
 
   const mdPlain = (t) => String(t || '').replace(/\*\*|__|`/g, '').replace(/^[ \t]*#{1,6}[ \t]+/gm, '').trim();
@@ -1803,7 +1820,60 @@
     renderHud();
   }
 
-  // Une feature ouverte : son resume, ses demandes, et tout son historique (avant et depuis son suivi).
+  // ---- la phase de test d'une carte : ce qu'ali essaie (et sur quel niveau), les tests lances, leur journal ----
+  const mapsOf = (M, project) => { const inv = (M.S && M.S.inventories) || {}; const v = inv[project] || Object.values(inv)[0]; return v && Array.isArray(v.maps) ? v.maps : null; };
+  // un niveau nomme par l'agent existe-t-il dans le projet ? (null : on ne sait pas)
+  function mapKnown(M, project, name) {
+    const maps = mapsOf(M, project);
+    if (!maps || !name || !/^[A-Za-z]\w*$/.test(name)) return null;
+    return maps.some(m => m.split('/').pop().toLowerCase() === name.toLowerCase());
+  }
+  let testing = false;
+  async function sendTest(M, url, body) {
+    if (M.demo) { T.toast('Mode démo : rien n\'est envoyé.'); return; }
+    if (testing) return;
+    const box = document.querySelector('[data-keep="dem-comment"]');
+    const note = body.ok === false && box ? box.value.trim() : '';
+    testing = true;
+    const r = await T.api(url, { ...body, note });
+    testing = false;
+    if (r && r.ok) { if (note && box) box.value = ''; if (r.to) T.toast(`Envoyé à ${r.to}.`); else if (body.ok === false && body.check === undefined) T.toast(note ? 'Noté sur la carte.' : 'Écris ce qui ne va pas dans « Commenter » pour que l\'agent le reprenne.'); }
+    else T.toast((r && r.error) || 'La tour ne répond pas.');
+    renderHud();
+  }
+  const runLabel = (r) => r.kind === 'test' ? (r.verif ? 'Tests (vérification de la tour)' : 'Tests') : (r.verif ? 'Compilation (vérification de la tour)' : 'Compilation');
+  function testBlock(M, x) {
+    const runs = x.runs || [], checks = x.checks || [];
+    if (!runs.length && !checks.length && !x.running) return null;
+    const isF = x.kind === 'feature';
+    const todo = checks.filter(c => c.ok === null || c.ok === undefined).length;
+    const all = (ok) => sendTest(M, isF ? '/api/features/tester' : '/api/demandes/tester', { id: isF ? x.feature : x.id, ok });
+    const one = (c, ok) => sendTest(M, '/api/demandes/tester', { id: c.id, check: c.i, ok: c.ok === ok ? null : ok });
+    return [h('div', { class: 'us-sub' }, 'Tests'),
+      checks.length ? h('div', { class: 'ap-tchecks' },
+        h('b', null, todo ? `À tester par toi (${todo} sur ${checks.length})` : 'Tes essais'),
+        h('ol', { class: 'ap-tlist' }, checks.map(c => {
+          const known = mapKnown(M, x.project, c.niveau);
+          return h('li', { class: `ap-tcheck${c.ok === true ? ' ap-t-ok' : c.ok === false ? ' ap-t-ko' : ''}` },
+            h('span', { class: 'ap-tlevel' }, c.niveau ? [h('span', { class: 'ap-tmap' }, c.niveau), known === false ? h('small', { class: 'ap-tmiss' }, 'n\'existe pas encore') : null] : h('small', { class: 'us-dim' }, 'niveau non précisé')),
+            h('span', { class: 'ap-tquoi' }, c.quoi, c.who && isF ? h('small', { class: 'us-dim' }, ` · ${c.who}`) : null),
+            h('span', { class: 'ap-tbtns' },
+              btn('Marche', () => one(c, true), 'ap-tyes', { 'aria-pressed': String(c.ok === true), disabled: M.demo || null }),
+              btn('Ne marche pas', () => one(c, false), 'ap-tno', { 'aria-pressed': String(c.ok === false), disabled: M.demo || null, title: 'Écris ce qui ne va pas dans « Commenter » avant : ça part à l\'agent' })));
+        })),
+        todo || checks.some(c => c.ok === false) ? h('div', { class: 'us-actions' },
+          todo ? btn('Tout marche', () => all(true), 'us-go', M.demo ? { disabled: true } : {}) : null,
+          btn('Ça ne marche pas', () => all(false), 'us-danger', M.demo ? { disabled: true } : { title: 'Écris ce qui ne va pas dans « Commenter » avant : ça part à l\'agent' })) : null) : null,
+      runs.length || x.running ? h('ol', { class: 'ap-truns' },
+        runs.map(r => h('li', { class: `ap-trun ${r.ok ? 'ap-t-ok' : 'ap-t-ko'}` },
+          h('span', { class: 'ap-f-meta' }, h('time', null, dayClock(r.at)), ' ', h('b', null, runLabel(r)), r.who ? ` · ${r.who}` : '', r.durationMs ? ` · ${T.dur ? T.dur(r.durationMs) : `${Math.round(r.durationMs / 1000)} s`}` : ''),
+          h('span', { class: 'ap-trun-res' },
+            h('span', { class: `ap-chip ap-c-${r.ok ? 'ok' : 'ko'}` }, r.kind === 'test' && r.total ? `${r.total - r.failed}/${r.total} verts` : r.ok ? (r.kind === 'test' ? 'verts' : 'compile') : 'échec'),
+            r.failedNames.length ? h('span', { class: 'ap-trun-red' }, `rouge${r.failedNames.length > 1 ? 's' : ''} : ${r.failedNames.join(', ')}`) : !r.ok && r.errorLines[0] ? h('span', { class: 'ap-trun-red' }, dclip(r.errorLines[0], 160)) : null,
+            r.hasLog && !M.demo ? btn('Voir le log', () => fileView(`${runLabel(r)}${r.who ? ` · ${r.who}` : ''}`, `${r.summary} · ${dayClock(r.at)}`, `/api/builds/log?id=${encodeURIComponent(r.id)}`), 'ap-tlog') : null))),
+        x.running ? h('li', { class: 'ap-trun ap-t-now' }, h('span', { class: 'ap-f-meta' }, h('b', null, x.running.kind === 'test' ? 'Tests en cours' : 'Compilation en cours'), x.running.who ? ` · ${x.running.who}` : ''), h('span', { class: 'us-dim' }, x.running.command)) : null) : null];
+  }
+
   // l'historique d'une feature tient sur plusieurs jours : la date avant l'heure, sauf aujourd'hui
   const dayClock = (t) => { if (!t) return ''; const d = new Date(t); return d.toDateString() === new Date().toDateString() ? T.clock(t) : `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} ${T.clock(t)}`; };
   const PAST_SRC = { tableau: 'tableau partagé', envoi: 'envoi du Chef', conseil: 'verdict du conseil', rapport: 'rapport', carnet: 'carnet' };
@@ -1831,6 +1901,7 @@
     else T.toast((r && r.error) || 'La tour ne répond pas.');
     renderHud();
   }
+  // Une feature ouverte : son resume, ses demandes, et tout son historique (avant et depuis son suivi).
   function featurePanel(M, x) {
     const z = (M.features || []).find(f => f.id === x.feature);
     const feed = featFeed(M, x);
@@ -1844,7 +1915,7 @@
     const by = { Chef: 'le Chef', 'Tâche': 'ta tâche perso' }[x.by] || (x.by ? x.by : 'toi');
     return h('section', { class: 'us-panel us-entity ap-k-demande ap-k-feature', 'aria-label': `Feature : ${x.title}`, 'data-key': `demande:${x.id}` },
       h('div', { class: 'us-ehead' },
-        h('h2', null, x.title, h('span', { class: `ap-chip ap-c-${{ attend: 'warn', 'en-cours': 'blue', fini: 'ok' }[x.state] || 'grey'}` }, h('i', { class: `ap-dot ap-d-${DEM_DOT[x.state] || 'grey'}` }), x.stateText)),
+        h('h2', null, x.title, h('span', { class: `ap-chip ap-c-${DEM_CHIP[x.state] || 'grey'}` }, h('i', { class: `ap-dot ap-d-${DEM_DOT[x.state] || 'grey'}` }), x.stateText)),
         btn('Fermer', () => NAV().close(), 'us-x', { 'aria-label': 'Fermer la feature', title: 'Échap' })),
       h('div', { class: 'us-ebody' },
         h('div', { class: 'ap-dd-ask' }, h('small', null, `Feature · suivie depuis `, T.agoEl(x.createdAt), `, créée par ${by}`), h('p', null, x.text)),
@@ -1855,6 +1926,7 @@
           h('ul', { class: 'ap-dd-dems' }, x.demandes.map(id => demFind(M, id)).filter(Boolean).map(d => h('li', null,
             h('button', { type: 'button', class: 'us-runbtn', onclick: () => openDem(d.id) },
               h('span', { class: `us-dot us-d-${DEM_DOT[d.state]}` }), h('b', null, d.to), h('span', { class: 'us-dim' }, ` ${d.stateText} · ${dclip(d.text, 90)}`)))))] : null,
+        testBlock(M, x),
         h('div', { class: 'us-sub' }, 'Historique'),
         feed.length ? h('ol', { class: 'ap-feed' },
           feed.map(it => h('li', { class: `ap-f-${it.kind === 'past' ? 'step' : it.kind === 'ask' ? 'mine' : it.kind}${it.sub ? ' ap-f-sub' : ''}${it.kind === 'past' ? ' ap-f-past' : ''}` },
@@ -1882,7 +1954,7 @@
       onkeydown: (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); demComment(M, x); } } });
     return h('section', { class: 'us-panel us-entity ap-k-demande', 'aria-label': `Demande : ${x.to}`, 'data-key': `demande:${x.id}` },
       h('div', { class: 'us-ehead' },
-        h('h2', null, x.to, h('span', { class: `ap-chip ap-c-${{ attend: 'warn', 'en-cours': 'blue', envoyee: 'blue', fini: 'ok', erreur: 'ko' }[x.state] || 'grey'}` }, h('i', { class: `ap-dot ap-d-${DEM_DOT[x.state]}` }), x.stateText)),
+        h('h2', null, x.to, h('span', { class: `ap-chip ap-c-${DEM_CHIP[x.state] || 'grey'}` }, h('i', { class: `ap-dot ap-d-${DEM_DOT[x.state]}` }), x.stateText)),
         btn('Fermer', () => NAV().close(), 'us-x', { 'aria-label': 'Fermer la demande', title: 'Échap' })),
       h('div', { class: 'us-ebody' },
         h('div', { class: 'ap-dd-ask' }, h('small', null, `${DEM_KIND[x.kind] || 'Demande'} · envoyée `, T.agoEl(x.at)), h('p', null, x.text)),
@@ -1890,6 +1962,7 @@
         res.questions && res.questions.length ? [h('b', null, 'Ses questions pour toi'), h('ul', { class: 'us-suivi-list' }, res.questions.map(q => h('li', null, q)))] : null,
         res.file ? h('p', { class: 'us-dim us-path' }, res.file) : null,
         acts.length ? h('div', { class: 'us-actions' }, acts) : null,
+        testBlock(M, x),
         h('div', { class: 'us-sub' }, 'Suivi'),
         h('ol', { class: 'ap-feed' },
           feed.map(it => h('li', { class: `ap-f-${it.kind}${it.sub ? ' ap-f-sub' : ''}` },

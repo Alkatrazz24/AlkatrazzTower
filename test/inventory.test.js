@@ -40,6 +40,7 @@ test('inventaire d\'un petit projet', () => {
   assert.deepStrictEqual([inv.code.classes, inv.code.tests], [1, 2]);
   assert.strictEqual(inv.rooms.blueprints.recent, 3);
   assert.deepStrictEqual(inv.rooms.blueprints.folders[0], { name: 'Jeu', n: 3 });
+  assert.deepStrictEqual(inv.maps, ['Jeu/Maps/Raid'], 'les niveaux, pour savoir si celui a ouvrir existe');
 });
 
 test('l\'agent est place devant la piece du fichier qu\'il touche', () => {

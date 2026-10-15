@@ -24,6 +24,7 @@ test('le bloc Suivi se lit : fait, a faire, questions vides, rapport', () => {
     fait: ['Lu tout le C++', 'Écrit le rapport'],
     afaire: ['Fermer le chantier ragdoll', 'Tester la coop à deux'],
     questions: [],
+    atester: [],
     rapport: 'Saved/Tour/rapports/relecture-2026-10-10.md',
   });
   assert.strictEqual(suivi.parse('Fini, rien de spécial.'), null);
@@ -33,6 +34,17 @@ test('le bloc Suivi se lit : fait, a faire, questions vides, rapport', () => {
 test('toute consigne de tache demande le bloc Suivi', () => {
   assert.match(taches.promptFor(taches.BUILTIN[0], 'CTB'), /## Suivi\nFait :/);
   assert.match(taches.promptFor({ id: 'perso-x', title: 'X', prompt: 'Fais X.' }, 'CTB'), /Questions pour ali :/);
+  assert.match(taches.promptFor({ id: 'perso-x', title: 'X', prompt: 'Fais X.' }, 'CTB'), /À tester par ali :/);
+});
+
+test('« À tester par ali » : chaque essai avec le niveau a ouvrir', () => {
+  const sv = suivi.parse('Fait.\n## Suivi\nFait :\n- x\nÀ tester par ali :\n- L_Parcelle : porte fermée, molette puis F → elle part en arrière\n- Niveau « L_SafeHouse » — tir au fusil\n- vérifie que le son joue bien.\nRapport : aucun');
+  assert.deepStrictEqual(sv.atester.map(suivi.checkOf), [
+    { niveau: 'L_Parcelle', quoi: 'porte fermée, molette puis F → elle part en arrière' },
+    { niveau: 'L_SafeHouse', quoi: 'tir au fusil' },
+    { niveau: '', quoi: 'vérifie que le son joue bien.' },
+  ]);
+  assert.deepStrictEqual(suivi.parse('## Suivi\nÀ tester par ali : aucun\nFait :\n- y').atester, []);
 });
 
 test('le journal de la tache : lectures, fichiers, questions, fin, reprise', () => {
@@ -97,4 +109,12 @@ test('seuls les fichiers de la tache, dans Saved/Tour, se lisent depuis la page'
   assert.strictEqual(suivi.readFile(agent, 'Saved/Tour/../../secret.md').ok, false);
   assert.strictEqual(suivi.readFile(agent, path.join(root, 'autre.md')).ok, false);
   assert.strictEqual(suivi.readFile(undefined, rel).ok, false);
+});
+
+test('les essais pour ali : dans le bloc de suivi, ou en section seule dans une reponse', () => {
+  const { atesterOf } = require('../lib/suivi');
+  assert.deepStrictEqual(atesterOf('Fait.\n\n**À tester par ali :**\n- L_Parcelle : F → la porte part\n\n- L_Menu : rien\n\nFeature : Coup de pied'), ['L_Parcelle : F → la porte part', 'L_Menu : rien']);
+  assert.deepStrictEqual(atesterOf('## À tester par ali\n- L_TestRange : tirer\n## Autre\n- x'), ['L_TestRange : tirer']);
+  assert.deepStrictEqual(atesterOf('## Suivi\nFait :\n- a\nÀ tester par ali :\n- aucun'), []);
+  assert.deepStrictEqual(atesterOf('Rien à tester.'), []);
 });

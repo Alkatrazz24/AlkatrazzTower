@@ -40,6 +40,21 @@ const WAIT_MS = 20_000;
 
 const state = new TowerState();
 
+// La fin du journal de chaque build (bin/tower-run.js) : data/logs/<id>.txt, les 300 derniers gardes.
+const LOGS_DIR = path.join(DATA_DIR, 'logs');
+const LOG_ID = /^[A-Za-z0-9_-]{1,40}$/;
+const LOGS_MAX = 300;
+state.onBuildLog = (id, text) => {
+  if (!LOG_ID.test(String(id))) return;
+  fs.mkdirSync(LOGS_DIR, { recursive: true });
+  fs.writeFileSync(path.join(LOGS_DIR, `${id}.txt`), text, 'utf8');
+  const all = fs.readdirSync(LOGS_DIR).filter(n => n.endsWith('.txt'));
+  if (all.length > LOGS_MAX) {
+    const old = all.map(n => { let t = 0; try { t = fs.statSync(path.join(LOGS_DIR, n)).mtimeMs; } catch { /* parti */ } return [n, t]; }).sort((x, y) => x[1] - y[1]);
+    for (const [n] of old.slice(0, all.length - LOGS_MAX)) try { fs.unlinkSync(path.join(LOGS_DIR, n)); } catch { /* deja parti */ }
+  }
+};
+
 // ---- persistance --------------------------------------------------------------------------------
 
 // Un state.json abime est mis de cote (state.json.abime-<date>) au lieu d'etre ecrase par une tour vide.
@@ -437,6 +452,12 @@ function projectFor(name) {
 
 const routes = {
   'GET /api/health': () => ({ ok: true, name: 'alkatrazz-tower', pid: process.pid }),
+  // La fin du journal d'un build ou d'une suite de tests (bin/tower-run.js), pour la carte d'une demande.
+  'GET /api/builds/log': (b, url) => {
+    const id = String(url.searchParams.get('id') || '');
+    if (!LOG_ID.test(id)) return { ok: false, error: 'Journal inconnu.' };
+    try { return { ok: true, id, text: fs.readFileSync(path.join(LOGS_DIR, `${id}.txt`), 'utf8') }; } catch { return { ok: false, error: 'Ce journal n\'est plus gardé.' }; }
+  },
   'GET /api/state': () => state.snapshot(),
 
   'POST /api/event': (b) => { const ok = state.event(b); if (ok) usageSoon(String(b.session_id)); return { ok, ...(ok ? state.hookReply(b) : {}) }; },
@@ -546,6 +567,9 @@ const routes = {
   'POST /api/demandes/vu': (b) => demandes.seen(b.id ? String(b.id) : ''),
   // Un commentaire d'ali sur une carte : il part a l'agent qui y travaille encore, sinon il reste une note.
   'POST /api/demandes/commenter': (b) => demandes.comment(String(b.id || ''), b.text),
+  // La phase de test : ali dit si un essai (check) ou tous marchent ; « ne marche pas » avec un mot part a l'agent.
+  'POST /api/demandes/tester': (b) => demandes.test(String(b.id || ''), { check: b.check, ok: b.ok, note: b.note }),
+  'POST /api/features/tester': (b) => demandes.testFeature(String(b.id || ''), { ok: b.ok, note: b.note }),
   // Sessions feature : une nouvelle idee, creee depuis la tour, puis lancee en discussion (ou dans une fenetre).
   'POST /api/features': (b) => {
     const p = projectFor(b.project);
