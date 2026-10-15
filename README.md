@@ -389,8 +389,11 @@ terminée : le même titre, ou le même cœur de titre dans un sens ou dans l'au
 pied » retrouve « Coup de pied dans les portes »). Si elle existe, la demande y est rangée et une feature
 terminée est rouverte, avec tout son historique. Ça vaut pour la ligne « Feature : » du chef, pour ses
 envois `pour: nouvelle feature` (le tableau note « demandée comme … ») et pour le formulaire « Nouvelle
-feature », qui propose alors de reprendre celle qui existe avec ton idée comme demande. La consigne du
-chef liste aussi les dernières features terminées pour qu'il reprenne leur titre.
+feature », qui propose alors de reprendre celle qui existe avec ton idée comme demande (le formulaire
+regarde aussi l'idée : un nom long, coupé à 60 caractères, peut perdre le mot qui retrouve la feature), ou
+d'en créer quand même une autre. La consigne du chef liste aussi les dernières features terminées pour
+qu'il reprenne leur titre. La discussion avec la session d'une feature est rangée dans la carte de cette
+feature : le tableau ne montre qu'une carte pour les deux.
 
 Ouverte, la carte montre son résumé (la situation, son carnet si elle en a un, la dernière réponse), ses
 demandes (un clic ouvre chacune), tout l'historique daté, et une case pour commenter : le commentaire part

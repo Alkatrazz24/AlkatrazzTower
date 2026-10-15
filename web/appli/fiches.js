@@ -1659,31 +1659,31 @@
     if (!M.sujetsProject) { T.toast('Connecte d\'abord ton projet Unreal : une feature se lance dans son dossier.'); return; }
     if (!featDlg) {
       const f = {};
+      const create = async (force) => {
+        const sujets = [...f.topics.querySelectorAll('input:checked')].map(x => x.value);
+        f.go.disabled = true;
+        const r = await T.api('/api/features', { project: M_().sujetsProject, title: f.title.value, idea: f.idea.value, sujets, ...(force ? { force: true } : {}) });
+        f.go.disabled = false;
+        if (r && r.existing) {
+          // une feature par sujet : on reprend celle qui existe, avec l'idee tapee comme demande
+          const z = ((M_().features) || []).find(x => x.id === r.existing) || { id: r.existing, title: '' };
+          f.err.replaceChildren(r.error, ' ', btn(`Reprendre « ${z.title || 'la feature'} »`, async () => {
+            if ((z.doneAt || z.done) && !(await T.api('/api/features/done', { id: z.id, done: false }) || {}).ok) return T.toast('Reprise impossible.');
+            featDlg.close();
+            if (f.where.value === 'fenetre') return launchTask({ id: z.id, title: z.title }, M_().sujetsProject);
+            const s = await T.api('/api/chat/start', { id: z.id, project: M_().sujetsProject, idea: f.idea.value });
+            if (s && s.ok) NAV().conv(s.sessionId); else if (s && s.error) T.toast(s.error);
+          }, 'us-go'), ' ', btn('Non, une autre feature', () => create(true), 'us-ghost'));
+          return;
+        }
+        if (!r || !r.ok) { f.err.textContent = (r && r.error) || 'Création impossible.'; return; }
+        featDlg.close();
+        const z = { ...r.feature, kind: 'feature' };
+        if (f.where.value === 'fenetre') return launchTask({ id: z.id, title: z.title }, M_().sujetsProject);
+        sujetLaunch(M_(), z);
+      };
       featDlg = h('dialog', { class: 'us-dialog', 'aria-label': 'Nouvelle feature' },
-        h('form', { method: 'dialog', onsubmit: async (e) => {
-          e.preventDefault();
-          const sujets = [...f.topics.querySelectorAll('input:checked')].map(x => x.value);
-          f.go.disabled = true;
-          const r = await T.api('/api/features', { project: M_().sujetsProject, title: f.title.value, idea: f.idea.value, sujets });
-          f.go.disabled = false;
-          if (r && r.existing) {
-            // une feature par sujet : on reprend celle qui existe, avec l'idee tapee comme demande
-            const z = ((M_().features) || []).find(x => x.id === r.existing) || { id: r.existing, title: '' };
-            f.err.replaceChildren(r.error, ' ', btn(`Reprendre « ${z.title || 'la feature'} »`, async () => {
-              if ((z.doneAt || z.done) && !(await T.api('/api/features/done', { id: z.id, done: false }) || {}).ok) return T.toast('Reprise impossible.');
-              featDlg.close();
-              if (f.where.value === 'fenetre') return launchTask({ id: z.id, title: z.title }, M_().sujetsProject);
-              const s = await T.api('/api/chat/start', { id: z.id, project: M_().sujetsProject, idea: f.idea.value });
-              if (s && s.ok) NAV().conv(s.sessionId); else if (s && s.error) T.toast(s.error);
-            }, 'us-go'));
-            return;
-          }
-          if (!r || !r.ok) { f.err.textContent = (r && r.error) || 'Création impossible.'; return; }
-          featDlg.close();
-          const z = { ...r.feature, kind: 'feature' };
-          if (f.where.value === 'fenetre') return launchTask({ id: z.id, title: z.title }, M_().sujetsProject);
-          sujetLaunch(M_(), z);
-        } },
+        h('form', { method: 'dialog', onsubmit: (e) => { e.preventDefault(); create(false); } },
           h('h2', null, 'Nouvelle feature'),
           h('p', { class: 'us-dim' }, 'Une session pour mettre en place une idée. Elle lit d\'abord la mémoire des sujets touchés, puis te propose un plan avant de toucher au jeu.'),
           h('label', null, 'Nom', f.title = h('input', { name: 'title', maxlength: 60, required: true, placeholder: 'ex. Lampe torche' })),

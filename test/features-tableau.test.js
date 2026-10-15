@@ -315,3 +315,28 @@ test('similar : retrouve la feature du meme sujet sous un autre nom, en cours d\
   list.push({ id: 'feature-coup-de-pied-dans-les-murs', title: 'Coup de pied dans les murs', project: 'CTB', createdAt: 9 });
   assert.strictEqual(id('Animation du coup de pied'), 'feature-coup-de-pied-dans-les-murs');
 });
+
+test('la discussion avec la session d\'une feature est rangee dans sa carte : une seule carte au tableau', () => {
+  const { s, d, dm, card, one, done } = setup();
+  const f = s.addFeature({ title: 'Revoir l\'action d\'ouvrir une porte', idea: 'Revoir le coup de pied.', project: 'CTB' }).feature;
+  const prompt = `Tache de la tour [${f.id}] : lis la consigne`;
+  const st = d.start({ cwd: s.projects[0].root, text: prompt, def: f.id });
+  s.event({ session_id: st.sessionId, cwd: s.projects[0].root, hook_event_name: 'UserPromptSubmit', prompt });
+  // comme /api/chat/start : la demande dit sa feature
+  const a = dm.add({ kind: 'discussion', to: f.title, text: '- revoir ce qui a ete fait', project: 'CTB', ref: { session: st.sessionId }, feature: f.id });
+  assert.strictEqual(one(a.id).feature, f.id);
+  // une demande d'avant, sans feature : retrouvee par la tache de sa session
+  const b = dm.add({ kind: 'discussion', to: f.title, text: 'autre chose', project: 'CTB', ref: { session: st.sessionId } });
+  assert.strictEqual(one(b.id).feature, f.id);
+  assert.strictEqual(one(b.id).featureBy, 'session');
+  assert.deepStrictEqual(card(f.title).demandes.sort(), [a.id, b.id].sort());
+  done();
+});
+
+test('similar : une idee qui nomme une feature la retrouve quand le nom coupe a 60 caracteres ne suffit plus', () => {
+  const list = [{ id: 'feature-coup-de-pied-dans-les-portes', title: 'Coup de pied dans les portes', project: 'CTB', createdAt: 1, doneAt: 5 }];
+  const cut = 'Revoir l\'action d\'ouvrir une porte avec l\'animation coup de pied'.slice(0, 60);
+  assert.strictEqual(features.similar(list, cut, 'CTB'), null);
+  assert.strictEqual(features.similar(list, cut, 'CTB', '- revoir ce qui a été fait avec l\'animation coup de pied').id, 'feature-coup-de-pied-dans-les-portes');
+  assert.strictEqual(features.similar(list, 'Lampe torche', 'CTB', 'Une lampe qui s\'allume avec F.'), null);
+});
