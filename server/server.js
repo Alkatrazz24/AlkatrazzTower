@@ -538,7 +538,7 @@ const routes = {
     const s = discussion.start({ cwd: r.project.root, text: idea ? `${r.ask}\n\nNouvelle demande d'ali pour cette feature :\n${idea}` : r.ask, def: r.task.id, tag });
     if (s.ok) startTitles.set(s.sessionId, r.task.title);
     // reveillee pour un message d'ali (quiet) : c'est ce message qui fait la carte, pas le reveil
-    if (s.ok && !b.quiet) demandes.add({ id: tag, kind: r.task.id === 'chef' ? 'chef' : 'discussion', to: r.task.title, text: r.task.text || r.task.title, project: r.project.name, ref: { tag, session: s.sessionId } });
+    if (s.ok && !b.quiet) demandes.add({ id: tag, kind: r.task.id === 'chef' ? 'chef' : 'discussion', to: r.task.title, text: idea || r.task.text || r.task.title, project: r.project.name, ref: { tag, session: s.sessionId }, ...(featuresLib.isFeature(r.task.id) ? { feature: r.task.id } : {}) });
     return s;
   },
   'POST /api/miseenplace': (b) => misePlace.start({ ids: b.ids, budget: b.budget }),
@@ -578,7 +578,7 @@ const routes = {
     const p = projectFor(b.project);
     if (!p) return { ok: false, error: 'Aucun projet connecté : connecte d\'abord ton projet.' };
     // une feature par sujet : celle qui existe deja se reprend (« Reprendre » sur sa carte si elle est finie)
-    const same = b.force ? null : featuresLib.similar(state.features, String(b.title || ''), p.name);
+    const same = b.force ? null : featuresLib.similar(state.features, String(b.title || ''), p.name, String(b.idea || ''));
     if (same) return { ok: false, existing: same.id, error: `« ${same.title} » existe déjà${same.doneAt ? ' (terminée)' : ''} : une feature par sujet, reprends celle-ci plutôt que d'en ouvrir une deuxième.` };
     return state.addFeature({ title: b.title, idea: b.idea, sujets: b.sujets, project: p.name });
   },
