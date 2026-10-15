@@ -155,3 +155,36 @@ test('envoi : une idee neuve cree la feature et la lance ; en mode validation, a
   assert.strictEqual(s2.snapshot().chef.envois.length, 3);
   done();
 });
+
+test('une feature par sujet : un nom proche reprend la feature qui existe, meme terminee, avec son historique', () => {
+  const { s, chef, runs, drop, root, done } = setup();
+  const kick = s.addFeature({ title: 'Coup de pied dans les portes', idea: 'Ouvrir une porte d\'un coup de pied.', project: 'CTB' }).feature;
+  s.endFeature(kick.id, true);
+  // le Chef nomme la feature autrement : la tour range la demande dans la carte qui existe et la rouvre
+  assert.strictEqual(chefLib.featureFor(s, 'CTB', 'Animation du coup de pied', { mots: 'AM_CoupDePied' }), kick.id);
+  assert.strictEqual(s.features.length, 1);
+  assert.ok(!kick.doneAt);
+  assert.deepStrictEqual(kick.mots, ['AM_CoupDePied']);
+  // un envoi « nouvelle feature » au nom proche va a la feature existante, avec sa demande
+  s.endFeature(kick.id, true);
+  drop('anim.md', 'pour: nouvelle feature\ntitre: Coup de pied dans la porte\n---\nBranche le montage du coup de pied.');
+  chef.scan();
+  const e = s.chef.envois[0];
+  assert.strictEqual(e.status, 'envoyé', e.error);
+  assert.strictEqual(e.to, kick.id);
+  assert.strictEqual(e.newFeature, false);
+  assert.strictEqual(s.features.length, 1);
+  assert.ok(!kick.doneAt);
+  assert.match(runs[0].input, /Branche le montage du coup de pied/);
+  assert.match(fs.readFileSync(path.join(root, sujets.BOARD), 'utf8'), /demandée comme « Coup de pied dans la porte »/);
+  // un autre sujet cree bien sa propre feature
+  drop('lampe.md', 'pour: nouvelle feature\ntitre: Lampe torche\n---\nUne lampe.');
+  chef.scan();
+  assert.strictEqual(s.features.length, 2);
+  // la consigne du chef liste les features terminees pour qu'il reprenne leur titre
+  s.endFeature(kick.id, true);
+  const prompt = chefLib.promptOf([], s.features);
+  assert.match(prompt, /features terminées[^\n]*\n- Coup de pied dans les portes/);
+  assert.match(prompt, /Les features en cours :\n- feature-lampe-torche/);
+  done();
+});
