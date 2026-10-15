@@ -18,7 +18,7 @@
   const CONV_KEY = T.demo ? 'appli.conv.demo' : 'appli.conv';
   const ui = { conv: store.get(CONV_KEY) || 'chef', at: 0, sheet: null, q: '', old: false, sleep: false, menu: false, view: 'list', drafts: new Map(),
     board: store.get('appli.board') !== 'replie' };
-  const A = window.Appli = { M: null, nav: { paint, conv, sheet, close }, mode };
+  const A = window.Appli = { M: null, nav: { paint, conv, sheet, close }, mode, health: (M) => healthRows(M) };
   // La taille de chaque zone, choisie par ali (separateurs a glisser, boutons replier et agrandir), gardee
   // d'une visite a l'autre. Une taille absente reprend celle de la feuille de style.
   const Z = (() => { try { return JSON.parse(store.get('appli.zones')) || {}; } catch { return {}; } })();
@@ -218,6 +218,8 @@
         h('span', { class: `ap-live${M.demo ? ' demo' : M.connected ? ' on' : ''}`, title: M.demo ? 'Démo : rien n\'est envoyé' : M.connected ? 'Branchée sur la tour' : 'La tour ne répond pas' },
           M.demo ? 'démo' : M.connected ? 'en direct' : 'hors ligne')),
       h('div', { class: 'ap-sideacts' },
+        h('button', { type: 'button', class: 'us-btn ap-vuebtn', onclick: () => openVue(), title: 'La tour en coupe : les salles et les agents, en direct', 'aria-label': 'Vue de la tour : les salles et les agents' },
+          h('span', { class: 'ap-vueic', 'aria-hidden': 'true' }), 'Vue'),
         h('button', { type: 'button', class: 'us-btn ap-railbtn' + on('rail'), 'data-sheet': 'rail', onclick: () => sheet('rail'), title: 'Ce qui t\'attend, la forge, la version, la santé du projet, les réglages' },
           'Tableau', M.attention.length ? h('span', { class: 'ap-badge' }, M.attention.length) : null),
         newMenu(M),
@@ -243,6 +245,14 @@
         item('Lancer une tâche', 'Relecture, anomalies, idées, ou la tienne', () => sheet('taches')),
         item('Nouvelle feature', 'Une idée neuve, avec sa conversation', () => F.featureDialog(M), M.demo || !M.sujetsProject),
         item('Préparer une version', 'Les features à prouver, puis le package', () => T.act.openBuilder())) : null);
+  }
+
+  // « Vue » : la tour en coupe, avec ses salles et ses agents (web/appli/vue.js, charge au premier clic).
+  let vueLoading = null;
+  function openVue() {
+    if (window.Vue) { window.Vue.open(A.M); return; }
+    if (!vueLoading) vueLoading = new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'appli/vue.js'; s.onload = res; s.onerror = rej; document.body.append(s); });
+    vueLoading.then(() => window.Vue.open(A.M), () => { vueLoading = null; T.toast('La vue ne s\'est pas chargée.'); });
   }
 
   // ---------- la conversation ouverte ----------
@@ -712,14 +722,18 @@
     if (panel && was && same(was, panel)) swap(G.sheetIn, [panel]);
     else G.sheetIn.replaceChildren(...(panel ? [panel] : []));
     G.app.classList.toggle('ap-has-sheet', !!panel);
+    if (window.Vue && window.Vue.isOpen) window.Vue.update(M);
     if (panel) G.sheet.setAttribute('aria-label', panel.getAttribute('aria-label')); else G.sheet.removeAttribute('aria-label');
     applyZones();
   }
 
   function render(root, M) {
     A.M = M;
-    if (!G || !root.contains(G.app)) build(root);
+    const first = !G || !root.contains(G.app);
+    if (first) build(root);
     paint();
+    // la vue etait ouverte avant un rechargement (mise a jour de la tour) : on la rouvre
+    if (first) { try { if (localStorage.getItem('appli.vue') === 'ouverte') openVue(); } catch { /* stockage bloque */ } }
     F.demNotice(M);
   }
 })();
