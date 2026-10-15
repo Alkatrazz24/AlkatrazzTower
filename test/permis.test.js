@@ -140,3 +140,23 @@ test('un shell imbrique qui ecrit hors du projet demande aussi', () => {
   assert.ok(!permis.autoAllow('PowerShell', { command: 'cmd /c "copy a C:\\temp\\b"' }, { niveau: 'sauf-suppression' }, CTB));
   assert.ok(permis.autoAllow('PowerShell', { command: 'cmd /c "copy a Saved\\b"' }, { niveau: 'sauf-suppression' }, CTB));
 });
+
+test('une ligne ecrite au tableau (texte entre guillemets, `` echappes, [Math]::Min) passe au niveau de depart', () => {
+  const CTB = 'C:\\Users\\Alkatrazz\\Documents\\unreal\\ConquerTheBackrooms 5.8';
+  const cmd = [
+    '$lignes = @(',
+    '"- 2026-10-15 14:55 · Feature Revoir l\'action → Animation : ``tools/creer_coup_de_pied.py`` corrigé (la racine ; ``A_CoupDePied``) sous Content/CTB/Animation/.",',
+    '"- 2026-10-15 14:55 · Gameplay : REFUSÉ (« on attend ») ``ACTBPlayerState::Server_CoupDePiedPorte`` via ``U::LeCorpsJoueUnGeste()`` ; il dit ""non"" et `"oui`"."',
+    ')',
+    'Add-Content -Path "Saved\\Tour\\tableau.md" -Value $lignes -Encoding UTF8; Get-Content "Saved\\Tour\\tableau.md" -Tail 3 | ForEach-Object { $_.Substring(0, [Math]::Min(120, $_.Length)) }',
+  ].join('\r\n');
+  const a = permis.analyse('PowerShell', cmd);
+  assert.deepStrictEqual([a.unsafe, a.keys], [false, ['add-content']]);
+  assert.ok(permis.autoAllow('PowerShell', { command: cmd }, {}, CTB));
+  // le meme texte, ecrit hors du projet, demande ; un appel .NET qui ecrit aussi
+  assert.ok(!permis.autoAllow('PowerShell', { command: cmd.replace(/"Saved\\Tour\\tableau\.md"/g, '"C:\\temp\\t.md"') }, {}, CTB));
+  assert.ok(!permis.autoAllow('PowerShell', { command: '[System.IO.File]::WriteAllText("Saved\\x", "y")' }, {}, CTB));
+  assert.ok(!permis.autoAllow('PowerShell', { command: 'Get-ChildItem | ForEach-Object { $_.Delete() }' }, {}, CTB));
+  // une chaine lancee par & reste un programme : retenable, et son appel ne compte jamais comme lecture
+  assert.deepStrictEqual(permis.keysFor('PowerShell', { command: '& "D:\\UE\\Build.bat" X' }), ['build.bat']);
+});
