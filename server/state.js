@@ -28,6 +28,12 @@ const isTuto = (id) => String(id || '').startsWith('tuto-');
 const SUB_SILENT_MS = 600_000; // sous-agent sans nouvelle depuis 10 min : il a fini
 const LEASE_MS = 30_000;      // sans signe de vie, le verrou ou la place en file est rendu
 const MAX_BUILDS = 50;
+// Ce qu'ali repond quand un commandlet attend l'editeur ferme (tower-run, /api/editor/check).
+const EDITOR_CHOICES = [
+  { id: 'ferme', label: 'Je le ferme', description: 'La commande part dès que la tour voit l\'éditeur fermé.' },
+  { id: 'go', label: 'Lancer quand même', description: 'Éditeur ouvert : la commande risque d\'échouer.' },
+  { id: 'annuler', label: 'Annuler', description: 'Rien n\'est lancé, la session te demandera quand reprendre.' },
+];
 const SNIP = 160;
 
 function snip(s, n = SNIP) {
@@ -783,6 +789,41 @@ class TowerState {
     return true;
   }
 
+  // L'editeur de ce projet est-il ouvert ? Le plugin le dit ; sans plugin, la sonde du serveur sait
+  // seulement qu'un UnrealEditor.exe tourne (Windows) : on le compte comme ouvert, par prudence.
+  editorOpenFor(project) {
+    if (this.liveEditor(project)) return true;
+    const e = this.editor || {};
+    return !!(e.open && !e.plugin && this.now() - (e.checkedAt || 0) < 60_000);
+  }
+
+  // Un commandlet (-run=...) attend que l'editeur soit ferme : la session passe « attend ta reponse »
+  // avec la question, qu'ali voit sur sa carte. tower-run lit la reponse par /api/editor/check.
+  askCloseEditor({ sessionId, cwd, command, project } = {}) {
+    if (!sessionId || UNSAFE_KEYS.has(String(sessionId))) return null;
+    const cmd = String(command || '');
+    const what = (cmd.match(/([\w.-]+\.py)\b/) || cmd.match(/-run=["']?(\w+)/i) || [])[1] || 'un commandlet';
+    const id = this.openAsk({ sessionId, cwd, kind: 'question', questions: [{
+      question: `Ferme l'éditeur Unreal${project ? ` de ${project}` : ''} : ${this.label(sessionId)} doit lancer ${what}, qui ne tourne qu'éditeur fermé.`,
+      header: 'Éditeur',
+      options: EDITOR_CHOICES.map(c => ({ label: c.label, description: c.description })),
+    }] });
+    if (id) this.agents[sessionId].ask.editeur = true;
+    return id;
+  }
+
+  // La question est reglee sans reponse d'ali (editeur ferme, attente finie) : la session reprend.
+  endEditorAsk(id) {
+    const a = Object.values(this.agents).find(x => x.ask && x.ask.id === id && x.ask.editeur);
+    delete this.answers[id];
+    if (!a) return false;
+    delete a.ask;
+    a.status = 'working';
+    a.message = '';
+    this.changed();
+    return true;
+  }
+
   // Editeur vu depuis moins de 15 s : le plugin est vivant.
   liveEditor(project) {
     const e = project && Object.values(this.editors).find(x => x.project.toLowerCase() === String(project).toLowerCase());
@@ -1095,4 +1136,4 @@ class TowerState {
   }
 }
 
-module.exports = { TowerState, LEASE_MS, toolSummary, snip };
+module.exports = { TowerState, LEASE_MS, EDITOR_CHOICES, toolSummary, snip };

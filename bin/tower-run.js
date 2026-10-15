@@ -6,7 +6,8 @@
 //   node bin/tower-run.js --shell powershell --kind build -- & "...\Build.bat" ...
 //
 // Si la tour ne repond pas, la commande part sans verrou : un build ne doit jamais rester bloque
-// parce que la tour est eteinte. Le code de sortie rendu est celui de la commande.
+// parce que la tour est eteinte. Le code de sortie rendu est celui de la commande, sauf 3 : un
+// commandlet (-run=...) que l'editeur ouvert a empeche de lancer (ali a annule, ou attente depassee).
 
 const { spawn, execFile } = require('child_process');
 const { post } = require('../lib/client');
@@ -18,6 +19,9 @@ const NOTICE_MS = 30_000;
 const KEEP_BYTES = 4 * 1024 * 1024;
 const LOG_LINES = 200;
 const LOG_CHARS = 24 * 1024;
+// Un commandlet attend au plus 9 min que l'editeur se ferme (l'outil Bash d'un agent coupe a 10 min).
+const EDITOR_WAIT_MS = Number(process.env.TOWER_EDITOR_WAIT_MS) || 9 * 60_000;
+const EDITOR_POLL_MS = Number(process.env.TOWER_EDITOR_POLL_MS) || 3000;
 
 function parseArgs(argv) {
   const o = { shell: process.platform === 'win32' ? 'powershell' : 'bash', session: process.env.TOWER_SESSION || '', kind: 'build', cmd: '' };
@@ -103,6 +107,40 @@ async function takeLock(o) {
   }
 }
 
+// Un commandlet (UnrealEditor-Cmd -run=...) ne tourne pas sur un projet ouvert dans l'editeur : on
+// demande a ali de le fermer, dans la tour, et on attend. Rend false si rien ne doit etre lance.
+async function waitEditorClosed(o) {
+  if (o.kind !== 'commandlet' || !/(^|\s)-run=/i.test(o.cmd)) return true;
+  const cwd = process.cwd();
+  let st = await post('/api/editor/check', { cwd }, 1500);
+  if (!st || !st.open) return true;
+  if (!o.session) { say('attention : l\'editeur Unreal de ce projet est ouvert, ce commandlet risque d\'echouer.'); return true; }
+  const opened = await post('/api/editor/ask', { sessionId: o.session, cwd, command: o.cmd }, 1500);
+  const id = opened && opened.id;
+  say(`l'editeur Unreal de ce projet est ouvert, et ce commandlet ne tourne qu'editeur ferme. ali le voit dans la tour. J'attends qu'il le ferme (${Math.round(EDITOR_WAIT_MS / 60_000)} min au plus).`);
+  const done = () => (id ? post('/api/editor/done', { id }, 1500) : Promise.resolve());
+  const onSignal = () => { done().finally(() => process.exit(130)); };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
+  try {
+    const deadline = Date.now() + EDITOR_WAIT_MS;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, EDITOR_POLL_MS));
+      st = await post('/api/editor/check', { cwd, id }, 1500);
+      if (!st) { say('la tour ne repond plus : je lance sans attendre.'); return true; }
+      if (!st.open) { say('l\'editeur est ferme : je lance.'); return true; }
+      if (st.answer === 'go') { say('ali dit de lancer quand meme, editeur ouvert.'); return true; }
+      if (st.answer === 'annuler') { say('ali a annule : rien n\'est lance. Demande-lui quand relancer cette commande.'); return false; }
+    }
+    say('l\'editeur est toujours ouvert : rien n\'est lance. Relance la meme commande quand ali l\'aura ferme.');
+    return false;
+  } finally {
+    process.removeListener('SIGINT', onSignal);
+    process.removeListener('SIGTERM', onSignal);
+    await done();
+  }
+}
+
 function spawnShell(o) {
   if (o.shell === 'powershell' || o.shell === 'pwsh') {
     const exe = process.env.TOWER_POWERSHELL || (o.shell === 'pwsh' ? 'pwsh.exe' : 'powershell.exe');
@@ -137,6 +175,8 @@ function killTree(child) {
 async function main() {
   const o = parseArgs(process.argv.slice(2));
   if (!o.cmd.trim()) { say('aucune commande a lancer.'); process.exit(2); }
+
+  if (!(await waitEditorClosed(o))) process.exit(3);
 
   let ticket = process.env.TOWER_NO_LOCK === '1' ? null : await takeLock(o);
 

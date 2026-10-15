@@ -6,7 +6,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
-const { TowerState } = require('./state');
+const { TowerState, EDITOR_CHOICES } = require('./state');
 const { Worker } = require('worker_threads');
 const projectsLib = require('../lib/projects');
 
@@ -626,6 +626,28 @@ const routes = {
 
   // Plugin Unreal (unreal/AlkatrazzTower)
   'POST /api/editor/state': (b) => ({ ok: state.editorState(b) }),
+  // Un commandlet (-run=...) lance par tower-run attend l'editeur ferme : la question a ali, puis son suivi.
+  'POST /api/editor/ask': (b) => {
+    const project = b.cwd ? (require('../lib/detect').findProject(b.cwd) || {}).name : null;
+    return { id: state.askCloseEditor({ sessionId: String(b.sessionId || ''), cwd: b.cwd, command: b.command, project }) };
+  },
+  'POST /api/editor/check': (b) => {
+    const project = b.cwd ? (require('../lib/detect').findProject(b.cwd) || {}).name : null;
+    const open = state.editorOpenFor(project);
+    const id = String(b.id || '');
+    let answer = '';
+    if (id) {
+      const st = state.askStatus(id);
+      if (st.answered) {
+        const label = Object.values(st.answers || {})[0] || '';
+        answer = (EDITOR_CHOICES.find(c => c.label === label) || {}).id || 'ferme';
+      }
+      // l'editeur s'est ferme avant qu'ali reponde : la question n'a plus lieu d'etre
+      if (!open && st.pending) state.endEditorAsk(id);
+    }
+    return { open, answer };
+  },
+  'POST /api/editor/done': (b) => ({ ok: state.endEditorAsk(String(b.id || '')) }),
   'GET /api/editor/feed': (b, url) => state.editorFeed(url.searchParams.get('project')),
   'POST /api/editor/asset-opened': (b) => ({ ok: true, agents: state.agentsOnAsset(b.file, b.package) }),
   'POST /api/editor/assets-changed': (b) => {

@@ -137,3 +137,67 @@ test('doc obligatoire : le hook fait continuer la session qui a modifie le jeu s
   await hook({ ...base, hook_event_name: 'PostToolUse', tool_name: 'Write', tool_input: { file_path: path.join(root, 'docs', 'A.md') } });
   assert.strictEqual((await hook({ ...base, hook_event_name: 'Stop' })).out, '');
 });
+
+// Un commandlet (-run=...) attend l'editeur ferme : la question part a ali dans la tour, puis tower-run
+// lance si ali le dit, s'arrete s'il annule, ou laisse tomber apres l'attente (code 3, rien de lance).
+test('commandlet avec l\'editeur ouvert : la tour demande a ali de le fermer', { timeout: 60_000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tower-cmdlet-'));
+  fs.writeFileSync(path.join(root, 'Banc.uproject'), JSON.stringify({ EngineAssociation: '5.8' }));
+  const ORIGIN = { Origin: `http://127.0.0.1:${PORT}` };
+  const editorOpen = () => req('POST', '/api/editor/state', {}, { project: 'Banc', uproject: path.join(root, 'Banc.uproject') });
+  // la commande : un faux UnrealEditor-Cmd qui ecrit LANCE
+  const cmd = `echo LANCE; : UnrealEditor-Cmd.exe Banc.uproject -run=pythonscript -script=creer_coup_de_pied.py`;
+  const start = (extra = {}) => {
+    const p = spawn(process.execPath, [path.join(ROOT, 'bin', 'tower-run.js'), '--shell', 'bash', '--kind', 'commandlet', '--session', 'cmdlet-1', '--b64', Buffer.from(cmd).toString('base64')],
+      { cwd: root, env: { ...env, TOWER_EDITOR_POLL_MS: '150', ...extra } });
+    let out = '';
+    p.stdout.on('data', c => { out += c; });
+    return { done: new Promise(r => p.on('close', code => r({ code, out }))) };
+  };
+  const askOf = async () => {
+    for (let i = 0; i < 60; i++) {
+      const a = (await get('/api/state')).agents.find(x => x.sessionId === 'cmdlet-1');
+      if (a && a.ask && a.ask.id) return a;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    throw new Error('pas de question');
+  };
+  const answer = async (label) => {
+    const a = await askOf();
+    assert.strictEqual(a.status, 'waiting');
+    const q = a.ask.questions[0];
+    assert.match(q.question, /Ferme l'éditeur Unreal de Banc : .* doit lancer creer_coup_de_pied\.py/);
+    assert.deepStrictEqual(q.options.map(o => o.label), ['Je le ferme', 'Lancer quand même', 'Annuler']);
+    const r = await req('POST', '/api/ask/answer', ORIGIN, { id: a.ask.id, answers: { [q.question]: label } });
+    assert.strictEqual(r.status, 200, r.body);
+  };
+
+  // editeur ouvert, ali dit de lancer quand meme
+  await editorOpen();
+  let run1 = start();
+  await answer('Lancer quand même');
+  let r = await run1.done;
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /\[tour\] l'editeur Unreal de ce projet est ouvert/);
+  assert.match(r.out, /ali dit de lancer quand meme/);
+  assert.match(r.out, /LANCE/);
+  assert.ok(/^[\x00-\x7f]*$/.test(r.out), 'sortie ASCII');
+
+  // ali annule : rien n'est lance, code 3, la session ne l'attend plus
+  await editorOpen();
+  run1 = start();
+  await answer('Annuler');
+  r = await run1.done;
+  assert.strictEqual(r.code, 3);
+  assert.doesNotMatch(r.out, /LANCE/);
+  assert.match(r.out, /ali a annule/);
+
+  // personne ne repond : l'attente finit, la question est retiree
+  await editorOpen();
+  r = await start({ TOWER_EDITOR_WAIT_MS: '800' }).done;
+  assert.strictEqual(r.code, 3);
+  assert.match(r.out, /toujours ouvert : rien n'est lance/);
+  const a = (await get('/api/state')).agents.find(x => x.sessionId === 'cmdlet-1');
+  assert.ok(!a.ask, 'plus de question en attente');
+  assert.notStrictEqual(a.status, 'waiting');
+});

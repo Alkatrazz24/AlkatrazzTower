@@ -70,3 +70,32 @@ test('les sessions plus vues depuis un mois sont oubliees, sauf celle qui tient 
   assert.strictEqual(s.pruneAgents(), 1);
   assert.deepStrictEqual(Object.keys(s.agents).sort(), ['FORGE', 'RECENTE']);
 });
+
+test('editeur ouvert : un commandlet demande a ali de le fermer, la question part quand il se ferme', () => {
+  let t = 1_000_000;
+  const s = new TowerState(() => t);
+  assert.strictEqual(s.editorOpenFor('Banc'), false);
+  s.editorState({ project: 'Banc', uproject: 'C:/Banc/Banc.uproject' });
+  assert.strictEqual(s.editorOpenFor('Banc'), true);
+  assert.strictEqual(s.editorOpenFor('Autre'), false, 'le plugin parle d\'un autre projet');
+  const id = s.askCloseEditor({ sessionId: 'S1', cwd: 'C:/Banc', project: 'Banc', command: 'UnrealEditor-Cmd.exe Banc.uproject -run=pythonscript -script="tools/creer_coup_de_pied.py --auto"' });
+  assert.ok(id);
+  const a = s.agents.S1;
+  assert.strictEqual(a.status, 'waiting');
+  assert.match(a.message, /^Ferme l'éditeur Unreal de Banc : .* doit lancer creer_coup_de_pied\.py/);
+  assert.ok(a.ask.editeur);
+  // le plugin se tait 15 s : l'editeur est ferme, tower-run retire la question
+  t += 16_000;
+  assert.strictEqual(s.editorOpenFor('Banc'), false);
+  assert.ok(s.endEditorAsk(id));
+  assert.ok(!a.ask);
+  assert.strictEqual(a.status, 'working');
+  assert.ok(!s.endEditorAsk(id));
+  // sans plugin, un UnrealEditor.exe vu par la sonde compte comme ouvert
+  s.editor = { open: true, count: 1, checkedAt: t, plugin: false };
+  assert.strictEqual(s.editorOpenFor('Banc'), true);
+  // une question ordinaire n'est pas retiree par endEditorAsk
+  const q = s.openAsk({ sessionId: 'S2', kind: 'question', questions: [{ question: 'Laquelle ?', options: [{ label: 'A' }, { label: 'B' }] }] });
+  assert.ok(!s.endEditorAsk(q));
+  assert.ok(s.agents.S2.ask);
+});

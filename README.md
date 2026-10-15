@@ -149,6 +149,14 @@ de permission de Claude Code s'appliquent normalement à la commande réécrite.
 - Le bouton **Libérer** de la page débloque un verrou coincé.
 - `tower-run` s'utilise aussi à la main :
   `node bin\tower-run.js --shell powershell --kind build -- & "...\Build.bat" ...`
+- **L'éditeur doit être fermé** pour un commandlet (`UnrealEditor-Cmd ... -run=...`, par exemple un
+  script Python qui crée des assets). Si l'éditeur du projet est ouvert, `tower-run` ne le lance pas tout
+  de suite : la carte de la demande passe dans **T'attend** avec « Ferme l'éditeur Unreal : X doit lancer
+  creer_coup_de_pied.py », et trois réponses. **Je le ferme** : la commande part dès que la tour voit
+  l'éditeur fermé. **Lancer quand même** : elle part tout de suite. **Annuler** : rien ne part. Sans
+  réponse, l'éditeur fermé suffit. Au bout de 9 minutes sans fermeture (l'outil de l'agent coupe à 10),
+  ou si tu annules, `tower-run` rend le code 3 sans rien lancer, et dit à l'agent de relancer plus tard. La consigne des tâches demande aux sessions de donner 10 minutes
+  à ces commandes.
 
 Limites connues : un `cd` dans une commande emballée ne change plus le dossier courant de l'agent ; un
 agent qui donne un délai court à sa commande peut expirer pendant qu'il attend en file ; avec l'éditeur
