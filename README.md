@@ -478,6 +478,10 @@ dossiers que tu ajoutes (« Suivre un autre dossier ») :
   quai), les derniers commits de la branche principale, et si le PC est à jour, en retard ou en avance,
   sans même lancer de `git fetch`. Sans jeton, la tour voit les dépôts publics ; une variable
   `GITHUB_TOKEN` (ou `GH_TOKEN`) ouvre aussi les privés.
+- **Graphe des branches** (bouton à côté de « Sur le PC » et « Sur GitHub ») : les derniers commits de
+  toutes les branches en nœuds et en traits. main est la ligne bleue à gauche ; chaque branche a sa
+  couleur, part d'un commit et rejoint main là où elle a été fusionnée (un anneau, avec le nom de la
+  branche et un lien vers sa PR). Survole un commit pour lire son message ; 80 commits, puis 200 ou 400.
 
 La tour ne fait que lire : `git --no-optional-locks` ne touche même pas l'index. Trois gestes changent un
 dépôt, chacun sur ton clic et après confirmation : **Initialiser git** (`git init -b main`, plus un

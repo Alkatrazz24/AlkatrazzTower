@@ -102,3 +102,31 @@ test('les dossiers suivis sont gardes d\'un lancement a l\'autre', () => {
   assert.strictEqual(back.unfollowRepo('C:\\Jeux\\Proto'), true);
   assert.deepStrictEqual(back.gitFollow, []);
 });
+
+test('le graphe des branches : main, une branche fusionnee, son nom tire du message de fusion', { skip: !hasGit && 'git absent' }, async () => {
+  const root = tmp('tower-graph-');
+  const c = (msg) => { fs.writeFileSync(path.join(root, `${msg}.txt`), msg); git(root, 'add', '-A'); git(root, 'commit', '-q', '-m', msg); };
+  git(root, 'init', '-q', '-b', 'main');
+  c('un');
+  git(root, 'checkout', '-q', '-b', 'claude/porte');
+  c('porte');
+  git(root, 'checkout', '-q', 'main');
+  c('deux');
+  git(root, 'merge', '-q', '--no-ff', '-m', 'Merge pull request #7 from moi/claude/porte', 'claude/porte');
+  const G = await gitLib.graph(root, 50);
+  assert.strictEqual(G.ok, true);
+  assert.strictEqual(G.main, 'main');
+  assert.strictEqual(G.commits.length, 4);
+  const merge = G.commits[0];
+  assert.strictEqual(merge.parents.length, 2);
+  assert.deepStrictEqual(merge.merged, { branch: 'claude/porte', pr: 7 });
+  assert.ok(merge.head && merge.refs.includes('main'));
+  assert.strictEqual(G.tip, merge.sha);
+  assert.ok(G.commits.find(x => x.subject === 'porte').refs.includes('claude/porte'));
+  assert.deepStrictEqual(gitLib.mergedName('Merge branch \'feat/x\' into main'), { branch: 'feat/x' });
+  assert.strictEqual(gitLib.mergedName('Portes : six coups'), null);
+  // un dossier non suivi ou sans git : refuse
+  const T = gitLib.create({ list: () => [{ name: 'J', root }], publish: () => {} });
+  assert.strictEqual((await T.graph(tmp('tower-x-'))).ok, false);
+  assert.strictEqual((await T.graph(root, 5)).commits.length, 4);
+});
