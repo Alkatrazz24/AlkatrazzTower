@@ -397,3 +397,41 @@ h1, h2, h3, p { margin: 0; }
 .us-gref { flex: none; font: 600 11.5px/1 var(--us-text); padding: 3px 6px; border: 1.5px solid var(--us-line2); border-radius: 999px; color: var(--us-ink); }
 .us-gref-remote { border-style: dashed; color: var(--us-muted); }
 .us-gref-head { background: var(--us-ink); color: var(--us-panel); }
+
+/* ---------- « Vue » : la tour en coupe (web/appli/vue.js) ---------- */
+.ap-vuebtn { padding: 6px 9px; font-size: 13px; gap: 6px; align-items: center; display: inline-flex; }
+.ap-vueic { width: 9px; height: 13px; border: 2px solid currentColor; border-bottom-width: 1px; border-radius: 1px; position: relative; flex: none;
+  background: linear-gradient(currentColor, currentColor) 50% 3px / 100% 1px no-repeat, linear-gradient(currentColor, currentColor) 50% 7px / 100% 1px no-repeat; }
+.vu { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: var(--us-bg); color: var(--us-ink); }
+.vu[hidden] { display: none; }
+.vu-head { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--us-line); flex-wrap: wrap; }
+.vu-head h2 { font: 600 17px/1.2 var(--us-text); }
+.vu-count { color: var(--us-muted); font-size: 13px; }
+.vu-legend { display: flex; gap: 14px; flex-wrap: wrap; list-style: none; margin: 0 0 0 auto; padding: 0; font-size: 12.5px; color: var(--us-muted); }
+.vu-legend li { display: flex; align-items: center; gap: 6px; }
+.vu-k { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.vu-k-blue { background: var(--us-blue); } .vu-k-warn { background: #f0c040; } .vu-k-ok { background: var(--us-ok); } .vu-k-grey { background: var(--us-grey); }
+.vu-stage { flex: 1; min-height: 0; overflow: auto; display: grid; place-items: center; padding: 8px; }
+.vu-scene { position: relative; }
+.vu-canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; image-rendering: crisp-edges; display: block; border-radius: 6px; }
+.vu-hits { position: absolute; inset: 0; }
+.vu-sign { position: absolute; display: grid; place-items: center; font: 700 calc(9px * var(--vu-k, 2)) / 1 var(--us-cond); letter-spacing: .14em; color: #ffd36b;
+  text-shadow: 0 0 6px rgba(255, 190, 80, .55); pointer-events: none; white-space: nowrap; }
+.vu-room { position: absolute; margin: 0; padding: 0; border: 0; background: transparent; cursor: pointer; border-radius: 2px; color: inherit; font: inherit; }
+.vu-room:hover, .vu-room:focus-visible { outline: 2px solid color-mix(in srgb, #fff 70%, transparent); outline-offset: -2px; background: rgba(255, 255, 255, .05); }
+.vu-plaque { position: absolute; left: 50%; top: 3px; transform: translateX(-50%); max-width: calc(100% - 10px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font: 600 clamp(10px, calc(5.2px * var(--vu-k, 2)), 14px) / 1.25 var(--us-cond); padding: 1px 6px 2px; border-radius: 3px;
+  background: rgba(14, 16, 22, .82); color: #eef1f5; border-bottom: 2px solid #8b93a3; }
+.vu-t-blue .vu-plaque { border-bottom-color: #6ea8fe; }
+.vu-t-warn .vu-plaque { border-bottom-color: #f0c040; color: #ffe08a; }
+.vu-t-ok .vu-plaque { border-bottom-color: #5bc28a; }
+.vu-t-ko .vu-plaque { border-bottom-color: #ff6b6b; }
+.vu-dim .vu-plaque { color: #b9c0ca; }
+.vu-more:empty { display: none; }
+.vu-more { position: absolute; right: 4px; bottom: 6px; font: 600 11px/1 var(--us-cond); padding: 2px 4px; border-radius: 3px; background: rgba(14, 16, 22, .8); color: #eef1f5; }
+.vu-tip { position: absolute; z-index: 2; max-width: 320px; display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: 8px; pointer-events: none;
+  background: var(--us-panel); border: 1px solid var(--us-line2); box-shadow: 0 6px 24px rgba(0, 0, 0, .35); font-size: 13px; }
+.vu-tip[hidden] { display: none; }
+.vu-tip span { color: var(--us-muted); }
+.vu-foot { text-align: center; color: var(--us-muted); font-size: 12.5px; padding: 0 0 10px; }
+@media (max-width: 760px) { .vu-legend { display: none; } .vu-stage { place-items: start center; } }
